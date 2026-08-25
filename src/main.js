@@ -22,6 +22,8 @@ const summary = $('#summary');
 let parsedJson = null;
 let player = null;
 let plan = null;
+let currentMarker = null;
+let currentMarkerElement = null;
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -39,21 +41,35 @@ const map = new maplibregl.Map({
   },
   center: [135.5, 34.7],
   zoom: 4.8,
-  attributionControl: true
+  attributionControl: true,
+  fadeDuration: 0
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
 map.on('load', () => {
   map.addSource('route-all', { type: 'geojson', data: emptyLine() });
-  map.addSource('route-progress', { type: 'geojson', data: emptyLine() });
+  map.addSource('route-progress', { type: 'geojson', data: emptyLine(), lineMetrics: true });
   map.addLayer({
     id: 'route-all', type: 'line', source: 'route-all',
     paint: { 'line-color': '#64748b', 'line-width': 2.5, 'line-opacity': 0.38 }
   });
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
-    paint: { 'line-color': '#ef4444', 'line-width': 4, 'line-opacity': 0.95 }
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-width': 4.5,
+      'line-opacity': 0.96,
+      'line-gradient': ['step', ['line-progress'], '#ef4444', 0, 'rgba(239, 68, 68, 0)']
+    }
   });
+
+  currentMarkerElement = document.createElement('div');
+  currentMarkerElement.className = 'current-location-marker is-hidden';
+  currentMarkerElement.innerHTML = '<span class="current-location-dot"></span><span class="current-location-ring"></span>';
+  currentMarker = new maplibregl.Marker({ element: currentMarkerElement, anchor: 'center' })
+    .setLngLat([135.5, 34.7])
+    .addTo(map);
+
   status.textContent = '타임라인 JSON을 선택하세요.';
 });
 
@@ -83,10 +99,18 @@ loadButton.addEventListener('click', () => {
         includeFlights: includeFlights.checked
       });
       if (!data.movements.length) throw new Error('선택 기간에 이동 구간이 없습니다.');
-      plan = planPlayback(data.movements, { fps: 30, maxTotalSeconds: 150 });
+      plan = planPlayback(data.movements, {
+        fps: 30,
+        maxTotalSeconds: 210,
+        viewportWidth: map.getCanvas().clientWidth || 1100
+      });
       const fullRoute = data.routePoints.length ? data.routePoints : data.movements.flatMap(s => s.points);
       map.getSource('route-all').setData(toGeoJSONLine(fullRoute));
-      map.getSource('route-progress').setData(emptyLine());
+      map.getSource('route-progress').setData(toGeoJSONLine(plan.frames.map(frame => frame.position)));
+      map.setPaintProperty('route-progress', 'line-gradient', [
+        'step', ['line-progress'], '#ef4444', 0, 'rgba(239, 68, 68, 0)'
+      ]);
+      currentMarkerElement?.classList.add('is-hidden');
       fitRoute(fullRoute);
       player = new RoutePlayer({ map, plan, onFrame: updateFrameUi });
       player.reset();
@@ -126,6 +150,10 @@ resetButton.addEventListener('click', () => {
 seek.addEventListener('input', () => player?.seek(Number(seek.value)));
 
 function updateFrameUi(frame) {
+  if (currentMarker) {
+    currentMarker.setLngLat([frame.position.lng, frame.position.lat]);
+    currentMarkerElement?.classList.remove('is-hidden');
+  }
   const segment = plan.segments[frame.segmentIndex];
   currentMode.textContent = frame.mobilityClass;
   currentSpeed.textContent = `${frame.speedKmh.toFixed(1)} km/h`;
