@@ -6,7 +6,9 @@
   "description": "Travel timeline visualizer with distance/speed-aware mobility inference and globally smoothed camera trajectories.",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "map:setup": "node scripts/setup-local-map.mjs",
+    "map:setup:force": "node scripts/setup-local-map.mjs --force"
   },
   "engines": {
     "node": ">=20"
