@@ -45,14 +45,16 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
       if (!start || !end || !Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)) continue;
       const durationSec = Math.max(1, (segmentEnd - segmentStart) / 1000);
       const statedDistance = Number(activity.distanceMeters);
+      const directDistance = haversineMeters(start, end);
       const distanceMeters = Number.isFinite(statedDistance) && statedDistance > 0
         ? statedDistance
-        : haversineMeters(start, end);
+        : directDistance;
       activities.push({
         startMs: segmentStart,
         endMs: segmentEnd,
         start,
         end,
+        statedDistanceMeters: Number.isFinite(statedDistance) ? Math.max(0, statedDistance) : null,
         distanceMeters,
         durationSec,
         avgSpeedKmh: distanceMeters / durationSec * 3.6,
@@ -77,33 +79,85 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
   activities.sort((a, b) => a.startMs - b.startMs);
   timelinePaths.sort((a, b) => a.startMs - b.startMs);
 
-  const movements = activities.map(activity => ({
-    ...activity,
-    points: pathForActivity(activity, timelinePaths)
-  }));
-
+  const movements = activities.map(activity => enrichActivityWithPath(activity, timelinePaths));
   const routePoints = dedupeChronological(timelinePaths.flatMap(p => p.points));
   return { movements, routePoints, visits, timelinePaths };
 }
 
+function enrichActivityWithPath(activity, paths) {
+  const points = pathForActivity(activity, paths);
+  const pathDistance = pathDistanceMeters(points);
+  const directDistance = haversineMeters(points[0] || activity.start, points[points.length - 1] || activity.end);
+  const stated = Number(activity.statedDistanceMeters);
+
+  const statedMissingOrTiny = !Number.isFinite(stated) || stated < 100;
+  const pathStronglyDisagrees = Number.isFinite(stated) && stated > 0 && pathDistance > stated * 1.6 + 1000;
+  const physicallyPlausible = pathDistance / Math.max(activity.durationSec, 1) * 3.6 <= 1300;
+
+  let distanceMeters = activity.distanceMeters;
+  if (physicallyPlausible && pathDistance > 250 && (statedMissingOrTiny || pathStronglyDisagrees)) {
+    distanceMeters = pathDistance;
+  } else if (!(distanceMeters > 0)) {
+    distanceMeters = Math.max(pathDistance, directDistance);
+  }
+
+  const start = points[0] ? stripTime(points[0]) : activity.start;
+  const end = points.length ? stripTime(points[points.length - 1]) : activity.end;
+  return {
+    ...activity,
+    start,
+    end,
+    points,
+    distanceMeters,
+    pathDistanceMeters: pathDistance,
+    avgSpeedKmh: distanceMeters / Math.max(activity.durationSec, 1) * 3.6
+  };
+}
+
 function pathForActivity(activity, paths) {
   const toleranceMs = 2 * 60 * 1000;
-  const points = paths
+  const timelinePoints = paths
     .flatMap(path => path.points)
     .filter(p => p.timeMs >= activity.startMs - toleranceMs && p.timeMs <= activity.endMs + toleranceMs)
     .sort((a, b) => a.timeMs - b.timeMs);
-  const candidate = dedupeChronological([
-    { ...activity.start, timeMs: activity.startMs },
-    ...points,
-    { ...activity.end, timeMs: activity.endMs }
+
+  if (!timelinePoints.length) {
+    return [
+      { ...activity.start, timeMs: activity.startMs },
+      { ...activity.end, timeMs: activity.endMs }
+    ];
+  }
+
+  const maxSpeedKmh = plausibleEndpointSpeed(activity.googleType);
+  const first = timelinePoints[0];
+  const last = timelinePoints[timelinePoints.length - 1];
+
+  const startBridgeSec = Math.max(1, Math.abs(first.timeMs - activity.startMs) / 1000);
+  const endBridgeSec = Math.max(1, Math.abs(activity.endMs - last.timeMs) / 1000);
+  const startBridgeSpeed = haversineMeters(activity.start, first) / startBridgeSec * 3.6;
+  const endBridgeSpeed = haversineMeters(last, activity.end) / endBridgeSec * 3.6;
+
+  const useActivityStart = startBridgeSpeed <= maxSpeedKmh;
+  const useActivityEnd = endBridgeSpeed <= maxSpeedKmh;
+
+  return dedupeChronological([
+    ...(useActivityStart ? [{ ...activity.start, timeMs: activity.startMs }] : []),
+    ...timelinePoints,
+    ...(useActivityEnd ? [{ ...activity.end, timeMs: activity.endMs }] : [])
   ]);
-  const pathDistance = pathDistanceMeters(candidate);
-  if (candidate.length >= 2 && pathDistance > 0) return candidate;
-  return [
-    { ...activity.start, timeMs: activity.startMs },
-    { ...activity.end, timeMs: activity.endMs }
-  ];
 }
+
+function plausibleEndpointSpeed(type) {
+  if (type === 'FLYING') return 1300;
+  if (type === 'IN_TRAIN' || type === 'IN_SUBWAY' || type === 'IN_TRAM') return 420;
+  if (type === 'IN_BUS' || type === 'IN_PASSENGER_VEHICLE') return 220;
+  if (type === 'IN_FERRY') return 100;
+  if (type === 'CYCLING') return 65;
+  if (type === 'WALKING') return 18;
+  return 320;
+}
+
+function stripTime(p) { return { lat: p.lat, lng: p.lng }; }
 
 function dedupeChronological(points) {
   const sorted = [...points].sort((a, b) => (a.timeMs ?? 0) - (b.timeMs ?? 0));
