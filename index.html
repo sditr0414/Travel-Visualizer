@@ -13,7 +13,7 @@
   <header>
     <div>
       <h1>Travel Camera Visualizer</h1>
-      <p>60fps · 거리/속도 기반 카메라 · 누락 경로 보간 · 전체 경로 엔딩</p>
+      <p>60fps · 선택형 카메라 전략 · 누락 경로 보간 · 전체 경로 엔딩</p>
     </div>
   </header>
 
@@ -36,7 +36,15 @@
       <section>
         <h2>영상</h2>
         <div class="setting-row"><span>프레임 레이트</span><strong>60 FPS</strong></div>
-        <div class="setting-head">
+        <label class="select-setting">카메라 줌 전략
+          <select id="cameraMode">
+            <option value="AUTO" selected>자동 · 하루 지역 + 장거리 예외</option>
+            <option value="DAY">하루 지역 중심</option>
+            <option value="SEGMENT">이동수단별</option>
+          </select>
+        </label>
+        <p id="cameraModeHint" class="hint"></p>
+        <div class="setting-head duration-head">
           <span>전체 영상 길이</span>
           <output id="videoDurationLabel">분석 후 설정</output>
         </div>
