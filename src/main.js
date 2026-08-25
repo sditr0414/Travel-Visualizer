@@ -1,5 +1,6 @@
 import { parseTimeline } from './timeline-parser.js';
 import { durationLimitsForMovements, planPlayback } from './camera-planner.js';
+import { applyCameraMode, CameraMode } from './camera-modes.js';
 import { RoutePlayer } from './route-player.js';
 import { toGeoJSONLine } from './geo.js';
 import { loadBundledTimeline } from './bundled-timeline.js';
@@ -9,6 +10,8 @@ const fileInput = $('#timelineFile');
 const startDate = $('#startDate');
 const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
+const cameraMode = $('#cameraMode');
+const cameraModeHint = $('#cameraModeHint');
 const lockCameraToPosition = $('#lockCameraToPosition');
 const showFullRoute = $('#showFullRoute');
 const videoDuration = $('#videoDuration');
@@ -29,6 +32,18 @@ let parsedJson = null;
 let currentData = null;
 let player = null;
 let plan = null;
+
+const CAMERA_MODE_LABELS = {
+  [CameraMode.AUTO]: '자동 · 하루 지역 + 장거리 예외',
+  [CameraMode.DAY]: '하루 지역 중심',
+  [CameraMode.SEGMENT]: '이동수단별'
+};
+
+const CAMERA_MODE_HINTS = {
+  [CameraMode.AUTO]: '하루의 주 활동 지역을 기본 줌으로 유지하고 항공·장거리 철도·페리에서만 넓게 봅니다. 짧은 영상에 권장합니다.',
+  [CameraMode.DAY]: '같은 날은 거의 같은 줌 스케일을 유지합니다. 도시 안의 여러 이동을 안정적으로 보여줄 때 적합합니다.',
+  [CameraMode.SEGMENT]: '도보·지하철·기차 등 각 이동 구간의 거리와 속도에 따라 줌을 적극적으로 바꿉니다.'
+};
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -59,6 +74,7 @@ map.on('load', async () => {
     paint: { 'line-width': 4.8, 'line-opacity': 0.98, 'line-color': '#ef4444' }
   });
 
+  updateCameraModeHint();
   await loadDefaultTimeline();
 });
 
@@ -129,6 +145,11 @@ videoDuration.addEventListener('change', () => {
   if (currentData) rebuildPlan('영상 길이 변경', false);
 });
 
+cameraMode.addEventListener('change', () => {
+  updateCameraModeHint();
+  if (currentData) rebuildPlan('카메라 전략 변경', false);
+});
+
 lockCameraToPosition.addEventListener('change', () => {
   player?.setLockToPosition(lockCameraToPosition.checked);
   status.textContent = lockCameraToPosition.checked
@@ -169,11 +190,18 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
 
   requestAnimationFrame(() => {
     try {
+      const viewportWidth = map.getCanvas().clientWidth || 1100;
+      const viewportHeight = map.getCanvas().clientHeight || 700;
       plan = planPlayback(currentData.movements, {
         fps: 60,
         targetTotalSeconds: Number(videoDuration.value),
-        viewportWidth: map.getCanvas().clientWidth || 1100,
-        viewportHeight: map.getCanvas().clientHeight || 700
+        viewportWidth,
+        viewportHeight
+      });
+      plan = applyCameraMode(plan, {
+        mode: cameraMode.value,
+        viewportWidth,
+        viewportHeight
       });
 
       const fullRoute = currentData.movements.flatMap(segment => segment.points || []);
@@ -201,6 +229,7 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
       const inferredCount = currentData.movements.filter(segment => segment.inferred).length;
       summary.innerHTML = [
         '<strong>60 FPS</strong>',
+        `<strong>${CAMERA_MODE_LABELS[plan.cameraMode] || plan.cameraMode}</strong>`,
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
         `<strong>${plan.segments.length}</strong> 이동 구간`,
         inferredCount ? `<strong>${inferredCount}</strong> 추정 연결` : '',
@@ -210,9 +239,9 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
       if (autoPlay) {
         player.play();
         playButton.textContent = '일시정지';
-        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${formatDuration(plan.durationSec)} · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
       } else {
-        status.textContent = `테스트 데이터 준비 완료 · 재생 버튼을 누르세요 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+        status.textContent = `${CAMERA_MODE_LABELS[plan.cameraMode]} 준비 완료 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
       }
     } catch (error) {
       status.textContent = `카메라 계산 실패: ${error.message}`;
@@ -239,6 +268,10 @@ function updateFrameUi(frame) {
     }).format(new Date(sourceMs));
   }
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
+}
+
+function updateCameraModeHint() {
+  cameraModeHint.textContent = CAMERA_MODE_HINTS[cameraMode.value] || CAMERA_MODE_HINTS[CameraMode.AUTO];
 }
 
 function simplifyAndLocalizeBaseMap(targetMap) {
