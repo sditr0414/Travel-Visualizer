@@ -8,6 +8,7 @@ const fileInput = $('#timelineFile');
 const startDate = $('#startDate');
 const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
+const lockCameraToPosition = $('#lockCameraToPosition');
 const loadButton = $('#loadButton');
 const playButton = $('#playButton');
 const resetButton = $('#resetButton');
@@ -113,7 +114,12 @@ loadButton.addEventListener('click', () => {
       ]);
       currentMarkerElement?.classList.add('is-hidden');
       fitRoute(fullRoute);
-      player = new RoutePlayer({ map, plan, onFrame: updateFrameUi });
+      player = new RoutePlayer({
+        map,
+        plan,
+        onFrame: updateFrameUi,
+        lockToPosition: lockCameraToPosition.checked
+      });
       player.reset();
       playButton.disabled = false;
       resetButton.disabled = false;
@@ -126,11 +132,20 @@ loadButton.addEventListener('click', () => {
         `<strong>${formatDuration(plan.durationSec)}</strong> 재생 길이`,
         ...Object.entries(classes).map(([k, v]) => `${k} ${v}`)
       ].join('<span>·</span>');
-      status.textContent = '카메라 궤적 계산 완료. 재생을 눌러 확인하세요.';
+      status.textContent = lockCameraToPosition.checked
+        ? '검증 모드: 현재 위치가 화면 중앙에 고정됩니다.'
+        : '카메라 궤적 계산 완료. 재생을 눌러 확인하세요.';
     } catch (error) {
       status.textContent = `계산 실패: ${error.message}`;
     }
   });
+});
+
+lockCameraToPosition.addEventListener('change', () => {
+  player?.setLockToPosition(lockCameraToPosition.checked);
+  status.textContent = lockCameraToPosition.checked
+    ? '검증 모드: 현재 위치가 화면 중앙에 고정됩니다.'
+    : '시네마틱 카메라 모드: 계획된 카메라 중심을 사용합니다.';
 });
 
 playButton.addEventListener('click', () => {
