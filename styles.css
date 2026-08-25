@@ -22,7 +22,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 button.primary { width: 100%; background: #2563eb; border-color: #3b82f6; color: white; font-weight: 700; }
 .button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 input[type="range"] { width: 100%; margin: 10px 0 4px; accent-color: #3b82f6; }
-input[type="range"]:disabled { opacity: .45; }
+input[type="range"]:disabled { opacity: .38; cursor: not-allowed; }
 .status { min-height: 36px; color: #94a3b8; font-size: 12px; line-height: 1.5; }
 .hint { margin: 7px 0 0; color: #64748b; font-size: 11px; line-height: 1.55; }
 .setting-row, .setting-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
@@ -33,6 +33,17 @@ input[type="range"]:disabled { opacity: .45; }
 .select-setting { margin: 2px 0 4px; }
 .select-setting select { width: 100%; }
 .duration-head { margin-top: 16px; }
+.tracking-setting { margin: 2px 0 16px; padding: 10px 11px; border: 1px solid #263042; border-radius: 9px; background: rgba(15, 23, 42, .55); }
+.route-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; font-size: 11px; color: #cbd5e1; }
+.route-legend span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.legend-swatch { width: 18px; height: 5px; flex: 0 0 auto; border-radius: 999px; box-shadow: 0 0 0 1px rgba(255,255,255,.72); }
+.legend-swatch.walk { background: #ef4444; }
+.legend-swatch.bike { background: #22c55e; }
+.legend-swatch.urban { background: #3b82f6; }
+.legend-swatch.rail { background: #8b5cf6; }
+.legend-swatch.road { background: #f59e0b; }
+.legend-swatch.ferry { background: #06b6d4; }
+.legend-swatch.flight { background: #ec4899; }
 .metrics { display: grid; gap: 7px; margin: 0; }
 .metrics div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .metrics dt { color: #94a3b8; }
@@ -48,6 +59,3 @@ input[type="range"]:disabled { opacity: .45; }
   .controls { border-right: 0; border-bottom: 1px solid #263042; }
   .stage { min-height: 520px; }
 }
-
-/* The live red route tail is now the position indicator. */
-.current-location-marker { display: none !important; }
