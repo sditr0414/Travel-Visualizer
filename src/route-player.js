@@ -193,6 +193,12 @@ export function tailFeatureCollectionForFrame(plan, frameIndex, trailSeconds = 3
   };
 }
 
+export function tailPointsForFrame(plan, frameIndex, trailSeconds = 3.2) {
+  const points = travelTailFrames(plan, frameIndex, trailSeconds).map(frame => frame.position);
+  if (points.length === 1) points.unshift(points[0]);
+  return points;
+}
+
 export function routeHeadFeatureForFrame(plan, frameIndex) {
   const frames = plan?.frames || [];
   const i = Math.max(0, Math.min(Number(frameIndex) || 0, frames.length - 1));
@@ -239,7 +245,7 @@ function travelTailFrames(plan, frameIndex, trailSeconds) {
     BIKE: 3.8,
     URBAN_TRANSIT: 3.2,
     ROAD: 2.8,
-    FAST_GROUND: 2.4,
+    FAST_GROUND: 2.2,
     FERRY: 2.8,
     FLIGHT: 1.8,
     UNKNOWN: 3.0
