@@ -1,8 +1,8 @@
 # Travel Camera Visualizer
 
-Google Timeline JSON을 기반으로 여행 동선을 재생하면서 **거리·속도·이동 성격에 따라 카메라 줌과 중심점을 자동 계획**하는 프로토타입입니다.
+Google Timeline JSON을 기반으로 여행 동선을 60fps로 재생하면서 거리·속도·이동 성격에 따라 카메라 줌과 경로 표현을 자동 계획하는 프로토타입입니다.
 
-이 프로젝트의 1순위 목표는 "정확한 교통수단 표시"가 아니라 **전철 ↔ 도보처럼 이동 성격이 자주 바뀌어도 줌 전환이 자연스러운 영상 카메라**입니다.
+현재 개발/검증 기준 데이터는 2026-03-17 ~ 2026-03-31 여행 Timeline입니다.
 
 ## 실행
 
@@ -18,9 +18,9 @@ npm start
 http://localhost:5173
 ```
 
-Google Timeline JSON 파일을 선택하고 날짜를 설정한 뒤 **경로 분석**을 누릅니다.
+페이지가 열리면 `data/timeline-parts/part-01.txt` ~ `part-09.txt`에 포함된 테스트 Timeline을 자동으로 합치고 압축 해제한 뒤 분석합니다. 별도 파일 선택 없이 최소 영상 길이로 자동 재생됩니다.
 
-> 지도 표시에는 인터넷 연결이 필요합니다. 지도 타일은 OpenStreetMap, 렌더러는 MapLibre GL JS CDN을 사용합니다.
+다른 Timeline을 시험하고 싶을 때만 왼쪽의 Google Timeline JSON 파일 선택기를 사용하면 됩니다.
 
 ## 테스트
 
@@ -28,6 +28,12 @@ Google Timeline JSON 파일을 선택하고 날짜를 설정한 뒤 **경로 분
 npm test
 ```
 
-## 개인정보
+## 내장 테스트 데이터
 
-Google Timeline 원본에는 매우 민감한 위치 정보가 포함될 수 있습니다. `data/*.json`은 `.gitignore`에 포함되어 있으므로 원본 타임라인을 저장소에 커밋하지 마세요.
+저장소에는 48MB Google Timeline 원본 전체를 넣지 않습니다. 현재 프로그램 검증에 필요한 2026-03-17 ~ 2026-03-31 구간의 이동 데이터만 압축 fixture로 포함합니다.
+
+이 저장소는 public이므로 `data/timeline-parts`의 테스트 fixture도 공개 위치 데이터라는 점에 유의해야 합니다. 원본 Timeline 전체와 다른 날짜의 위치 기록은 저장소에 포함하지 않습니다.
+
+## 지도
+
+MapLibre GL JS와 OpenFreeMap Positron 벡터 스타일을 사용합니다. 지도 표시는 인터넷 연결이 필요하며, 지명은 가능한 경우 한국어 필드를 우선합니다.
