@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Travel Camera Visualizer</title>
   <link rel="preconnect" href="https://unpkg.com" />
+  <link rel="preconnect" href="https://tiles.openfreemap.org" />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -39,6 +40,7 @@
           <button id="resetButton" disabled>처음으로</button>
         </div>
         <label class="check"><input id="lockCameraToPosition" type="checkbox" checked /> 검증 모드: 현재 위치에 카메라 고정</label>
+        <label class="check"><input id="showFullRoute" type="checkbox" /> 전체 경로 희미하게 표시</label>
         <input id="seek" type="range" min="0" max="1" step="0.033" value="0" disabled aria-label="재생 위치" />
       </section>
 
