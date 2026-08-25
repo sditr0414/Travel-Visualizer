@@ -19,5 +19,6 @@ jobs:
           node --check scripts/setup-local-map.mjs
           node --check src/local-map.js
           node --check src/main.js
+          node --check src/route-player.js
       - name: Unit tests
         run: npm test
