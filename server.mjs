@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,79 +44,62 @@ try {
   throw error;
 }
 
-createServer().listen(port, () => {
-  console.log(`Travel Camera Visualizer: http://localhost:${port}`);
-  console.log(`Bundled Timeline: ${timelinePartNames.length} parts ready`);
-  printMapStatus();
-});
+createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
 
-function createServer() {
-  const { createServer: createHttpServer } = requireHttp();
-  return createHttpServer(async (req, res) => {
-    try {
-      const url = new URL(req.url, `http://${req.headers.host}`);
-
-      if (url.pathname === '/api/map-status') {
-        const status = await getMapStatus();
-        const body = JSON.stringify(status);
-        res.writeHead(200, {
-          'content-type': 'application/json; charset=utf-8',
-          'content-length': Buffer.byteLength(body),
-          'cache-control': 'no-store'
-        });
-        if (req.method !== 'HEAD') res.end(body);
-        else res.end();
-        return;
-      }
-
-      if (url.pathname === '/data/timeline-bundle.js') {
-        res.writeHead(200, {
-          'content-type': 'text/javascript; charset=utf-8',
-          'cache-control': 'no-store'
-        });
-        if (req.method !== 'HEAD') res.end(timelineModule);
-        else res.end();
-        return;
-      }
-
-      const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
-      const relative = normalize(pathname).replace(/^([/\\])+/, '');
-      const file = join(root, relative);
-      if (!file.startsWith(root)) throw new Error('invalid path');
-      const info = await stat(file);
-      if (!info.isFile()) throw new Error('not a file');
-
-      if (extname(file) === '.pmtiles') {
-        serveRangeFile(req, res, file, info);
-        return;
-      }
-
-      const body = await readFile(file);
+    if (url.pathname === '/api/map-status') {
+      const status = await getMapStatus();
+      const body = JSON.stringify(status);
       res.writeHead(200, {
-        'content-type': mime[extname(file)] || 'application/octet-stream',
-        'content-length': body.length,
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': Buffer.byteLength(body),
         'cache-control': 'no-store'
       });
       if (req.method !== 'HEAD') res.end(body);
       else res.end();
-    } catch {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('Not found');
+      return;
     }
-  });
-}
 
-function requireHttp() {
-  // Keeps the actual HTTP import close to server construction while preserving ESM-only app files.
-  return globalThis.__travelHttp || (globalThis.__travelHttp = awaitImportHttp());
-}
+    if (url.pathname === '/data/timeline-bundle.js') {
+      res.writeHead(200, {
+        'content-type': 'text/javascript; charset=utf-8',
+        'cache-control': 'no-store'
+      });
+      if (req.method !== 'HEAD') res.end(timelineModule);
+      else res.end();
+      return;
+    }
 
-function awaitImportHttp() {
-  // createServer is loaded synchronously by Node before this module reaches listen().
-  return { createServer: (handler) => httpCreateServer(handler) };
-}
+    const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+    const relative = normalize(pathname).replace(/^([/\\])+/, '');
+    const file = join(root, relative);
+    if (!file.startsWith(root)) throw new Error('invalid path');
+    const info = await stat(file);
+    if (!info.isFile()) throw new Error('not a file');
 
-import { createServer as httpCreateServer } from 'node:http';
+    if (extname(file) === '.pmtiles') {
+      serveRangeFile(req, res, file, info);
+      return;
+    }
+
+    const body = await readFile(file);
+    res.writeHead(200, {
+      'content-type': mime[extname(file)] || 'application/octet-stream',
+      'content-length': body.length,
+      'cache-control': 'no-store'
+    });
+    if (req.method !== 'HEAD') res.end(body);
+    else res.end();
+  } catch {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    res.end('Not found');
+  }
+}).listen(port, () => {
+  console.log(`Travel Camera Visualizer: http://localhost:${port}`);
+  console.log(`Bundled Timeline: ${timelinePartNames.length} parts ready`);
+  printMapStatus();
+});
 
 function serveRangeFile(req, res, file, info) {
   const size = info.size;
