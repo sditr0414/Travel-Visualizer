@@ -1,8 +1,9 @@
 export class RoutePlayer {
-  constructor({ map, plan, onFrame }) {
+  constructor({ map, plan, onFrame, lockToPosition = true }) {
     this.map = map;
     this.plan = plan;
     this.onFrame = onFrame;
+    this.lockToPosition = lockToPosition;
     this.playing = false;
     this.startedAt = 0;
     this.pauseAt = 0;
@@ -10,6 +11,12 @@ export class RoutePlayer {
     this.lastRenderedFrame = -1;
     this.lastProgress = -1;
     this.lastProgressPaintAt = -Infinity;
+  }
+
+  setLockToPosition(enabled) {
+    this.lockToPosition = !!enabled;
+    const index = Math.max(0, this.lastRenderedFrame);
+    this.renderFrame(index, true);
   }
 
   play() {
@@ -62,7 +69,8 @@ export class RoutePlayer {
     if (!frame) return;
     if (!force && clampedIndex === this.lastRenderedFrame) return;
 
-    this.map.jumpTo({ center: [frame.center.lng, frame.center.lat], zoom: frame.zoom });
+    const cameraCenter = this.lockToPosition ? frame.position : frame.center;
+    this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: frame.zoom });
     this.lastRenderedFrame = clampedIndex;
 
     if (force || now - this.lastProgressPaintAt >= 80 || frame.routeProgress >= 0.9999) {
