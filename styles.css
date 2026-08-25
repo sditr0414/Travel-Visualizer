@@ -46,32 +46,5 @@ input[type="range"]:disabled { opacity: .45; }
   .stage { min-height: 520px; }
 }
 
-.current-location-marker {
-  width: 26px;
-  height: 26px;
-  position: relative;
-  pointer-events: none;
-  transition: opacity 120ms linear;
-}
-.current-location-marker.is-hidden { opacity: 0; }
-.current-location-dot {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: #2563eb;
-  border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
-  z-index: 2;
-}
-.current-location-ring {
-  position: absolute;
-  inset: 1px;
-  border-radius: 999px;
-  border: 2px solid rgba(37, 99, 235, .48);
-  background: rgba(37, 99, 235, .12);
-  z-index: 1;
-}
+/* The live red route tail is now the position indicator. */
+.current-location-marker { display: none !important; }
