@@ -1,0 +1,15 @@
+{
+  "name": "travel-camera-visualizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Travel timeline visualizer with distance/speed-aware mobility inference and globally smoothed camera trajectories.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
