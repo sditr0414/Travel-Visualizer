@@ -1,5 +1,5 @@
 import { clamp, haversineMeters, mercatorProject, mercatorUnproject } from './geo.js';
-import { inferMobility, cameraIntentForMovement } from './mobility.js';
+import { inferMobility } from './mobility.js';
 
 const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE = 512;
@@ -7,45 +7,25 @@ const DAY_MS = 86_400_000;
 
 export function durationLimitsForMovements(movements) {
   if (!movements?.length) {
-    return { minSeconds: 60, recommendedSeconds: 120, maxSeconds: 300, days: 1, distanceKm: 0 };
+    return { minSeconds: 45, recommendedSeconds: 90, maxSeconds: 240, days: 1, distanceKm: 0 };
   }
-
-  const enriched = movements.map(movement => {
-    const path = buildPathMetrics(movement.points?.length ? movement.points : [movement.start, movement.end]);
-    const inference = inferMobility({
-      ...movement,
-      distanceMeters: Math.max(movement.distanceMeters || 0, path.totalMeters || 0)
-    });
-    return {
-      movement,
-      path,
-      inference,
-      minimumSec: minimumVideoSecFor({ ...movement, path, inference })
-    };
-  });
-
-  const startMs = Math.min(...movements.map(m => m.startMs).filter(Number.isFinite));
-  const endMs = Math.max(...movements.map(m => m.endMs).filter(Number.isFinite));
-  const days = Number.isFinite(startMs) && Number.isFinite(endMs)
-    ? Math.max(1, Math.ceil((endMs - startMs) / DAY_MS))
-    : 1;
-  const distanceKm = enriched.reduce((sum, item) => (
-    sum + Math.max(item.inference.distanceKm, item.path.totalMeters / 1000)
-  ), 0);
-  const minimumSegmentsSec = enriched.reduce((sum, item) => sum + item.minimumSec, 0);
-  const complexityFloor = 22 + days * 3.2 + Math.log2(1 + distanceKm) * 5.0;
-  const minSeconds = round5(Math.max(minimumSegmentsSec + 8, complexityFloor));
-  const recommendedSeconds = round5(Math.max(
-    minSeconds * 1.32,
-    55 + days * 8.5 + Math.log2(1 + distanceKm) * 8.5
+  const stats = movementStats(movements);
+  const minSeconds = round5(clamp(
+    35 + stats.days * 1.1 + Math.log2(1 + stats.distanceKm) * 0.5,
+    45,
+    120
+  ));
+  const recommendedSeconds = round5(clamp(
+    Math.max(minSeconds * 1.8, 70 + stats.days * 4.5 + Math.log2(1 + stats.distanceKm) * 4),
+    minSeconds + 30,
+    600
   ));
   const maxSeconds = round5(clamp(
-    Math.max(recommendedSeconds * 1.85, minSeconds + days * 18),
-    minSeconds + 60,
-    1200
+    Math.max(recommendedSeconds * 2, minSeconds + stats.days * 15),
+    recommendedSeconds + 60,
+    900
   ));
-
-  return { minSeconds, recommendedSeconds, maxSeconds, days, distanceKm };
+  return { minSeconds, recommendedSeconds, maxSeconds, ...stats };
 }
 
 export function planPlayback(movements, {
@@ -55,30 +35,17 @@ export function planPlayback(movements, {
   viewportWidth = 1100,
   viewportHeight = 700
 } = {}) {
-  if (!movements.length) {
+  const safeFps = clamp(Math.round(Number(fps) || 60), 24, 120);
+  if (!movements?.length) {
     return {
-      frames: [], segments: [], fps, durationSec: 0,
+      frames: [], segments: [], fps: safeFps, durationSec: 0,
       durationLimits: durationLimitsForMovements([]), outroStartSec: 0,
-      routeRenderPoints: []
+      outroSec: 0, routeRenderPoints: []
     };
   }
 
   const width = clamp(Number(viewportWidth) || 1100, 320, 3840);
   const height = clamp(Number(viewportHeight) || 700, 240, 2160);
-  const safeFps = clamp(Math.round(Number(fps) || 60), 24, 120);
-
-  const enriched = movements.map((movement, index) => {
-    const path = buildPathMetrics(movement.points?.length ? movement.points : [movement.start, movement.end]);
-    const inference = inferMobility({
-      ...movement,
-      distanceMeters: Math.max(movement.distanceMeters || 0, path.totalMeters || 0)
-    });
-    const intent = cameraIntentForMovement(movement, inference);
-    const naturalVideoSec = videoDurationFor(movement, inference, path.totalMeters);
-    const minimumSec = minimumVideoSecFor({ ...movement, path, inference });
-    return { ...movement, index, path, inference, intent, naturalVideoSec, minimumSec };
-  });
-
   const durationLimits = durationLimitsForMovements(movements);
   const requested = Number.isFinite(Number(targetTotalSeconds))
     ? Number(targetTotalSeconds)
@@ -86,19 +53,32 @@ export function planPlayback(movements, {
       ? Number(maxTotalSeconds)
       : durationLimits.recommendedSeconds;
   const totalTargetSec = clamp(requested, durationLimits.minSeconds, durationLimits.maxSeconds);
-  const minimumMovementSec = enriched.reduce((sum, segment) => sum + segment.minimumSec, 0);
-  const outroSec = clamp(Math.min(7, totalTargetSec - minimumMovementSec), 5, 7);
-  const movementBudgetSec = Math.max(minimumMovementSec, totalTargetSec - outroSec);
-  const extraBudgetSec = Math.max(0, movementBudgetSec - minimumMovementSec);
-  const weightTotal = Math.max(0.001, enriched.reduce((sum, s) => sum + s.naturalVideoSec, 0));
+  const outroSec = clamp(totalTargetSec * 0.085, 4.5, 7);
+  const movementBudgetSec = Math.max(1, totalTargetSec - outroSec);
+
+  const enriched = movements.map((movement, index) => {
+    const path = buildPathMetrics(movement.points?.length ? movement.points : [movement.start, movement.end]);
+    const inference = inferMobility({
+      ...movement,
+      distanceMeters: Math.max(movement.distanceMeters || 0, path.totalMeters || 0)
+    });
+    const intent = cameraIntent(inference, path.totalMeters / 1000);
+    const weight = playbackWeight(inference, path.totalMeters / 1000, movement.inferred);
+    return { ...movement, index, path, inference, intent, weight };
+  });
+
+  const floorSec = Math.max(2 / safeFps, Math.min(0.12, movementBudgetSec / (enriched.length * 3)));
+  const floorTotal = floorSec * enriched.length;
+  const distributable = Math.max(0, movementBudgetSec - floorTotal);
+  const weightTotal = Math.max(0.001, enriched.reduce((sum, s) => sum + s.weight, 0));
 
   let cursor = 0;
   let sceneId = 0;
   const segments = enriched.map((segment, index) => {
-    const videoSec = segment.minimumSec + extraBudgetSec * segment.naturalVideoSec / weightTotal;
+    const videoSec = floorSec + distributable * segment.weight / weightTotal;
     const previous = index > 0 ? enriched[index - 1] : null;
     const gapKm = previous ? haversineMeters(previous.end, segment.start) / 1000 : 0;
-    const sceneBreakBefore = !!previous && isSceneBreak(previous, segment, gapKm);
+    const sceneBreakBefore = !!previous && gapKm > 10;
     if (sceneBreakBefore) sceneId += 1;
     const result = {
       ...segment,
@@ -113,21 +93,28 @@ export function planPlayback(movements, {
     return result;
   });
 
+  if (segments.length) {
+    const delta = movementBudgetSec - cursor;
+    segments.at(-1).videoSec += delta;
+    segments.at(-1).videoEndSec += delta;
+    cursor = movementBudgetSec;
+  }
+
   const movementFrameCount = Math.max(2, Math.ceil(cursor * safeFps));
   const raw = new Array(movementFrameCount);
   let segmentIndex = 0;
 
   for (let i = 0; i < movementFrameCount; i += 1) {
     const timeSec = Math.min(cursor, i / safeFps);
-    while (segmentIndex < segments.length - 1 && timeSec > segments[segmentIndex].videoEndSec) segmentIndex += 1;
+    while (segmentIndex < segments.length - 1 && timeSec >= segments[segmentIndex].videoEndSec) segmentIndex += 1;
     const segment = segments[segmentIndex];
-    const local = clamp((timeSec - segment.videoStartSec) / Math.max(segment.videoSec, 0.001), 0, 1);
+    const local = clamp((timeSec - segment.videoStartSec) / Math.max(segment.videoSec, 1 / safeFps), 0, 1);
     const distanceAlongM = segment.path.totalMeters * local;
     const position = pointAtPathDistance(segment.path, distanceAlongM) || segment.end;
 
-    const videoGroundSpeedKmSec = (segment.path.totalMeters / 1000) / Math.max(segment.videoSec, 0.001);
+    const videoGroundSpeedKmSec = (segment.path.totalMeters / 1000) / Math.max(segment.videoSec, 1 / safeFps);
     const compressionSpanKm = videoGroundSpeedKmSec * width / Math.max(segment.intent.targetTraversalPxPerSec, 80);
-    const viewSpanKm = Math.max(segment.intent.viewSpanKm, compressionSpanKm * 1.08);
+    const viewSpanKm = Math.max(segment.intent.viewSpanKm, compressionSpanKm * 1.06);
     const targetZoom = zoomForViewSpan(viewSpanKm, position.lat, width);
 
     const lookAheadM = Math.min(
@@ -142,7 +129,7 @@ export function planPlayback(movements, {
       timeSec,
       segmentIndex,
       sceneId: segment.sceneId,
-      sceneBreak: i === 0 || (i > 0 && raw[i - 1]?.sceneId !== segment.sceneId),
+      sceneBreak: i === 0 || raw[i - 1]?.sceneId !== segment.sceneId,
       progress: local,
       position,
       targetCenterX: projected.x,
@@ -161,12 +148,11 @@ export function planPlayback(movements, {
 
   for (const [start, end] of sceneRanges(raw)) {
     const sceneRawZoom = raw.slice(start, end).map(f => f.targetZoom);
-    let sceneZoom = anticipateZoomOut(sceneRawZoom, safeFps, 1.8, 0.28);
-    sceneZoom = asymmetricSmooth(sceneZoom, safeFps, { zoomOutTau: 0.78, zoomInTau: 1.85 });
-    sceneZoom = limitKinematics(sceneZoom, safeFps, { maxVelocity: 1.12, maxAcceleration: 1.18 });
-    sceneZoom = smoothEma(sceneZoom, 0.16, safeFps);
-
-    for (let i = start; i < end; i += 1) zoom[i] = clamp(sceneZoom[i - start], 4.0, 17.3);
+    let sceneZoom = anticipateZoomOut(sceneRawZoom, safeFps, 1.15, 0.22);
+    sceneZoom = asymmetricSmooth(sceneZoom, safeFps, { zoomOutTau: 0.55, zoomInTau: 1.15 });
+    sceneZoom = limitKinematics(sceneZoom, safeFps, { maxVelocity: 1.7, maxAcceleration: 2.4 });
+    sceneZoom = smoothEma(sceneZoom, 0.09, safeFps);
+    for (let i = start; i < end; i += 1) zoom[i] = clamp(sceneZoom[i - start], 4, 17.3);
     solveCenterScene(raw, zoom, centerX, centerY, start, end, width, height, safeFps);
   }
 
@@ -175,30 +161,28 @@ export function planPlayback(movements, {
     zoom: zoom[i],
     center: mercatorUnproject({ x: centerX[i], y: centerY[i] })
   }));
-  addRouteProgress(travelFrames);
 
   const routePoints = segments.flatMap(segment => segment.path.points);
   const overview = overviewCameraForPoints(routePoints, width, height, 90);
   const outroFrames = buildOutroFrames(travelFrames, overview, outroSec, safeFps, cursor);
   const frames = [...travelFrames, ...outroFrames];
-  const durationSec = cursor + outroSec;
 
   return {
     frames,
     segments,
     fps: safeFps,
-    durationSec,
+    durationSec: cursor + outroSec,
     travelDurationSec: cursor,
     outroStartSec: cursor,
     outroSec,
     durationLimits,
     targetTotalSeconds: totalTargetSec,
-    routeRenderPoints: sampleRoutePositions(travelFrames, 16000)
+    routeRenderPoints: samplePoints(routePoints, 16000)
   };
 }
 
 export function zoomForViewSpan(viewSpanKm, latitude, viewportWidth = 1100) {
-  const spanMeters = Math.max(250, viewSpanKm * 1000);
+  const spanMeters = Math.max(250, Number(viewSpanKm || 0) * 1000);
   const widthPx = clamp(Number(viewportWidth) || 1100, 320, 3840);
   const lat = clamp(Number(latitude) || 0, -80, 80) * Math.PI / 180;
   const groundCircumference = EARTH_CIRCUMFERENCE_M * Math.max(0.15, Math.cos(lat));
@@ -212,7 +196,7 @@ export function screenDistancePx(a, b, zoom) {
   return Math.hypot((pb.x - pa.x) * scale, (pb.y - pa.y) * scale);
 }
 
-export function anticipateZoomOut(values, fps, seconds = 1.8, allowance = 0.28) {
+export function anticipateZoomOut(values, fps, seconds = 1.15, allowance = 0.22) {
   if (values.length < 2) return [...values];
   const radius = Math.max(1, Math.round(seconds * fps));
   const out = [...values];
@@ -221,13 +205,12 @@ export function anticipateZoomOut(values, fps, seconds = 1.8, allowance = 0.28) 
     while (deque.length && deque[0] > i + radius) deque.shift();
     while (deque.length && values[deque[deque.length - 1]] >= values[i]) deque.pop();
     deque.push(i);
-    const futureMin = values[deque[0]];
-    out[i] = Math.min(values[i], futureMin + allowance);
+    out[i] = Math.min(values[i], values[deque[0]] + allowance);
   }
   return out;
 }
 
-export function asymmetricSmooth(values, fps, { zoomOutTau = 0.78, zoomInTau = 1.85 } = {}) {
+export function asymmetricSmooth(values, fps, { zoomOutTau = 0.55, zoomInTau = 1.15 } = {}) {
   if (values.length < 2) return [...values];
   const dt = 1 / fps;
   const out = new Array(values.length);
@@ -236,27 +219,85 @@ export function asymmetricSmooth(values, fps, { zoomOutTau = 0.78, zoomInTau = 1
   for (let i = 1; i < values.length; i += 1) {
     const target = values[i];
     const tau = target < state ? zoomOutTau : zoomInTau;
-    const alpha = 1 - Math.exp(-dt / Math.max(0.05, tau));
+    const alpha = 1 - Math.exp(-dt / Math.max(0.04, tau));
     state += alpha * (target - state);
     out[i] = state;
   }
   return out;
 }
 
+function movementStats(movements) {
+  const starts = movements.map(m => m.startMs).filter(Number.isFinite);
+  const ends = movements.map(m => m.endMs).filter(Number.isFinite);
+  const startMs = starts.length ? Math.min(...starts) : NaN;
+  const endMs = ends.length ? Math.max(...ends) : NaN;
+  const days = Number.isFinite(startMs) && Number.isFinite(endMs)
+    ? Math.max(1, Math.floor((endMs - startMs) / DAY_MS) + 1)
+    : 1;
+  let distanceKm = 0;
+  for (const movement of movements) {
+    const path = buildPathMetrics(movement.points?.length ? movement.points : [movement.start, movement.end]);
+    distanceKm += Math.max(Number(movement.distanceMeters) || 0, path.totalMeters) / 1000;
+  }
+  return { days, distanceKm };
+}
+
+function playbackWeight(inference, distanceKm, inferred) {
+  const base = 0.55 + Math.log2(1 + Math.max(0.03, distanceKm));
+  const mode = {
+    FLIGHT: 2.4,
+    FAST_GROUND: 1.6,
+    FERRY: 1.4,
+    ROAD: 1.15,
+    URBAN_TRANSIT: 1.05,
+    BIKE: 0.9,
+    WALK: 0.78,
+    UNKNOWN: 0.9
+  }[inference.mobilityClass] ?? 0.9;
+  return base * mode * (inferred ? 0.8 : 1);
+}
+
+function cameraIntent(inference, distanceKm) {
+  const speed = Math.max(0, inference.speedKmh || 0);
+  const sqrtDistance = Math.sqrt(Math.max(0.03, distanceKm));
+  let viewSpanKm;
+  switch (inference.mobilityClass) {
+    case 'WALK': viewSpanKm = clamp(1.0 + speed * 0.1 + sqrtDistance * 0.28, 1.0, 3.0); break;
+    case 'BIKE': viewSpanKm = clamp(2.6 + speed * 0.1 + sqrtDistance * 0.42, 2.8, 8); break;
+    case 'URBAN_TRANSIT': viewSpanKm = clamp(6 + speed * 0.13 + sqrtDistance * 0.8, 6.5, 24); break;
+    case 'ROAD': viewSpanKm = clamp(8 + speed * 0.14 + sqrtDistance, 9, 44); break;
+    case 'FAST_GROUND': viewSpanKm = clamp(15 + speed * 0.15 + sqrtDistance * 1.35, 18, 105); break;
+    case 'FERRY': viewSpanKm = clamp(20 + speed * 0.16 + sqrtDistance * 1.5, 24, 140); break;
+    case 'FLIGHT': viewSpanKm = clamp(Math.max(240, distanceKm * 1.1), 240, 1800); break;
+    default: viewSpanKm = clamp(4 + speed * 0.12 + sqrtDistance * 0.7, 3, 48); break;
+  }
+  const lookAheadViewRatio = {
+    WALK: 0.04, BIKE: 0.06, URBAN_TRANSIT: 0.08, ROAD: 0.09,
+    FAST_GROUND: 0.10, FERRY: 0.08, FLIGHT: 0.04, UNKNOWN: 0.06
+  }[inference.mobilityClass] ?? 0.06;
+  const targetTraversalPxPerSec = {
+    WALK: 185, BIKE: 210, URBAN_TRANSIT: 235, ROAD: 250,
+    FAST_GROUND: 270, FERRY: 230, FLIGHT: 190, UNKNOWN: 225
+  }[inference.mobilityClass] ?? 225;
+  const maxPanPxPerSec = {
+    WALK: 175, BIKE: 205, URBAN_TRANSIT: 230, ROAD: 245,
+    FAST_GROUND: 265, FERRY: 220, FLIGHT: 180, UNKNOWN: 220
+  }[inference.mobilityClass] ?? 220;
+  return { viewSpanKm, lookAheadViewRatio, targetTraversalPxPerSec, maxPanPxPerSec };
+}
+
 function overviewCameraForPoints(points, width, height, paddingPx) {
-  const projected = (points || []).map(mercatorProject);
+  const projected = (points || []).filter(Boolean).map(mercatorProject);
   if (!projected.length) return { center: { lat: 35, lng: 135 }, zoom: 5 };
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const p of projected) {
     minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
     minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
   }
-  const spanX = Math.max(1e-8, maxX - minX);
-  const spanY = Math.max(1e-8, maxY - minY);
   const usableW = Math.max(180, width - paddingPx * 2);
   const usableH = Math.max(160, height - paddingPx * 2);
-  const zoomX = Math.log2(usableW / (TILE_SIZE * spanX));
-  const zoomY = Math.log2(usableH / (TILE_SIZE * spanY));
+  const zoomX = Math.log2(usableW / (TILE_SIZE * Math.max(1e-8, maxX - minX)));
+  const zoomY = Math.log2(usableH / (TILE_SIZE * Math.max(1e-8, maxY - minY)));
   return {
     center: mercatorUnproject({ x: (minX + maxX) / 2, y: (minY + maxY) / 2 }),
     zoom: clamp(Math.min(zoomX, zoomY), 3.5, 11.5)
@@ -269,31 +310,28 @@ function buildOutroFrames(travelFrames, overview, outroSec, fps, startTimeSec) {
   const last = travelFrames.at(-1);
   const startCenter = mercatorProject(last.center);
   const endCenter = mercatorProject(overview.center);
-  const transitionSec = Math.min(4.2, outroSec * 0.68);
+  const transitionSec = Math.min(3.2, outroSec * 0.68);
   const out = [];
-
   for (let i = 1; i <= count; i += 1) {
     const localSec = i / fps;
     const t = smootherstep(clamp(localSec / Math.max(0.01, transitionSec), 0, 1));
-    const center = mercatorUnproject({
-      x: startCenter.x + (endCenter.x - startCenter.x) * t,
-      y: startCenter.y + (endCenter.y - startCenter.y) * t
-    });
     out.push({
       kind: 'OUTRO',
       timeSec: startTimeSec + localSec,
-      segmentIndex: Math.max(0, last.segmentIndex),
+      segmentIndex: last.segmentIndex,
       sceneId: last.sceneId + 1,
       sceneBreak: i === 1,
       progress: 1,
       position: last.position,
-      center,
+      center: mercatorUnproject({
+        x: startCenter.x + (endCenter.x - startCenter.x) * t,
+        y: startCenter.y + (endCenter.y - startCenter.y) * t
+      }),
       zoom: last.zoom + (overview.zoom - last.zoom) * t,
       targetZoom: overview.zoom,
       viewSpanKm: null,
       mobilityClass: 'OVERVIEW',
-      speedKmh: 0,
-      routeProgress: 1
+      speedKmh: 0
     });
   }
   return out;
@@ -303,7 +341,6 @@ function solveCenterScene(raw, zoom, outX, outY, start, end, width, height, fps)
   if (start >= end) return;
   outX[start] = raw[start].targetCenterX;
   outY[start] = raw[start].targetCenterY;
-
   for (let i = start + 1; i < end; i += 1) {
     const scale = TILE_SIZE * 2 ** zoom[i];
     const previousX = outX[i - 1];
@@ -312,35 +349,18 @@ function solveCenterScene(raw, zoom, outX, outY, start, end, width, height, fps)
     const errorPxY = (raw[i].targetCenterY - previousY) * scale;
     const errorPx = Math.hypot(errorPxX, errorPxY);
     const maxStepPx = raw[i].maxPanPxPerSec / fps;
-    const deadZonePx = 8;
-
-    let nextX = previousX;
-    let nextY = previousY;
-    if (errorPx > deadZonePx) {
-      const movePx = Math.min(Math.max(0, errorPx - deadZonePx), maxStepPx);
-      const ratio = movePx / Math.max(errorPx, 1e-9);
-      nextX += errorPxX * ratio / scale;
-      nextY += errorPxY * ratio / scale;
-    }
+    const movePx = Math.min(Math.max(0, errorPx - 5), maxStepPx);
+    const ratio = movePx / Math.max(errorPx, 1e-9);
+    let nextX = previousX + errorPxX * ratio / scale;
+    let nextY = previousY + errorPxY * ratio / scale;
 
     const marker = mercatorProject(raw[i].position);
-    const safeX = width * 0.36;
-    const safeY = height * 0.34;
+    const safeX = width * 0.40;
+    const safeY = height * 0.38;
     const markerPxX = (marker.x - nextX) * scale;
     const markerPxY = (marker.y - nextY) * scale;
-    const correctionLimitPx = maxStepPx * 1.65;
-
-    let correctionX = 0;
-    let correctionY = 0;
-    if (Math.abs(markerPxX) > safeX) correctionX = markerPxX - Math.sign(markerPxX) * safeX;
-    if (Math.abs(markerPxY) > safeY) correctionY = markerPxY - Math.sign(markerPxY) * safeY;
-    const correctionLength = Math.hypot(correctionX, correctionY);
-    if (correctionLength > 0) {
-      const ratio = Math.min(1, correctionLimitPx / correctionLength);
-      nextX += correctionX * ratio / scale;
-      nextY += correctionY * ratio / scale;
-    }
-
+    if (Math.abs(markerPxX) > safeX) nextX += (markerPxX - Math.sign(markerPxX) * safeX) / scale;
+    if (Math.abs(markerPxY) > safeY) nextY += (markerPxY - Math.sign(markerPxY) * safeY) / scale;
     outX[i] = nextX;
     outY[i] = nextY;
   }
@@ -358,10 +378,6 @@ function sceneRanges(raw) {
   return ranges;
 }
 
-function isSceneBreak(previous, current, gapKm) {
-  return gapKm > 10;
-}
-
 function buildPathMetrics(points) {
   const clean = (points || []).filter(p => Number.isFinite(p?.lat) && Number.isFinite(p?.lng));
   if (!clean.length) return { points: [], cumulative: [], totalMeters: 0 };
@@ -376,7 +392,7 @@ function buildPathMetrics(points) {
 
 function pointAtPathDistance(path, distanceMeters) {
   if (!path.points.length) return null;
-  if (path.points.length === 1 || path.totalMeters <= 0) return { ...path.points[path.points.length - 1] };
+  if (path.points.length === 1 || path.totalMeters <= 0) return { ...path.points.at(-1) };
   const target = clamp(distanceMeters, 0, path.totalMeters);
   let lo = 1;
   let hi = path.cumulative.length - 1;
@@ -426,64 +442,14 @@ function smoothEma(values, tauSec, fps) {
   return out;
 }
 
-function addRouteProgress(frames) {
-  if (!frames.length) return;
-  const cumulative = new Array(frames.length).fill(0);
-  let total = 0;
-  for (let i = 1; i < frames.length; i += 1) {
-    if (frames[i].sceneId !== frames[i - 1].sceneId) {
-      cumulative[i] = total;
-      continue;
-    }
-    total += haversineMeters(frames[i - 1].position, frames[i].position);
-    cumulative[i] = total;
-  }
-  const denominator = Math.max(total, 1);
-  for (let i = 0; i < frames.length; i += 1) frames[i].routeProgress = cumulative[i] / denominator;
-}
-
-function minimumVideoSecFor(segment) {
-  const distanceKm = Math.max(segment.inference.distanceKm, segment.path.totalMeters / 1000);
-  switch (segment.inference.mobilityClass) {
-    case 'FLIGHT':
-      return clamp(7.2 + Math.log2(1 + distanceKm / 300) * 0.9, 7.5, 10.5);
-    case 'FAST_GROUND':
-      return clamp(1.10 + Math.log2(1 + distanceKm / 20) * 1.15, 1.25, 7.0);
-    case 'FERRY':
-      return clamp(1.35 + Math.log2(1 + distanceKm / 15) * 0.9, 1.5, 5.5);
-    case 'ROAD':
-      return clamp(0.82 + Math.log2(1 + distanceKm / 10) * 0.62, 0.9, 3.2);
-    case 'URBAN_TRANSIT':
-      return clamp(0.72 + Math.log2(1 + distanceKm / 7) * 0.50, 0.78, 2.6);
-    case 'BIKE':
-      return clamp(0.68 + Math.log2(1 + distanceKm / 4) * 0.40, 0.72, 2.2);
-    case 'WALK':
-      return clamp(0.52 + Math.log2(1 + distanceKm / 1.0) * 0.30, 0.55, 1.75);
-    default:
-      return 0.82;
-  }
-}
-
-function videoDurationFor(segment, inference, pathDistanceMeters) {
-  const distance = Math.max(0.05, Math.max(inference.distanceKm, pathDistanceMeters / 1000));
-  const speed = Math.max(1, inference.speedKmh);
-  const complexity = Math.log2(1 + distance) * 1.25;
-  const speedCompression = clamp(Math.log2(1 + speed / 18) * 0.18, 0, 0.9);
-  return clamp(2.1 + complexity - speedCompression, 1.6, 8.5);
-}
-
-function sampleRoutePositions(frames, maxPoints) {
-  if (frames.length <= maxPoints) return frames.map(f => f.position);
-  const step = (frames.length - 1) / (maxPoints - 1);
+function samplePoints(points, maxPoints) {
+  const clean = (points || []).filter(Boolean);
+  if (clean.length <= maxPoints) return clean;
+  const step = (clean.length - 1) / (maxPoints - 1);
   const out = [];
-  for (let i = 0; i < maxPoints; i += 1) out.push(frames[Math.round(i * step)].position);
+  for (let i = 0; i < maxPoints; i += 1) out.push(clean[Math.round(i * step)]);
   return out;
 }
 
-function smootherstep(t) {
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-function round5(value) {
-  return Math.ceil(value / 5) * 5;
-}
+function smootherstep(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+function round5(value) { return Math.round(value / 5) * 5; }
