@@ -14,7 +14,7 @@ const force = process.argv.includes('--force');
 const WORLD_FILE = join(mapDir, 'world-z5.pmtiles');
 const REGION_FILE = join(mapDir, 'korea-japan-z14.pmtiles');
 const REGION_BBOX = process.env.TRAVEL_MAP_BBOX || '125.3,32.3,137.5,38.3';
-const FALLBACK_BUILD_URL = 'https://build.protomaps.com/20260730.pmtiles';
+const SOURCE_COOP_V4_URL = 'https://data.source.coop/protomaps/openstreetmap/v4.pmtiles';
 
 await mkdir(mapDir, { recursive: true });
 await mkdir(cacheDir, { recursive: true });
@@ -22,11 +22,11 @@ await mkdir(cacheDir, { recursive: true });
 console.log('Travel Camera Visualizer · 로컬 지도 준비');
 console.log(`상세 영역 bbox: ${REGION_BBOX}`);
 
-const planetUrl = process.env.PROTOMAPS_BUILD_URL || await resolveLatestPlanetUrl();
-console.log(`Protomaps build: ${planetUrl}`);
-
 const pmtilesBin = await ensurePmtilesCli();
 console.log(`pmtiles CLI: ${pmtilesBin}`);
+
+const planetUrl = await resolvePlanetUrl(pmtilesBin);
+console.log(`Protomaps source: ${planetUrl}`);
 
 if (force) {
   await rm(WORLD_FILE, { force: true });
@@ -62,21 +62,61 @@ console.log(`  세계 개요: ${formatBytes(worldStat.size)}`);
 console.log(`  한국·일본 상세: ${formatBytes(regionStat.size)}`);
 console.log('  npm start 후 브라우저를 새로고침하면 로컬 지도를 자동 사용합니다.');
 
-async function resolveLatestPlanetUrl() {
+async function resolvePlanetUrl(pmtilesBin) {
+  const explicit = process.env.PROTOMAPS_BUILD_URL;
+  if (explicit) {
+    console.log(`지정된 PROTOMAPS_BUILD_URL 확인 중: ${explicit}`);
+    if (archiveIsReadable(pmtilesBin, explicit)) return explicit;
+    throw new Error(`PROTOMAPS_BUILD_URL에 접근할 수 없습니다: ${explicit}`);
+  }
+
+  const candidates = [];
+  const daily = await discoverLatestDailyBuildUrl();
+  if (daily) candidates.push({ label: '최신 daily build', url: daily });
+  candidates.push({ label: 'Source Cooperative v4 미러', url: SOURCE_COOP_V4_URL });
+
+  for (const candidate of candidates) {
+    process.stdout.write(`${candidate.label} 확인 중: ${candidate.url} ... `);
+    if (archiveIsReadable(pmtilesBin, candidate.url)) {
+      console.log('사용 가능');
+      return candidate.url;
+    }
+    console.log('사용 불가 · 다음 후보 사용');
+  }
+
+  throw new Error(
+    '사용 가능한 Protomaps archive를 찾지 못했습니다. 네트워크 연결을 확인하거나 PROTOMAPS_BUILD_URL을 지정하세요.'
+  );
+}
+
+async function discoverLatestDailyBuildUrl() {
   try {
     const response = await fetch('https://maps.protomaps.com/builds/', {
-      headers: { 'user-agent': 'travel-camera-visualizer/0.1' }
+      headers: { 'user-agent': 'travel-camera-visualizer/0.1' },
+      redirect: 'follow'
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
     const dates = [...html.matchAll(/build\.protomaps\.com\/(\d{8})\.pmtiles/g)]
       .map(match => match[1])
       .sort();
-    if (dates.length) return `https://build.protomaps.com/${dates.at(-1)}.pmtiles`;
+    if (!dates.length) return null;
+    return `https://build.protomaps.com/${dates.at(-1)}.pmtiles`;
   } catch (error) {
-    console.warn(`최신 build 확인 실패 (${error.message}) · 고정 build 사용`);
+    console.warn(`최신 daily build 목록 확인 실패 (${error.message}) · 고정 미러를 확인합니다.`);
+    return null;
   }
-  return FALLBACK_BUILD_URL;
+}
+
+function archiveIsReadable(pmtilesBin, url) {
+  const result = spawnSync(pmtilesBin, ['show', url, '--header-json'], {
+    cwd: root,
+    stdio: 'ignore',
+    shell: false,
+    windowsHide: true,
+    timeout: 30_000
+  });
+  return !result.error && result.status === 0;
 }
 
 async function ensurePmtilesCli() {
