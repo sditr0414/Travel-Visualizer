@@ -33,7 +33,7 @@ let currentMarkerElement = null;
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://tiles.openfreemap.org/styles/positron',
   center: [135.5, 34.7],
   zoom: 4.8,
   attributionControl: true
@@ -41,6 +41,8 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
 map.on('load', () => {
+  simplifyAndLocalizeBaseMap(map);
+
   map.addSource('route-all', { type: 'geojson', data: emptyLine() });
   map.addSource('route-progress', { type: 'geojson', data: emptyLine(), lineMetrics: true });
   map.addLayer({
@@ -48,7 +50,7 @@ map.on('load', () => {
     type: 'line',
     source: 'route-all',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    paint: { 'line-color': '#64748b', 'line-width': 2.2, 'line-opacity': 0.20 }
+    paint: { 'line-color': '#64748b', 'line-width': 2.0, 'line-opacity': 0.17 }
   });
   map.addLayer({
     id: 'route-progress',
@@ -56,8 +58,8 @@ map.on('load', () => {
     source: 'route-progress',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
-      'line-width': 4.5,
-      'line-opacity': 0.96,
+      'line-width': 4.8,
+      'line-opacity': 0.98,
       'line-gradient': ['step', ['line-progress'], 'rgba(239, 68, 68, 0)', 1, 'rgba(239, 68, 68, 0)']
     }
   });
@@ -69,7 +71,7 @@ map.on('load', () => {
     .setLngLat([135.5, 34.7])
     .addTo(map);
 
-  status.textContent = '타임라인 JSON을 선택하세요.';
+  status.textContent = '심플 지도 · 한국어 지명 우선. 타임라인 JSON을 선택하세요.';
 });
 
 fileInput.addEventListener('change', async () => {
@@ -235,6 +237,34 @@ function updateFrameUi(frame) {
     }).format(new Date(sourceMs));
   }
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
+}
+
+function simplifyAndLocalizeBaseMap(targetMap) {
+  const style = targetMap.getStyle();
+  const labelExpression = [
+    'case',
+    ['has', 'name:ko'], ['to-string', ['get', 'name:ko']],
+    ['has', 'name_ko'], ['to-string', ['get', 'name_ko']],
+    ['has', 'name'], ['to-string', ['get', 'name']],
+    ['has', 'name_en'], ['to-string', ['get', 'name_en']],
+    ''
+  ];
+
+  for (const layer of style.layers || []) {
+    if (layer.type !== 'symbol') continue;
+    const id = String(layer.id || '').toLowerCase();
+    const field = layer.layout?.['text-field'];
+    const fieldText = JSON.stringify(field || '').toLowerCase();
+
+    if (/poi|housenumber|house_number|shop|amenity|airport_gate|aeroway_gate/.test(id)) {
+      try { targetMap.setLayoutProperty(layer.id, 'visibility', 'none'); } catch {}
+      continue;
+    }
+
+    if (field && fieldText.includes('name')) {
+      try { targetMap.setLayoutProperty(layer.id, 'text-field', labelExpression); } catch {}
+    }
+  }
 }
 
 function updateDurationLabel(seconds) {
