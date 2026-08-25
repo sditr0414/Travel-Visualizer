@@ -101,8 +101,9 @@ loadButton.addEventListener('click', () => {
       if (!data.movements.length) throw new Error('선택 기간에 이동 구간이 없습니다.');
       plan = planPlayback(data.movements, {
         fps: 30,
-        maxTotalSeconds: 210,
-        viewportWidth: map.getCanvas().clientWidth || 1100
+        maxTotalSeconds: 300,
+        viewportWidth: map.getCanvas().clientWidth || 1100,
+        viewportHeight: map.getCanvas().clientHeight || 700
       });
       const fullRoute = data.routePoints.length ? data.routePoints : data.movements.flatMap(s => s.points);
       map.getSource('route-all').setData(toGeoJSONLine(fullRoute));
