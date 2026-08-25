@@ -38,11 +38,13 @@ function createHybridStyle() {
   const flavor = globalThis.basemaps.namedFlavor('grayscale');
   const worldLayers = prepareLayers(
     globalThis.basemaps.layers('world', flavor, { lang: 'ko' }),
+    'world',
     'world-',
     { maxzoom: 6, includeBackground: true }
   );
   const regionLayers = prepareLayers(
     globalThis.basemaps.layers('region', flavor, { lang: 'ko' }),
+    'region',
     'region-',
     { minzoom: 6, includeBackground: false }
   );
@@ -67,23 +69,29 @@ function createHybridStyle() {
   };
 }
 
-function prepareLayers(layers, prefix, { minzoom = null, maxzoom = null, includeBackground }) {
-  return (layers || [])
-    .filter(layer => {
-      if (!includeBackground && layer.type === 'background') return false;
-      if (layer.type === 'symbol' && layer.layout?.['icon-image']) return false;
-      const id = String(layer.id || '').toLowerCase();
-      if (/poi|housenumber|house_number|address|airport_gate|aeroway_gate/.test(id)) return false;
-      return true;
-    })
-    .map(layer => {
-      const copy = clone(layer);
-      copy.id = `${prefix}${copy.id}`;
-      if (copy.source) copy.source = prefix.startsWith('world-') ? 'world' : 'region';
-      if (minzoom !== null) copy.minzoom = Math.max(Number(copy.minzoom ?? 0), minzoom);
-      if (maxzoom !== null) copy.maxzoom = Math.min(Number(copy.maxzoom ?? 24), maxzoom);
-      return copy;
-    });
+function prepareLayers(layers, sourceName, prefix, { minzoom = null, maxzoom = null, includeBackground }) {
+  return (layers || []).flatMap(layer => {
+    if (!includeBackground && layer.type === 'background') return [];
+    if (layer.type === 'symbol' && layer.layout?.['icon-image']) return [];
+    const id = String(layer.id || '').toLowerCase();
+    if (/poi|housenumber|house_number|address|airport_gate|aeroway_gate/.test(id)) return [];
+
+    const copy = clone(layer);
+    const nextMin = minzoom === null
+      ? Number(copy.minzoom ?? 0)
+      : Math.max(Number(copy.minzoom ?? 0), minzoom);
+    const nextMax = maxzoom === null
+      ? Number(copy.maxzoom ?? 24)
+      : Math.min(Number(copy.maxzoom ?? 24), maxzoom);
+
+    if (nextMin >= nextMax) return [];
+
+    copy.id = `${prefix}${copy.id}`;
+    if (copy.source) copy.source = sourceName;
+    if (nextMin > 0) copy.minzoom = nextMin;
+    if (nextMax < 24) copy.maxzoom = nextMax;
+    return [copy];
+  });
 }
 
 async function fetchMapStatus() {
