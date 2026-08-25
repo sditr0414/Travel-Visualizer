@@ -1,4 +1,4 @@
-import { haversineMeters, pathDistanceMeters } from './geo.js';
+import { haversineMeters, inferredBridgePath, pathDistanceMeters, smoothPath } from './geo.js';
 
 const LATLNG_RE = /(-?\d+(?:\.\d+)?)°?\s*,\s*(-?\d+(?:\.\d+)?)°?/;
 
@@ -60,7 +60,8 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
         avgSpeedKmh: distanceMeters / durationSec * 3.6,
         googleType,
         googleProbability: Number(activity.topCandidate?.probability ?? 0),
-        activityProbability: Number(activity.probability ?? 0)
+        activityProbability: Number(activity.probability ?? 0),
+        inferred: false
       });
     }
 
@@ -79,15 +80,16 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
   activities.sort((a, b) => a.startMs - b.startMs);
   timelinePaths.sort((a, b) => a.startMs - b.startMs);
 
-  const movements = activities.map(activity => enrichActivityWithPath(activity, timelinePaths));
-  const routePoints = dedupeChronological(timelinePaths.flatMap(p => p.points));
+  const enriched = activities.map(activity => enrichActivityWithPath(activity, timelinePaths));
+  const movements = bridgeMovementGaps(enriched, timelinePaths, includeFlights);
+  const routePoints = dedupeChronological(movements.flatMap(m => m.points));
   return { movements, routePoints, visits, timelinePaths };
 }
 
 function enrichActivityWithPath(activity, paths) {
-  const points = pathForActivity(activity, paths);
-  const pathDistance = pathDistanceMeters(points);
-  const directDistance = haversineMeters(points[0] || activity.start, points[points.length - 1] || activity.end);
+  const rawPoints = pathForActivity(activity, paths);
+  const pathDistance = pathDistanceMeters(rawPoints);
+  const directDistance = haversineMeters(rawPoints[0] || activity.start, rawPoints[rawPoints.length - 1] || activity.end);
   const stated = Number(activity.statedDistanceMeters);
 
   const statedMissingOrTiny = !Number.isFinite(stated) || stated < 100;
@@ -101,6 +103,8 @@ function enrichActivityWithPath(activity, paths) {
     distanceMeters = Math.max(pathDistance, directDistance);
   }
 
+  const spacing = smoothingSpacingMeters(activity.googleType);
+  const points = smoothPath(rawPoints, { maxSegmentMeters: spacing });
   const start = points[0] ? stripTime(points[0]) : activity.start;
   const end = points.length ? stripTime(points[points.length - 1]) : activity.end;
   return {
@@ -112,6 +116,72 @@ function enrichActivityWithPath(activity, paths) {
     pathDistanceMeters: pathDistance,
     avgSpeedKmh: distanceMeters / Math.max(activity.durationSec, 1) * 3.6
   };
+}
+
+function bridgeMovementGaps(movements, timelinePaths, includeFlights) {
+  if (movements.length < 2) return movements;
+  const out = [];
+  const allTimelinePoints = timelinePaths.flatMap(p => p.points).sort((a, b) => a.timeMs - b.timeMs);
+
+  for (let i = 0; i < movements.length; i += 1) {
+    const current = movements[i];
+    out.push(current);
+    const next = movements[i + 1];
+    if (!next) continue;
+
+    const gapSec = (next.startMs - current.endMs) / 1000;
+    const gapMeters = haversineMeters(current.end, next.start);
+    if (gapSec < 0 || gapMeters < 140) continue;
+
+    const between = allTimelinePoints.filter(p => p.timeMs > current.endMs && p.timeMs < next.startMs);
+    const candidate = dedupeChronological([
+      { ...current.end, timeMs: current.endMs },
+      ...between,
+      { ...next.start, timeMs: next.startMs }
+    ]);
+    const candidateDistance = pathDistanceMeters(candidate);
+    const durationSec = Math.max(1, gapSec);
+    const evidenceDistance = Math.max(gapMeters, candidateDistance);
+    const speedKmh = evidenceDistance / durationSec * 3.6;
+    const googleType = inferGapType(evidenceDistance / 1000, speedKmh);
+
+    if (!includeFlights && googleType === 'FLYING') continue;
+    if (speedKmh > 1400) continue;
+
+    const hasTimelineEvidence = between.length > 0;
+    const rawBridge = hasTimelineEvidence
+      ? candidate
+      : inferredBridgePath(current.end, next.start, {
+          startMs: current.endMs,
+          endMs: next.startMs,
+          distanceMeters: gapMeters,
+          mode: googleType
+        });
+    const points = hasTimelineEvidence
+      ? smoothPath(rawBridge, { maxSegmentMeters: smoothingSpacingMeters(googleType) })
+      : rawBridge;
+    const distanceMeters = Math.max(gapMeters, pathDistanceMeters(points));
+
+    out.push({
+      startMs: current.endMs,
+      endMs: next.startMs,
+      start: stripTime(points[0]),
+      end: stripTime(points[points.length - 1]),
+      points,
+      statedDistanceMeters: null,
+      distanceMeters,
+      pathDistanceMeters: distanceMeters,
+      durationSec,
+      avgSpeedKmh: distanceMeters / durationSec * 3.6,
+      googleType,
+      googleProbability: 0,
+      activityProbability: 0,
+      inferred: true,
+      inferenceSource: hasTimelineEvidence ? 'timeline-gap' : 'synthetic-gap'
+    });
+  }
+
+  return out.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
 }
 
 function pathForActivity(activity, paths) {
@@ -145,6 +215,25 @@ function pathForActivity(activity, paths) {
     ...timelinePoints,
     ...(useActivityEnd ? [{ ...activity.end, timeMs: activity.endMs }] : [])
   ]);
+}
+
+function inferGapType(distanceKm, speedKmh) {
+  if (speedKmh > 330 || distanceKm > 300 && speedKmh > 150) return 'FLYING';
+  if (speedKmh > 65 || distanceKm > 35 && speedKmh > 35) return 'IN_TRAIN';
+  if (speedKmh > 18) return 'IN_BUS';
+  if (speedKmh > 8) return 'CYCLING';
+  return 'WALKING';
+}
+
+function smoothingSpacingMeters(type) {
+  if (type === 'FLYING') return 12000;
+  if (type === 'IN_TRAIN') return 850;
+  if (type === 'IN_SUBWAY' || type === 'IN_TRAM') return 350;
+  if (type === 'IN_BUS' || type === 'IN_PASSENGER_VEHICLE') return 280;
+  if (type === 'IN_FERRY') return 1500;
+  if (type === 'CYCLING') return 140;
+  if (type === 'WALKING') return 90;
+  return 300;
 }
 
 function plausibleEndpointSpeed(type) {
