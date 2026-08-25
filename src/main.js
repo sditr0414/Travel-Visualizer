@@ -4,6 +4,7 @@ import { applyCameraMode, CameraMode } from './camera-modes.js';
 import { RoutePlayer } from './route-player.js';
 import { toGeoJSONLine } from './geo.js';
 import { loadBundledTimeline } from './bundled-timeline.js';
+import { resolveBasemap } from './local-map.js';
 
 const $ = sel => document.querySelector(sel);
 const fileInput = $('#timelineFile');
@@ -47,17 +48,22 @@ const CAMERA_MODE_HINTS = {
   [CameraMode.SEGMENT]: '도보·지하철·기차 등 각 이동 구간의 거리와 속도에 따라 줌을 적극적으로 바꿉니다.'
 };
 
+status.textContent = '지도 소스 확인 중…';
+const basemap = await resolveBasemap();
+status.textContent = `${basemap.label} 불러오는 중…`;
+
 const map = new maplibregl.Map({
   container: 'map',
-  style: 'https://tiles.openfreemap.org/styles/positron',
+  style: basemap.style,
   center: [135.5, 34.7],
   zoom: 4.8,
-  attributionControl: true
+  attributionControl: true,
+  localIdeographFontFamily: 'Noto Sans CJK KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif'
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
 map.on('load', async () => {
-  simplifyAndLocalizeBaseMap(map);
+  if (!basemap.local) simplifyAndLocalizeBaseMap(map);
 
   map.addSource('route-all', { type: 'geojson', data: emptyLine() });
   map.addSource('route-progress', { type: 'geojson', data: emptyFeatureCollection() });
@@ -106,8 +112,15 @@ map.on('load', async () => {
   await loadDefaultTimeline();
 });
 
+map.on('error', event => {
+  const message = event?.error?.message || '';
+  if (basemap.local && /pmtiles|range|tile/i.test(message)) {
+    status.textContent = `로컬 지도 오류: ${message}`;
+  }
+});
+
 async function loadDefaultTimeline() {
-  status.textContent = '내장 테스트 Timeline(2026-03-17~31) 자동 로드 중…';
+  status.textContent = `${basemap.label} · 내장 테스트 Timeline(2026-03-17~31) 자동 로드 중…`;
   try {
     parsedJson = await loadBundledTimeline();
     loadButton.disabled = false;
@@ -222,7 +235,7 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
   playButton.textContent = '재생';
   status.textContent = `${sourceLabel} · 60fps 경로 계산 중…`;
 
-  requestAnimationFrame(() => {
+  requestAnimationFrame(async () => {
     try {
       const viewportWidth = map.getCanvas().clientWidth || 1100;
       const viewportHeight = map.getCanvas().clientHeight || 700;
@@ -265,6 +278,7 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
       const inferredCount = currentData.movements.filter(segment => segment.inferred).length;
       summary.innerHTML = [
         '<strong>60 FPS</strong>',
+        `<strong>${basemap.label}</strong>`,
         `<strong>${CAMERA_MODE_LABELS[plan.cameraMode] || plan.cameraMode}</strong>`,
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
         `<strong>${plan.segments.length}</strong> 이동 구간`,
@@ -273,11 +287,13 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
       ].filter(Boolean).join('<span>·</span>');
 
       if (autoPlay) {
+        status.textContent = `${basemap.label} 준비 중 · 첫 화면 타일 로딩…`;
+        await waitForMapIdle(1800);
         player.play();
         playButton.textContent = '일시정지';
-        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
+        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${basemap.label} · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
       } else {
-        status.textContent = `${CAMERA_MODE_LABELS[plan.cameraMode]} 준비 완료 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+        status.textContent = `${basemap.label} · ${CAMERA_MODE_LABELS[plan.cameraMode]} 준비 완료 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
       }
     } catch (error) {
       status.textContent = `카메라 계산 실패: ${error.message}`;
@@ -345,6 +361,22 @@ function simplifyAndLocalizeBaseMap(targetMap) {
       try { targetMap.setLayoutProperty(layer.id, 'text-field', labelExpression); } catch {}
     }
   }
+}
+
+function waitForMapIdle(timeoutMs = 1800) {
+  if (map.loaded() && map.areTilesLoaded?.()) return Promise.resolve();
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      map.off('idle', finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    map.once('idle', finish);
+  });
 }
 
 function updateDurationLabel(seconds) {
