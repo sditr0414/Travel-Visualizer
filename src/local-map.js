@@ -40,13 +40,13 @@ function createHybridStyle() {
     globalThis.basemaps.layers('world', flavor, { lang: 'ko' }),
     'world',
     'world-',
-    { maxzoom: 6, includeBackground: true }
+    { maxzoom: 6 }
   );
   const regionLayers = prepareLayers(
     globalThis.basemaps.layers('region', flavor, { lang: 'ko' }),
     'region',
     'region-',
-    { minzoom: 6, includeBackground: false }
+    { minzoom: 6 }
   );
 
   const origin = globalThis.location.origin;
@@ -65,13 +65,21 @@ function createHybridStyle() {
         attribution: '© OpenStreetMap contributors · Protomaps'
       }
     },
-    layers: [...worldLayers, ...regionLayers]
+    layers: [
+      {
+        id: 'local-background',
+        type: 'background',
+        paint: { 'background-color': flavor.background || '#f4f4f1' }
+      },
+      ...worldLayers,
+      ...regionLayers
+    ]
   };
 }
 
-function prepareLayers(layers, sourceName, prefix, { minzoom = null, maxzoom = null, includeBackground }) {
+function prepareLayers(layers, sourceName, prefix, { minzoom = null, maxzoom = null }) {
   return (layers || []).flatMap(layer => {
-    if (!includeBackground && layer.type === 'background') return [];
+    if (layer.type === 'background') return [];
     if (layer.type === 'symbol' && layer.layout?.['icon-image']) return [];
     const id = String(layer.id || '').toLowerCase();
     if (/poi|housenumber|house_number|address|airport_gate|aeroway_gate/.test(id)) return [];
