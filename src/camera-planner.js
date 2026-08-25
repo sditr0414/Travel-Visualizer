@@ -1,7 +1,14 @@
-import { clamp, mercatorProject, mercatorUnproject, pointAlongPath } from './geo.js';
+import { clamp, haversineMeters, mercatorProject, mercatorUnproject, pointAlongPath } from './geo.js';
 import { inferMobility, cameraIntentForMovement } from './mobility.js';
 
-export function planPlayback(movements, { fps = 30, maxTotalSeconds = 150 } = {}) {
+const EARTH_CIRCUMFERENCE_M = 40075016.686;
+const TILE_SIZE = 512;
+
+export function planPlayback(movements, {
+  fps = 30,
+  maxTotalSeconds = 210,
+  viewportWidth = 1100
+} = {}) {
   if (!movements.length) return { frames: [], segments: [], fps, durationSec: 0 };
 
   const enriched = movements.map((movement, index) => {
@@ -15,7 +22,7 @@ export function planPlayback(movements, { fps = 30, maxTotalSeconds = 150 } = {}
   const scale = naturalTotal > maxTotalSeconds ? maxTotalSeconds / naturalTotal : 1;
   let cursor = 0;
   const segments = enriched.map(segment => {
-    const videoSec = Math.max(0.65, segment.naturalVideoSec * scale);
+    const videoSec = Math.max(0.8, segment.naturalVideoSec * scale);
     const result = { ...segment, videoStartSec: cursor, videoEndSec: cursor + videoSec, videoSec };
     cursor += videoSec;
     return result;
@@ -41,7 +48,7 @@ export function planPlayback(movements, { fps = 30, maxTotalSeconds = 150 } = {}
       position,
       centerX: projected.x,
       centerY: projected.y,
-      zoom: segment.intent.targetZoom,
+      zoom: zoomForViewSpan(segment.intent.viewSpanKm, position.lat, viewportWidth),
       tauSec: segment.intent.smoothingTauSec,
       mobilityClass: segment.inference.mobilityClass,
       speedKmh: segment.inference.speedKmh
@@ -53,22 +60,29 @@ export function planPlayback(movements, { fps = 30, maxTotalSeconds = 150 } = {}
   let y = raw.map(f => f.centerY);
   const tau = raw.map(f => f.tauSec);
 
-  for (let pass = 0; pass < 2; pass += 1) {
-    zoom = bidirectionalAdaptiveEma(zoom, tau, fps);
-    x = bidirectionalAdaptiveEma(x, tau.map(v => v * 0.75), fps);
-    y = bidirectionalAdaptiveEma(y, tau.map(v => v * 0.75), fps);
-  }
+  zoom = bidirectionalAdaptiveEma(zoom, tau, fps);
+  zoom = limitKinematics(zoom, fps, { maxVelocity: 1.55, maxAcceleration: 2.3 });
+  zoom = bidirectionalAdaptiveEma(zoom, tau.map(v => v * 0.30), fps);
 
-  zoom = limitKinematics(zoom, fps, { maxVelocity: 2.2, maxAcceleration: 2.8 });
-  zoom = bidirectionalAdaptiveEma(zoom, tau.map(v => v * 0.35), fps);
+  x = bidirectionalAdaptiveEma(x, tau.map(v => v * 0.32), fps);
+  y = bidirectionalAdaptiveEma(y, tau.map(v => v * 0.32), fps);
 
   const frames = raw.map((frame, i) => ({
     ...frame,
-    zoom: clamp(zoom[i], 4.0, 17.5),
+    zoom: clamp(zoom[i], 4.0, 17.3),
     center: mercatorUnproject({ x: x[i], y: y[i] })
   }));
 
+  addRouteProgress(frames);
   return { frames, segments, fps, durationSec: cursor };
+}
+
+export function zoomForViewSpan(viewSpanKm, latitude, viewportWidth = 1100) {
+  const spanMeters = Math.max(250, viewSpanKm * 1000);
+  const widthPx = clamp(Number(viewportWidth) || 1100, 320, 3840);
+  const lat = clamp(Number(latitude) || 0, -80, 80) * Math.PI / 180;
+  const groundCircumference = EARTH_CIRCUMFERENCE_M * Math.max(0.15, Math.cos(lat));
+  return clamp(Math.log2((groundCircumference * widthPx) / (TILE_SIZE * spanMeters)), 4, 17.3);
 }
 
 export function bidirectionalAdaptiveEma(values, tauSec, fps) {
@@ -96,17 +110,19 @@ function adaptiveEma(values, tauSec, fps, reverse) {
 function limitKinematics(values, fps, { maxVelocity, maxAcceleration }) {
   if (values.length < 3) return [...values];
   const dt = 1 / fps;
-  const out = [...values];
+  const forward = [...values];
   let velocity = 0;
-  for (let i = 1; i < out.length; i += 1) {
-    const desiredV = clamp((out[i] - out[i - 1]) / dt, -maxVelocity, maxVelocity);
+  for (let i = 1; i < forward.length; i += 1) {
+    const desiredV = clamp((values[i] - forward[i - 1]) / dt, -maxVelocity, maxVelocity);
     const dv = clamp(desiredV - velocity, -maxAcceleration * dt, maxAcceleration * dt);
     velocity += dv;
-    out[i] = out[i - 1] + velocity * dt;
+    forward[i] = forward[i - 1] + velocity * dt;
   }
+
+  const out = [...forward];
   velocity = 0;
   for (let i = out.length - 2; i >= 0; i -= 1) {
-    const desiredV = clamp((out[i] - out[i + 1]) / dt, -maxVelocity, maxVelocity);
+    const desiredV = clamp((forward[i] - out[i + 1]) / dt, -maxVelocity, maxVelocity);
     const dv = clamp(desiredV - velocity, -maxAcceleration * dt, maxAcceleration * dt);
     velocity += dv;
     out[i] = out[i + 1] + velocity * dt;
@@ -114,10 +130,22 @@ function limitKinematics(values, fps, { maxVelocity, maxAcceleration }) {
   return out;
 }
 
+function addRouteProgress(frames) {
+  if (!frames.length) return;
+  const cumulative = new Array(frames.length).fill(0);
+  let total = 0;
+  for (let i = 1; i < frames.length; i += 1) {
+    total += haversineMeters(frames[i - 1].position, frames[i].position);
+    cumulative[i] = total;
+  }
+  const denominator = Math.max(total, 1);
+  for (let i = 0; i < frames.length; i += 1) frames[i].routeProgress = cumulative[i] / denominator;
+}
+
 function videoDurationFor(segment, inference) {
   const distance = Math.max(0.05, inference.distanceKm);
   const speed = Math.max(1, inference.speedKmh);
-  const complexity = Math.log2(1 + distance) * 1.2;
-  const speedCompression = clamp(Math.log2(1 + speed / 12) * 0.28, 0, 1.3);
-  return clamp(1.8 + complexity - speedCompression, 1.25, 6.5);
+  const complexity = Math.log2(1 + distance) * 1.15;
+  const speedCompression = clamp(Math.log2(1 + speed / 15) * 0.24, 0, 1.1);
+  return clamp(1.9 + complexity - speedCompression, 1.35, 6.5);
 }
