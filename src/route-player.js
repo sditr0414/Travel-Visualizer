@@ -1,5 +1,3 @@
-import { toGeoJSONLine } from './geo.js';
-
 export class RoutePlayer {
   constructor({ map, plan, onFrame }) {
     this.map = map;
@@ -9,7 +7,9 @@ export class RoutePlayer {
     this.startedAt = 0;
     this.pauseAt = 0;
     this.raf = 0;
-    this.lastDrawnFrame = -1;
+    this.lastRenderedFrame = -1;
+    this.lastProgress = -1;
+    this.lastProgressPaintAt = -Infinity;
   }
 
   play() {
@@ -29,13 +29,15 @@ export class RoutePlayer {
   reset() {
     this.pause();
     this.pauseAt = 0;
-    this.lastDrawnFrame = -1;
-    this.renderFrame(0);
+    this.lastRenderedFrame = -1;
+    this.lastProgress = -1;
+    this.lastProgressPaintAt = -Infinity;
+    this.renderFrame(0, true);
   }
 
   seek(seconds) {
     this.pauseAt = Math.max(0, Math.min(this.plan.durationSec, Number(seconds) || 0));
-    this.renderFrame(Math.floor(this.pauseAt * this.plan.fps));
+    this.renderFrame(Math.floor(this.pauseAt * this.plan.fps), true);
     if (this.playing) this.startedAt = performance.now() - this.pauseAt * 1000;
   }
 
@@ -44,7 +46,9 @@ export class RoutePlayer {
     const elapsed = (now - this.startedAt) / 1000;
     this.pauseAt = Math.min(elapsed, this.plan.durationSec);
     const frameIndex = Math.min(this.plan.frames.length - 1, Math.floor(this.pauseAt * this.plan.fps));
-    this.renderFrame(frameIndex);
+
+    if (frameIndex !== this.lastRenderedFrame) this.renderFrame(frameIndex, false, now);
+
     if (this.pauseAt >= this.plan.durationSec) {
       this.pause();
       return;
@@ -52,16 +56,32 @@ export class RoutePlayer {
     this.raf = requestAnimationFrame(this.tick);
   };
 
-  renderFrame(index) {
-    const frame = this.plan.frames[Math.max(0, Math.min(index, this.plan.frames.length - 1))];
+  renderFrame(index, force = false, now = performance.now()) {
+    const clampedIndex = Math.max(0, Math.min(index, this.plan.frames.length - 1));
+    const frame = this.plan.frames[clampedIndex];
     if (!frame) return;
+    if (!force && clampedIndex === this.lastRenderedFrame) return;
+
     this.map.jumpTo({ center: [frame.center.lng, frame.center.lat], zoom: frame.zoom });
-    if (index !== this.lastDrawnFrame) {
-      const visited = this.plan.frames.slice(0, index + 1).map(f => f.position);
-      const source = this.map.getSource('route-progress');
-      if (source) source.setData(toGeoJSONLine(visited));
-      this.lastDrawnFrame = index;
+    this.lastRenderedFrame = clampedIndex;
+
+    if (force || now - this.lastProgressPaintAt >= 80 || frame.routeProgress >= 0.9999) {
+      this.paintProgress(frame.routeProgress);
+      this.lastProgressPaintAt = now;
     }
-    this.onFrame?.(frame, index);
+
+    this.onFrame?.(frame, clampedIndex);
+  }
+
+  paintProgress(progress) {
+    const p = Math.max(0, Math.min(1, Number(progress) || 0));
+    if (Math.abs(p - this.lastProgress) < 0.0005 && p !== 0 && p !== 1) return;
+    if (!this.map.getLayer('route-progress')) return;
+    const active = '#ef4444';
+    const hidden = 'rgba(239, 68, 68, 0)';
+    this.map.setPaintProperty('route-progress', 'line-gradient', [
+      'step', ['line-progress'], active, p, hidden
+    ]);
+    this.lastProgress = p;
   }
 }
