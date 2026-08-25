@@ -63,11 +63,11 @@ map.on('load', async () => {
 });
 
 async function loadDefaultTimeline() {
-  status.textContent = '기본 테스트 Timeline(2026-03-17~31) 자동 로드 중…';
+  status.textContent = '내장 테스트 Timeline(2026-03-17~31) 자동 로드 중…';
   try {
     parsedJson = await loadBundledTimeline();
     loadButton.disabled = false;
-    analyzeParsedTimeline('내장 테스트 Timeline');
+    analyzeParsedTimeline('내장 테스트 Timeline', true);
   } catch (error) {
     parsedJson = null;
     loadButton.disabled = true;
@@ -82,7 +82,7 @@ fileInput.addEventListener('change', async () => {
   try {
     parsedJson = JSON.parse(await file.text());
     loadButton.disabled = false;
-    analyzeParsedTimeline(file.name);
+    analyzeParsedTimeline(file.name, false);
   } catch (error) {
     parsedJson = null;
     currentData = null;
@@ -93,10 +93,10 @@ fileInput.addEventListener('change', async () => {
 });
 
 loadButton.addEventListener('click', () => {
-  if (parsedJson) analyzeParsedTimeline('현재 Timeline');
+  if (parsedJson) analyzeParsedTimeline('현재 Timeline', false);
 });
 
-function analyzeParsedTimeline(sourceLabel) {
+function analyzeParsedTimeline(sourceLabel, autoPlay = false) {
   player?.pause();
   playButton.textContent = '재생';
   status.textContent = `${sourceLabel} 분석 중…`;
@@ -112,12 +112,12 @@ function analyzeParsedTimeline(sourceLabel) {
     const limits = durationLimitsForMovements(currentData.movements);
     videoDuration.min = String(limits.minSeconds);
     videoDuration.max = String(limits.maxSeconds);
-    videoDuration.value = String(limits.recommendedSeconds);
+    videoDuration.value = String(limits.minSeconds);
     videoDuration.disabled = false;
-    updateDurationLabel(limits.recommendedSeconds);
+    updateDurationLabel(limits.minSeconds);
     durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} (권장 ${formatDuration(limits.recommendedSeconds)})`;
 
-    rebuildPlan(sourceLabel);
+    rebuildPlan(sourceLabel, autoPlay);
   } catch (error) {
     currentData = null;
     status.textContent = `계산 실패: ${error.message}`;
@@ -126,7 +126,7 @@ function analyzeParsedTimeline(sourceLabel) {
 
 videoDuration.addEventListener('input', () => updateDurationLabel(Number(videoDuration.value)));
 videoDuration.addEventListener('change', () => {
-  if (currentData) rebuildPlan('영상 길이 변경');
+  if (currentData) rebuildPlan('영상 길이 변경', false);
 });
 
 lockCameraToPosition.addEventListener('change', () => {
@@ -161,7 +161,7 @@ resetButton.addEventListener('click', () => {
 
 seek.addEventListener('input', () => player?.seek(Number(seek.value)));
 
-function rebuildPlan(sourceLabel = 'Timeline') {
+function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
   if (!currentData?.movements.length) return;
   player?.pause();
   playButton.textContent = '재생';
@@ -176,7 +176,6 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         viewportHeight: map.getCanvas().clientHeight || 700
       });
 
-      // Complete route including inferred bridge segments. Hidden by default during travel.
       const fullRoute = currentData.movements.flatMap(segment => segment.points || []);
       map.getSource('route-all').setData(toGeoJSONLine(fullRoute));
       map.getSource('route-progress').setData(emptyLine());
@@ -207,7 +206,14 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         inferredCount ? `<strong>${inferredCount}</strong> 추정 연결` : '',
         ...Object.entries(classes).map(([key, value]) => `${key} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
-      status.textContent = `기본 테스트 데이터 준비 완료 · 재생 버튼을 누르세요 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+
+      if (autoPlay) {
+        player.play();
+        playButton.textContent = '일시정지';
+        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${formatDuration(plan.durationSec)} · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+      } else {
+        status.textContent = `테스트 데이터 준비 완료 · 재생 버튼을 누르세요 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
+      }
     } catch (error) {
       status.textContent = `카메라 계산 실패: ${error.message}`;
     }
