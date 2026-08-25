@@ -1,24 +1,31 @@
+const ACTIVE = '#ef4444';
+const TAIL_GRADIENT = [
+  'interpolate', ['linear'], ['line-progress'],
+  0, 'rgba(239,68,68,0)',
+  0.16, 'rgba(239,68,68,0.18)',
+  0.48, 'rgba(239,68,68,0.52)',
+  0.78, 'rgba(239,68,68,0.84)',
+  1, ACTIVE
+];
+
 export class RoutePlayer {
-  constructor({ map, plan, onFrame, lockToPosition = true, trailSeconds = 10 }) {
+  constructor({ map, plan, onFrame, lockToPosition = true, trailSeconds = 3.2 }) {
     this.map = map;
     this.plan = plan;
     this.onFrame = onFrame;
     this.lockToPosition = lockToPosition;
-    this.trailSeconds = Math.max(2, Number(trailSeconds) || 10);
+    this.trailSeconds = Math.max(0.8, Number(trailSeconds) || 3.2);
     this.playing = false;
     this.startedAt = 0;
     this.pauseAt = 0;
     this.raf = 0;
     this.lastRenderedFrame = -1;
-    this.lastProgress = -1;
-    this.lastTrailStart = -1;
     this.showingOutro = false;
   }
 
   setLockToPosition(enabled) {
     this.lockToPosition = !!enabled;
-    const index = Math.max(0, this.lastRenderedFrame);
-    this.renderFrame(index, true);
+    this.renderFrame(Math.max(0, this.lastRenderedFrame), true);
   }
 
   play() {
@@ -39,8 +46,6 @@ export class RoutePlayer {
     this.pause();
     this.pauseAt = 0;
     this.lastRenderedFrame = -1;
-    this.lastProgress = -1;
-    this.lastTrailStart = -1;
     this.showingOutro = false;
     this.renderFrame(0, true);
   }
@@ -51,14 +56,11 @@ export class RoutePlayer {
     if (this.playing) this.startedAt = performance.now() - this.pauseAt * 1000;
   }
 
-  tick = (now) => {
+  tick = now => {
     if (!this.playing) return;
-    const elapsed = (now - this.startedAt) / 1000;
-    this.pauseAt = Math.min(elapsed, this.plan.durationSec);
+    this.pauseAt = Math.min((now - this.startedAt) / 1000, this.plan.durationSec);
     const frameIndex = Math.min(this.plan.frames.length - 1, Math.floor(this.pauseAt * this.plan.fps));
-
     if (frameIndex !== this.lastRenderedFrame) this.renderFrame(frameIndex, false);
-
     if (this.pauseAt >= this.plan.durationSec) {
       this.pause();
       return;
@@ -69,54 +71,74 @@ export class RoutePlayer {
   renderFrame(index, force = false) {
     const clampedIndex = Math.max(0, Math.min(index, this.plan.frames.length - 1));
     const frame = this.plan.frames[clampedIndex];
-    if (!frame) return;
-    if (!force && clampedIndex === this.lastRenderedFrame) return;
+    if (!frame || (!force && clampedIndex === this.lastRenderedFrame)) return;
 
     const isOutro = frame.kind === 'OUTRO';
-    const cameraCenter = isOutro
-      ? frame.center
-      : this.lockToPosition ? frame.position : frame.center;
+    const cameraCenter = isOutro ? frame.center : this.lockToPosition ? frame.position : frame.center;
     this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: frame.zoom });
+    this.paintRoute(clampedIndex, isOutro);
     this.lastRenderedFrame = clampedIndex;
-
-    this.paintProgress(frame.routeProgress, clampedIndex, isOutro);
     this.onFrame?.(frame, clampedIndex);
   }
 
-  paintProgress(progress, frameIndex, isOutro) {
-    if (!this.map.getLayer('route-progress')) return;
-    const active = '#ef4444';
-    const hidden = 'rgba(239, 68, 68, 0)';
+  paintRoute(frameIndex, isOutro) {
+    const source = this.map.getSource('route-progress');
+    if (!source) return;
 
     if (isOutro) {
       if (!this.showingOutro) {
-        this.map.setPaintProperty('route-progress', 'line-gradient', active);
+        source.setData(toLine(this.plan.routeRenderPoints));
+        this.map.setPaintProperty('route-progress', 'line-gradient', ACTIVE);
         this.showingOutro = true;
       }
       return;
     }
 
-    if (this.showingOutro) {
-      this.showingOutro = false;
-      this.lastProgress = -1;
-      this.lastTrailStart = -1;
-    }
-
-    const p = Math.max(0, Math.min(1, Number(progress) || 0));
-    const trailFrames = Math.max(1, Math.round(this.trailSeconds * this.plan.fps));
-    const startFrame = this.plan.frames[Math.max(0, frameIndex - trailFrames)];
-    let trailStart = Math.max(0, Math.min(p, Number(startFrame?.routeProgress) || 0));
-
-    if (p - trailStart < 1e-7) trailStart = Math.max(0, p - 1e-7);
-    if (Math.abs(p - this.lastProgress) < 1e-7 && Math.abs(trailStart - this.lastTrailStart) < 1e-7) return;
-
-    this.map.setPaintProperty('route-progress', 'line-gradient', [
-      'step', ['line-progress'],
-      hidden,
-      trailStart, active,
-      p, hidden
-    ]);
-    this.lastProgress = p;
-    this.lastTrailStart = trailStart;
+    if (this.showingOutro) this.showingOutro = false;
+    const points = tailPointsForFrame(this.plan, frameIndex, this.trailSeconds);
+    source.setData(toLine(points));
+    this.map.setPaintProperty('route-progress', 'line-gradient', TAIL_GRADIENT);
   }
+}
+
+export function tailPointsForFrame(plan, frameIndex, trailSeconds = 3.2) {
+  const frames = plan?.frames || [];
+  const i = Math.max(0, Math.min(Number(frameIndex) || 0, frames.length - 1));
+  const head = frames[i];
+  if (!head || head.kind !== 'TRAVEL') return [];
+
+  const classSeconds = {
+    WALK: 4.8,
+    BIKE: 4.0,
+    URBAN_TRANSIT: 3.2,
+    ROAD: 2.8,
+    FAST_GROUND: 2.2,
+    FERRY: 2.8,
+    FLIGHT: 1.6,
+    UNKNOWN: 3.0
+  }[head.mobilityClass] ?? trailSeconds;
+  const seconds = Math.min(Math.max(0.8, trailSeconds), classSeconds);
+  const maxFrames = Math.max(2, Math.round(seconds * (plan.fps || 60)));
+  const points = [];
+
+  for (let j = i; j >= 0 && points.length < maxFrames; j -= 1) {
+    const frame = frames[j];
+    if (!frame || frame.kind !== 'TRAVEL' || frame.sceneId !== head.sceneId) break;
+    points.push(frame.position);
+  }
+  points.reverse();
+
+  if (points.length === 1) points.unshift(points[0]);
+  return points;
+}
+
+function toLine(points) {
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: {
+      type: 'LineString',
+      coordinates: (points || []).map(p => [p.lng, p.lat])
+    }
+  };
 }
