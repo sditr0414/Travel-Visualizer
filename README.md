@@ -14,12 +14,14 @@ Node.js 20 이상이 필요합니다.
 npm run map:setup
 ```
 
-이 명령은 공식 `go-pmtiles` CLI를 자동으로 준비한 뒤 Protomaps planet build에서 필요한 부분만 추출합니다.
+이 명령은 공식 `go-pmtiles` CLI를 자동으로 준비한 뒤 Protomaps archive에서 필요한 부분만 추출합니다.
 
 - `maps/world-z5.pmtiles`: 줌 0~5 전 세계 개요
 - `maps/korea-japan-z14.pmtiles`: 한국·일본 여행 영역 상세 지도
 
 전체 planet 파일을 다운로드하지 않습니다. PMTiles 원격 archive에서 필요한 타일 범위만 추출합니다.
+
+`map:setup`은 먼저 현재 daily build 후보를 확인하고 실제로 읽을 수 있는지 `pmtiles show`로 검증합니다. Daily build는 보존 기간 때문에 URL이 사라질 수 있으므로, 사용할 수 없으면 Protomaps의 Source Cooperative `v4.pmtiles` 고정 미러로 자동 fallback합니다. 직접 다른 archive를 쓰고 싶다면 `PROTOMAPS_BUILD_URL` 환경변수를 지정할 수 있습니다.
 
 그 다음 서버를 실행합니다.
 
