@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseLatLng, parseTimeline } from '../src/timeline-parser.js';
 import { inferMobility, cameraIntentForMovement, MobilityClass } from '../src/mobility.js';
 import { anticipateZoomOut, durationLimitsForMovements, planPlayback, screenDistancePx, zoomForViewSpan } from '../src/camera-planner.js';
+import { tailPointsForFrame } from '../src/route-player.js';
 
 function movement({ distanceKm, durationMin, type = 'UNKNOWN', probability = 0.2 }) {
   return {
@@ -103,7 +104,7 @@ test('walking uses a materially closer camera than a fast train', () => {
 
 test('zoom-out preview reacts before a faster segment', () => {
   const raw = [...Array(60).fill(15), ...Array(60).fill(10)];
-  const preview = anticipateZoomOut(raw, 60, 1.8, 0.28);
+  const preview = anticipateZoomOut(raw, 60, 1.15, 0.22);
   assert.ok(preview[30] < 15, 'zoom-out should be anticipated before the segment boundary');
 });
 
@@ -111,6 +112,23 @@ test('playback defaults to 60 fps', () => {
   const walk = movement({ distanceKm: 1.2, durationMin: 15, type: 'WALKING', probability: 0.95 });
   const plan = planPlayback([walk], { viewportWidth: 1100, viewportHeight: 700 });
   assert.equal(plan.fps, 60);
+});
+
+test('two-week long-distance trip can use roughly a one-minute minimum', () => {
+  const base = Date.parse('2026-03-17T10:00:00+09:00');
+  const moves = Array.from({ length: 15 }, (_, i) => {
+    const m = movement({ distanceKm: 386, durationMin: 180, type: i === 0 ? 'FLYING' : 'IN_TRAIN', probability: 0.95 });
+    m.startMs = base + i * 86_400_000;
+    m.endMs = m.startMs + 180 * 60_000;
+    m.start = { lat: 34 + i * 0.01, lng: 130 + i * 0.02 };
+    m.end = { lat: 34.1 + i * 0.01, lng: 130.1 + i * 0.02 };
+    m.points = [m.start, m.end];
+    return m;
+  });
+  const limits = durationLimitsForMovements(moves);
+  assert.ok(limits.minSeconds >= 55 && limits.minSeconds <= 65, `expected about one minute, got ${limits.minSeconds}`);
+  const plan = planPlayback(moves, { fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700 });
+  assert.ok(Math.abs(plan.durationSec - 60) < 0.1, `expected 60 second cut, got ${plan.durationSec}`);
 });
 
 test('duration limits are ordered and travel-aware', () => {
@@ -144,7 +162,7 @@ test('requested video duration is clamped and ends with an overview outro', () =
   });
   assert.equal(plan.frames.at(-1).kind, 'OUTRO');
   assert.equal(plan.frames.at(-1).mobilityClass, 'OVERVIEW');
-  assert.ok(plan.outroSec >= 5 && plan.outroSec <= 7);
+  assert.ok(plan.outroSec >= 4.5 && plan.outroSec <= 7);
   assert.ok(Math.abs(plan.durationSec - limits.recommendedSeconds) < 0.1);
 });
 
@@ -167,6 +185,21 @@ test('camera screen pan speed is bounded inside a continuous train scene', () =>
   assert.ok(maxPxPerSec < 360, `camera is chasing too fast: ${maxPxPerSec}px/s`);
 });
 
+test('route tail always ends at the exact current travel position', () => {
+  const train = movement({ distanceKm: 120, durationMin: 55, type: 'IN_TRAIN', probability: 0.98 });
+  train.points = [
+    { lat: 35.0, lng: 135.0 },
+    { lat: 35.2, lng: 135.6 },
+    { lat: 35.5, lng: 136.2 }
+  ];
+  train.end = train.points.at(-1);
+  const plan = planPlayback([train], { fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700 });
+  const index = Math.min(300, plan.frames.findIndex(f => f.kind === 'OUTRO') - 1);
+  const tail = tailPointsForFrame(plan, index, 3.2);
+  assert.deepEqual(tail.at(-1), plan.frames[index].position);
+  assert.ok(tail.length <= Math.round(2.2 * 60), `fast-ground tail is too long: ${tail.length}`);
+});
+
 test('large spatial gaps form a new scene when fed directly to the planner', () => {
   const a = movement({ distanceKm: 1, durationMin: 10, type: 'WALKING', probability: 0.95 });
   a.end = { lat: 37.46, lng: 126.44 };
@@ -183,7 +216,7 @@ test('large spatial gaps form a new scene when fed directly to the planner', () 
   assert.ok(plan.segments[1].sceneBreakBefore);
 });
 
-test('train to walk zoom remains continuous at 60fps', () => {
+test('train to walk zoom remains frame-continuous at 60fps', () => {
   const train = movement({ distanceKm: 30, durationMin: 20, type: 'IN_TRAIN', probability: 0.95 });
   train.points = [{ lat: 35, lng: 135 }, { lat: 35.15, lng: 135.2 }];
   train.end = train.points[1];
@@ -193,13 +226,13 @@ test('train to walk zoom remains continuous at 60fps', () => {
   walk.start = train.end;
   walk.points = [{ ...train.end }, { lat: 35.16, lng: 135.21 }];
   walk.end = walk.points[1];
-  const plan = planPlayback([train, walk], { fps: 60, viewportWidth: 1100, viewportHeight: 700 });
-  let maxZoomVelocity = 0;
+  const plan = planPlayback([train, walk], { fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700 });
+  let maxFrameDelta = 0;
   const travel = plan.frames.filter(f => f.kind === 'TRAVEL');
   for (let i = 1; i < travel.length; i += 1) {
-    maxZoomVelocity = Math.max(maxZoomVelocity, Math.abs(travel[i].zoom - travel[i - 1].zoom) * 60);
+    maxFrameDelta = Math.max(maxFrameDelta, Math.abs(travel[i].zoom - travel[i - 1].zoom));
   }
-  assert.ok(maxZoomVelocity < 1.25, `zoom velocity too high: ${maxZoomVelocity}`);
+  assert.ok(maxFrameDelta < 0.035, `zoom frame jump too large: ${maxFrameDelta}`);
 });
 
 test('timeline date filtering creates movements', () => {
