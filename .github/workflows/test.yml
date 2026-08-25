@@ -20,5 +20,20 @@ jobs:
           node --check src/local-map.js
           node --check src/main.js
           node --check src/route-player.js
+      - name: Bundled Timeline startup check
+        shell: bash
+        run: |
+          node server.mjs > server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for i in {1..20}; do
+            if curl --fail --silent http://localhost:5173/data/timeline-bundle.js -o timeline-bundle.js; then
+              break
+            fi
+            sleep 0.25
+          done
+          test -s timeline-bundle.js
+          grep -q 'BUNDLED_TIMELINE' timeline-bundle.js
+          cat server.log
       - name: Unit tests
         run: npm test
