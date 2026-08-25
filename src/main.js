@@ -13,6 +13,8 @@ const includeFlights = $('#includeFlights');
 const cameraMode = $('#cameraMode');
 const cameraModeHint = $('#cameraModeHint');
 const lockCameraToPosition = $('#lockCameraToPosition');
+const cameraTrackingSpeed = $('#cameraTrackingSpeed');
+const cameraTrackingSpeedLabel = $('#cameraTrackingSpeedLabel');
 const showFullRoute = $('#showFullRoute');
 const videoDuration = $('#videoDuration');
 const videoDurationLabel = $('#videoDurationLabel');
@@ -58,7 +60,9 @@ map.on('load', async () => {
   simplifyAndLocalizeBaseMap(map);
 
   map.addSource('route-all', { type: 'geojson', data: emptyLine() });
-  map.addSource('route-progress', { type: 'geojson', data: emptyLine(), lineMetrics: true });
+  map.addSource('route-progress', { type: 'geojson', data: emptyFeatureCollection() });
+  map.addSource('route-head', { type: 'geojson', data: emptyFeatureCollection() });
+
   map.addLayer({
     id: 'route-all',
     type: 'line',
@@ -67,14 +71,38 @@ map.on('load', async () => {
     paint: { 'line-color': '#64748b', 'line-width': 2.0, 'line-opacity': 0.17 }
   });
   map.addLayer({
+    id: 'route-progress-casing',
+    type: 'line',
+    source: 'route-progress',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-width': 8.2, 'line-opacity': 0.9, 'line-color': '#ffffff' }
+  });
+  map.addLayer({
     id: 'route-progress',
     type: 'line',
     source: 'route-progress',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-width': 4.8, 'line-opacity': 0.98, 'line-color': '#ef4444' }
+    paint: {
+      'line-width': 5.2,
+      'line-opacity': 1,
+      'line-color': ['coalesce', ['get', 'color'], '#ef4444']
+    }
+  });
+  map.addLayer({
+    id: 'route-head',
+    type: 'circle',
+    source: 'route-head',
+    paint: {
+      'circle-radius': 5.5,
+      'circle-color': ['coalesce', ['get', 'color'], '#ef4444'],
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#ffffff',
+      'circle-opacity': 1
+    }
   });
 
   updateCameraModeHint();
+  updateTrackingControls();
   await loadDefaultTimeline();
 });
 
@@ -151,10 +179,16 @@ cameraMode.addEventListener('change', () => {
 });
 
 lockCameraToPosition.addEventListener('change', () => {
+  updateTrackingControls();
   player?.setLockToPosition(lockCameraToPosition.checked);
   status.textContent = lockCameraToPosition.checked
-    ? '현재 경로 머리를 화면 중앙에 고정합니다.'
-    : '시네마틱 카메라 중심을 사용합니다.';
+    ? '카메라 고정: 현재 경로 머리를 화면 중앙에 유지합니다.'
+    : `카메라 추적: ${formatTrackingSpeed()} 속도로 경로 앞쪽을 따라갑니다.`;
+});
+
+cameraTrackingSpeed.addEventListener('input', () => {
+  updateTrackingControls();
+  player?.setTrackingSpeed(Number(cameraTrackingSpeed.value));
 });
 
 showFullRoute.addEventListener('change', () => {
@@ -206,7 +240,8 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
 
       const fullRoute = currentData.movements.flatMap(segment => segment.points || []);
       map.getSource('route-all').setData(toGeoJSONLine(fullRoute));
-      map.getSource('route-progress').setData(emptyLine());
+      map.getSource('route-progress').setData(emptyFeatureCollection());
+      map.getSource('route-head').setData(emptyFeatureCollection());
       map.setLayoutProperty('route-all', 'visibility', showFullRoute.checked ? 'visible' : 'none');
 
       player = new RoutePlayer({
@@ -214,6 +249,7 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
         plan,
         onFrame: updateFrameUi,
         lockToPosition: lockCameraToPosition.checked,
+        trackingSpeed: Number(cameraTrackingSpeed.value),
         trailSeconds: 3.2
       });
       player.reset();
@@ -274,6 +310,16 @@ function updateCameraModeHint() {
   cameraModeHint.textContent = CAMERA_MODE_HINTS[cameraMode.value] || CAMERA_MODE_HINTS[CameraMode.AUTO];
 }
 
+function updateTrackingControls() {
+  const value = Number(cameraTrackingSpeed.value) || 1;
+  cameraTrackingSpeedLabel.textContent = `${value.toFixed(1)}×`;
+  cameraTrackingSpeed.disabled = lockCameraToPosition.checked;
+}
+
+function formatTrackingSpeed() {
+  return `${(Number(cameraTrackingSpeed.value) || 1).toFixed(1)}×`;
+}
+
 function simplifyAndLocalizeBaseMap(targetMap) {
   const style = targetMap.getStyle();
   const labelExpression = [
@@ -324,4 +370,8 @@ function formatDuration(sec) {
 
 function emptyLine() {
   return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } };
+}
+
+function emptyFeatureCollection() {
+  return { type: 'FeatureCollection', features: [] };
 }
