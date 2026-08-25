@@ -65,44 +65,62 @@ export function inferMobility(segment) {
   };
 }
 
+/**
+ * Returns a physical camera intent instead of a hard-coded zoom number.
+ * viewSpanKm means roughly how much horizontal ground should be visible.
+ * The planner converts this to a Web-Mercator zoom using the actual viewport width.
+ */
 export function cameraIntentForMovement(segment, inference) {
   const distanceKm = Math.max(inference.distanceKm, 0.05);
   const speed = Math.max(inference.speedKmh, 0);
+  const sqrtDistance = Math.sqrt(distanceKm);
 
-  let zoom = 16.25 - 1.72 * Math.log2(1 + distanceKm * 2.2);
-  zoom -= 0.34 * Math.log2(1 + speed / 12);
-
-  const classAdjust = {
-    [MobilityClass.WALK]: 1.15,
-    [MobilityClass.BIKE]: 0.55,
-    [MobilityClass.URBAN_TRANSIT]: -0.15,
-    [MobilityClass.ROAD]: -0.35,
-    [MobilityClass.FAST_GROUND]: -0.75,
-    [MobilityClass.FERRY]: -1.0,
-    [MobilityClass.FLIGHT]: -2.35,
-    [MobilityClass.UNKNOWN]: 0
-  }[inference.mobilityClass] ?? 0;
-
-  zoom = clamp(zoom + classAdjust, 4.2, 17.2);
+  let viewSpanKm;
+  switch (inference.mobilityClass) {
+    case MobilityClass.WALK:
+      viewSpanKm = clamp(0.9 + speed * 0.10 + sqrtDistance * 0.35, 0.9, 2.6);
+      break;
+    case MobilityClass.BIKE:
+      viewSpanKm = clamp(2.3 + speed * 0.10 + sqrtDistance * 0.50, 2.5, 7.5);
+      break;
+    case MobilityClass.URBAN_TRANSIT:
+      viewSpanKm = clamp(5.5 + speed * 0.14 + sqrtDistance * 1.0, 6, 22);
+      break;
+    case MobilityClass.ROAD:
+      viewSpanKm = clamp(7 + speed * 0.14 + sqrtDistance * 1.2, 8, 38);
+      break;
+    case MobilityClass.FAST_GROUND:
+      viewSpanKm = clamp(12 + speed * 0.13 + sqrtDistance * 1.8, 14, 75);
+      break;
+    case MobilityClass.FERRY:
+      viewSpanKm = clamp(16 + speed * 0.18 + sqrtDistance * 2.0, 18, 110);
+      break;
+    case MobilityClass.FLIGHT:
+      viewSpanKm = clamp(Math.max(180, distanceKm * 1.25), 180, 1600);
+      break;
+    default:
+      viewSpanKm = clamp(3 + speed * 0.12 + sqrtDistance, 2, 45);
+      break;
+  }
 
   const lookAhead = {
-    [MobilityClass.WALK]: 0.05,
-    [MobilityClass.BIKE]: 0.10,
-    [MobilityClass.URBAN_TRANSIT]: 0.18,
-    [MobilityClass.ROAD]: 0.22,
-    [MobilityClass.FAST_GROUND]: 0.30,
-    [MobilityClass.FERRY]: 0.25,
-    [MobilityClass.FLIGHT]: 0.42,
-    [MobilityClass.UNKNOWN]: 0.12
-  }[inference.mobilityClass] ?? 0.12;
+    [MobilityClass.WALK]: 0.04,
+    [MobilityClass.BIKE]: 0.08,
+    [MobilityClass.URBAN_TRANSIT]: 0.14,
+    [MobilityClass.ROAD]: 0.18,
+    [MobilityClass.FAST_GROUND]: 0.24,
+    [MobilityClass.FERRY]: 0.20,
+    [MobilityClass.FLIGHT]: 0.32,
+    [MobilityClass.UNKNOWN]: 0.10
+  }[inference.mobilityClass] ?? 0.10;
 
   const smoothingTauSec = clamp(
-    1.7 + Math.abs(14 - zoom) * 0.22 + Math.log2(1 + speed / 15) * 0.35,
-    1.6,
-    inference.mobilityClass === MobilityClass.FLIGHT ? 5.5 : 4.2
+    0.48 + Math.log2(1 + speed / 35) * 0.12 + Math.log2(1 + distanceKm) * 0.035,
+    0.45,
+    inference.mobilityClass === MobilityClass.FLIGHT ? 1.25 : 1.0
   );
 
-  return { targetZoom: zoom, lookAhead, smoothingTauSec };
+  return { viewSpanKm, lookAhead, smoothingTauSec };
 }
 
 function add(map, key, value) { map.set(key, (map.get(key) || 0) + Math.max(0, value)); }
