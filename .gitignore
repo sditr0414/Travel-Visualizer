@@ -1,5 +1,7 @@
 .DS_Store
 node_modules/
 data/*.json
+maps/*.pmtiles
+.cache/
 *.mp4
 *.webm
