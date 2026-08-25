@@ -66,9 +66,8 @@ export function inferMobility(segment) {
 }
 
 /**
- * Returns a physical camera intent instead of a hard-coded zoom number.
- * viewSpanKm means roughly how much horizontal ground should be visible.
- * The planner converts this to a Web-Mercator zoom using the actual viewport width.
+ * Camera intent is expressed in physical/screen-space terms instead of a hard-coded zoom.
+ * The planner combines these values with video compression before calculating the final camera path.
  */
 export function cameraIntentForMovement(segment, inference) {
   const distanceKm = Math.max(inference.distanceKm, 0.05);
@@ -78,49 +77,70 @@ export function cameraIntentForMovement(segment, inference) {
   let viewSpanKm;
   switch (inference.mobilityClass) {
     case MobilityClass.WALK:
-      viewSpanKm = clamp(0.9 + speed * 0.10 + sqrtDistance * 0.35, 0.9, 2.6);
+      viewSpanKm = clamp(1.15 + speed * 0.11 + sqrtDistance * 0.32, 1.1, 3.2);
       break;
     case MobilityClass.BIKE:
-      viewSpanKm = clamp(2.3 + speed * 0.10 + sqrtDistance * 0.50, 2.5, 7.5);
+      viewSpanKm = clamp(2.8 + speed * 0.10 + sqrtDistance * 0.45, 3.0, 8.5);
       break;
     case MobilityClass.URBAN_TRANSIT:
-      viewSpanKm = clamp(5.5 + speed * 0.14 + sqrtDistance * 1.0, 6, 22);
+      viewSpanKm = clamp(6.5 + speed * 0.13 + sqrtDistance * 0.85, 7, 26);
       break;
     case MobilityClass.ROAD:
-      viewSpanKm = clamp(7 + speed * 0.14 + sqrtDistance * 1.2, 8, 38);
+      viewSpanKm = clamp(8.5 + speed * 0.14 + sqrtDistance * 1.0, 10, 46);
       break;
     case MobilityClass.FAST_GROUND:
-      viewSpanKm = clamp(12 + speed * 0.13 + sqrtDistance * 1.8, 14, 75);
+      viewSpanKm = clamp(16 + speed * 0.15 + sqrtDistance * 1.45, 20, 110);
       break;
     case MobilityClass.FERRY:
-      viewSpanKm = clamp(16 + speed * 0.18 + sqrtDistance * 2.0, 18, 110);
+      viewSpanKm = clamp(22 + speed * 0.16 + sqrtDistance * 1.65, 25, 145);
       break;
     case MobilityClass.FLIGHT:
-      viewSpanKm = clamp(Math.max(180, distanceKm * 1.25), 180, 1600);
+      viewSpanKm = clamp(Math.max(260, distanceKm * 1.18), 260, 1800);
       break;
     default:
-      viewSpanKm = clamp(3 + speed * 0.12 + sqrtDistance, 2, 45);
+      viewSpanKm = clamp(4 + speed * 0.12 + sqrtDistance * 0.8, 3, 50);
       break;
   }
 
-  const lookAhead = {
-    [MobilityClass.WALK]: 0.04,
-    [MobilityClass.BIKE]: 0.08,
-    [MobilityClass.URBAN_TRANSIT]: 0.14,
+  const lookAheadViewRatio = {
+    [MobilityClass.WALK]: 0.08,
+    [MobilityClass.BIKE]: 0.11,
+    [MobilityClass.URBAN_TRANSIT]: 0.16,
     [MobilityClass.ROAD]: 0.18,
-    [MobilityClass.FAST_GROUND]: 0.24,
-    [MobilityClass.FERRY]: 0.20,
-    [MobilityClass.FLIGHT]: 0.32,
-    [MobilityClass.UNKNOWN]: 0.10
-  }[inference.mobilityClass] ?? 0.10;
+    [MobilityClass.FAST_GROUND]: 0.20,
+    [MobilityClass.FERRY]: 0.16,
+    [MobilityClass.FLIGHT]: 0.08,
+    [MobilityClass.UNKNOWN]: 0.12
+  }[inference.mobilityClass] ?? 0.12;
 
-  const smoothingTauSec = clamp(
-    0.48 + Math.log2(1 + speed / 35) * 0.12 + Math.log2(1 + distanceKm) * 0.035,
-    0.45,
-    inference.mobilityClass === MobilityClass.FLIGHT ? 1.25 : 1.0
-  );
+  const targetTraversalPxPerSec = {
+    [MobilityClass.WALK]: 170,
+    [MobilityClass.BIKE]: 195,
+    [MobilityClass.URBAN_TRANSIT]: 220,
+    [MobilityClass.ROAD]: 235,
+    [MobilityClass.FAST_GROUND]: 250,
+    [MobilityClass.FERRY]: 210,
+    [MobilityClass.FLIGHT]: 165,
+    [MobilityClass.UNKNOWN]: 210
+  }[inference.mobilityClass] ?? 210;
 
-  return { viewSpanKm, lookAhead, smoothingTauSec };
+  const maxPanPxPerSec = {
+    [MobilityClass.WALK]: 155,
+    [MobilityClass.BIKE]: 185,
+    [MobilityClass.URBAN_TRANSIT]: 215,
+    [MobilityClass.ROAD]: 225,
+    [MobilityClass.FAST_GROUND]: 240,
+    [MobilityClass.FERRY]: 195,
+    [MobilityClass.FLIGHT]: 145,
+    [MobilityClass.UNKNOWN]: 200
+  }[inference.mobilityClass] ?? 200;
+
+  return {
+    viewSpanKm,
+    lookAheadViewRatio,
+    targetTraversalPxPerSec,
+    maxPanPxPerSec
+  };
 }
 
 function add(map, key, value) { map.set(key, (map.get(key) || 0) + Math.max(0, value)); }
