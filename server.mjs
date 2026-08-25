@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = Number(process.env.PORT || 5173);
@@ -32,12 +33,32 @@ async function buildTimelineModule() {
   if (!base64.startsWith('H4sI') || !base64.endsWith('=')) {
     throw new Error('Bundled Timeline data is incomplete.');
   }
-  return `export const BUNDLED_TIMELINE_GZIP_BASE64 = ${JSON.stringify(base64)};\n`;
+
+  let json;
+  try {
+    const compressed = Buffer.from(base64, 'base64');
+    const text = gunzipSync(compressed).toString('utf8');
+    json = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Bundled Timeline decompression failed: ${error.message}`);
+  }
+
+  if (!Array.isArray(json?.semanticSegments) || json.semanticSegments.length < 100) {
+    throw new Error('Bundled Timeline data is invalid or incomplete.');
+  }
+
+  return {
+    module: `export const BUNDLED_TIMELINE = ${JSON.stringify(json)};\n`,
+    segmentCount: json.semanticSegments.length
+  };
 }
 
 let timelineModule;
+let timelineSegmentCount = 0;
 try {
-  timelineModule = await buildTimelineModule();
+  const builtTimeline = await buildTimelineModule();
+  timelineModule = builtTimeline.module;
+  timelineSegmentCount = builtTimeline.segmentCount;
 } catch (error) {
   console.error(`Bundled Timeline fixture error: ${error.message}`);
   process.exitCode = 1;
@@ -64,6 +85,7 @@ createServer(async (req, res) => {
     if (url.pathname === '/data/timeline-bundle.js') {
       res.writeHead(200, {
         'content-type': 'text/javascript; charset=utf-8',
+        'content-length': Buffer.byteLength(timelineModule),
         'cache-control': 'no-store'
       });
       if (req.method !== 'HEAD') res.end(timelineModule);
@@ -97,7 +119,7 @@ createServer(async (req, res) => {
   }
 }).listen(port, () => {
   console.log(`Travel Camera Visualizer: http://localhost:${port}`);
-  console.log(`Bundled Timeline: ${timelinePartNames.length} parts ready`);
+  console.log(`Bundled Timeline: ${timelinePartNames.length} parts · ${timelineSegmentCount} segments ready`);
   printMapStatus();
 });
 
