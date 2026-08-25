@@ -6,6 +6,7 @@
   <title>Travel Camera Visualizer</title>
   <link rel="preconnect" href="https://unpkg.com" />
   <link rel="preconnect" href="https://tiles.openfreemap.org" />
+  <link rel="preconnect" href="https://protomaps.github.io" />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -13,7 +14,7 @@
   <header>
     <div>
       <h1>Travel Camera Visualizer</h1>
-      <p>60fps · 선택형 카메라 전략 · 이동수단별 경로색 · 전체 경로 엔딩</p>
+      <p>60fps · 로컬 하이브리드 지도 · 선택형 카메라 전략 · 이동수단별 경로색</p>
     </div>
   </header>
 
@@ -30,7 +31,7 @@
         </div>
         <label class="check"><input id="includeFlights" type="checkbox" checked /> 항공 구간 포함</label>
         <button id="loadButton" class="primary" disabled>경로 분석</button>
-        <p id="status" class="status">지도를 불러오는 중…</p>
+        <p id="status" class="status">지도 소스를 확인하는 중…</p>
       </section>
 
       <section>
@@ -103,6 +104,8 @@
   </main>
 
   <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
+  <script src="https://unpkg.com/@protomaps/basemaps@5.7.2/dist/basemaps.js"></script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
