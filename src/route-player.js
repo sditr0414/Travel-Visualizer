@@ -12,6 +12,7 @@ export class RoutePlayer {
     this.lastRenderedFrame = -1;
     this.lastProgress = -1;
     this.lastTrailStart = -1;
+    this.showingOutro = false;
   }
 
   setLockToPosition(enabled) {
@@ -40,6 +41,7 @@ export class RoutePlayer {
     this.lastRenderedFrame = -1;
     this.lastProgress = -1;
     this.lastTrailStart = -1;
+    this.showingOutro = false;
     this.renderFrame(0, true);
   }
 
@@ -70,15 +72,36 @@ export class RoutePlayer {
     if (!frame) return;
     if (!force && clampedIndex === this.lastRenderedFrame) return;
 
-    const cameraCenter = this.lockToPosition ? frame.position : frame.center;
+    const isOutro = frame.kind === 'OUTRO';
+    const cameraCenter = isOutro
+      ? frame.center
+      : this.lockToPosition ? frame.position : frame.center;
     this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: frame.zoom });
     this.lastRenderedFrame = clampedIndex;
 
-    this.paintProgress(frame.routeProgress, clampedIndex);
+    this.paintProgress(frame.routeProgress, clampedIndex, isOutro);
     this.onFrame?.(frame, clampedIndex);
   }
 
-  paintProgress(progress, frameIndex) {
+  paintProgress(progress, frameIndex, isOutro) {
+    if (!this.map.getLayer('route-progress')) return;
+    const active = '#ef4444';
+    const hidden = 'rgba(239, 68, 68, 0)';
+
+    if (isOutro) {
+      if (!this.showingOutro) {
+        this.map.setPaintProperty('route-progress', 'line-gradient', active);
+        this.showingOutro = true;
+      }
+      return;
+    }
+
+    if (this.showingOutro) {
+      this.showingOutro = false;
+      this.lastProgress = -1;
+      this.lastTrailStart = -1;
+    }
+
     const p = Math.max(0, Math.min(1, Number(progress) || 0));
     const trailFrames = Math.max(1, Math.round(this.trailSeconds * this.plan.fps));
     const startFrame = this.plan.frames[Math.max(0, frameIndex - trailFrames)];
@@ -86,10 +109,7 @@ export class RoutePlayer {
 
     if (p - trailStart < 1e-7) trailStart = Math.max(0, p - 1e-7);
     if (Math.abs(p - this.lastProgress) < 1e-7 && Math.abs(trailStart - this.lastTrailStart) < 1e-7) return;
-    if (!this.map.getLayer('route-progress')) return;
 
-    const active = '#ef4444';
-    const hidden = 'rgba(239, 68, 68, 0)';
     this.map.setPaintProperty('route-progress', 'line-gradient', [
       'step', ['line-progress'],
       hidden,
