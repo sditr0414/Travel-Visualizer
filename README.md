@@ -40,6 +40,39 @@ http://localhost:5173
 
 페이지가 열리면 Timeline을 분석하고 첫 프레임만 준비합니다. 자동 재생하지 않으며 `재생` 버튼을 눌러야 영상이 시작됩니다.
 
+## Google Photos 사진 여정
+
+상단바의 `모드`를 `사진 여정`으로 바꾸면 `Google Photos 연결` 버튼이 나타납니다. Google Photos Picker API를 사용하므로 사용자가 직접 선택한 사진만 앱에서 접근합니다.
+
+처음 한 번은 Google Cloud 설정이 필요합니다.
+
+1. Google Cloud Console에서 프로젝트를 만듭니다.
+2. **Google Photos Picker API**를 활성화합니다. 비슷한 이름의 Google Picker API와는 다른 API입니다.
+3. OAuth 동의 화면을 구성합니다.
+4. `사용자 인증 정보 만들기 > OAuth 클라이언트 ID > 웹 애플리케이션`을 선택합니다.
+5. 승인된 JavaScript 원본에 다음을 추가합니다.
+
+```text
+http://localhost:5173
+```
+
+6. 생성된 `...apps.googleusercontent.com` 형식의 Client ID를 앱의 `영상 설정 > Google Photos > OAuth Client ID`에 입력합니다.
+
+Client ID는 브라우저 localStorage에 저장되므로 같은 브라우저에서는 다시 입력할 필요가 없습니다. Client secret은 브라우저 앱에 넣지 않습니다.
+
+`Google Photos 연결`을 누르면 다음 흐름으로 작동합니다.
+
+1. Google OAuth 승인
+2. Photos Picker 세션 생성
+3. Google Photos 선택창에서 여행 사진 선택
+4. 선택 완료 후 촬영 시각과 미리보기 이미지 수집
+5. 촬영 시각을 Timeline 시간축에 매칭해 위치 계산
+6. 발자취를 가리지 않는 화면 영역에 사진 자동 배치
+
+Picker API는 사진 GPS 위치를 제공하지 않으므로 Picker로 가져온 사진 위치는 Timeline 시각 위치를 사용합니다. GPS가 중요한 경우 `Takeout 폴더 선택`을 사용하면 sidecar JSON의 GPS를 우선 사용하고 GPS가 없는 사진만 Timeline으로 보완합니다.
+
+Google Photos Picker의 `baseUrl`은 임시 URL이므로 앱은 선택 직후 영상용 크기의 임시 미리보기를 브라우저 메모리에 준비합니다. 사진은 이 프로젝트 서버나 GitHub 저장소에 업로드되지 않습니다.
+
 ## 전체 Timeline 사용
 
 프로젝트는 원본 `타임라인.json`을 다음 순서로 자동 탐색합니다.
