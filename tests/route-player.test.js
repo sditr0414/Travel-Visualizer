@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  RoutePlayer,
   TRANSPORT_COLORS,
   effectiveTrackingMultiplier,
   routeHeadFeatureForFrame,
@@ -49,6 +50,31 @@ test('recent route remains visible across a scene boundary without a connector',
   assert.deepEqual(collection.features[0].geometry.coordinates.at(-1), [135.001, 35.001]);
   assert.deepEqual(collection.features[1].geometry.coordinates[0], [135.5, 35.5]);
   assert.notDeepEqual(collection.features[0].geometry.coordinates.at(-1), collection.features[1].geometry.coordinates[0]);
+});
+
+test('position lock uses the preplanned wider locked zoom while unlocked keeps normal zoom', () => {
+  const calls = [];
+  const map = {
+    jumpTo(value) { calls.push(value); },
+    getSource() { return null; }
+  };
+  const zoomPlan = {
+    fps: 60,
+    durationSec: 1,
+    frames: [{
+      kind: 'TRAVEL', sceneId: 0, sceneBreak: true, segmentIndex: 0,
+      mobilityClass: 'FAST_GROUND', position: { lat: 35, lng: 135 },
+      center: { lat: 35, lng: 135 }, zoom: 8.4, lockedZoom: 7.7
+    }],
+    segments: []
+  };
+
+  const player = new RoutePlayer({ map, plan: zoomPlan, lockToPosition: true });
+  player.renderFrame(0, true);
+  assert.equal(calls.at(-1).zoom, 7.7);
+
+  player.setLockToPosition(false);
+  assert.equal(calls.at(-1).zoom, 8.4);
 });
 
 test('shorter videos keep a faster global fallback tracking floor', () => {
