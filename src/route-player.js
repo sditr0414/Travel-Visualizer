@@ -102,20 +102,22 @@ export class RoutePlayer {
 
     const isOutro = frame.kind === 'OUTRO';
     let cameraCenter;
+    let cameraZoom = frame.zoom;
     if (isOutro) {
       cameraCenter = frame.center;
       this.trackedCenter = null;
     } else if (this.lockToPosition) {
       cameraCenter = frame.position;
+      cameraZoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom : frame.zoom;
       this.trackedCenter = { ...frame.position };
     } else {
       cameraCenter = this.followCamera(frame, clampedIndex, force || frame.sceneBreak);
     }
 
-    this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: frame.zoom });
+    this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: cameraZoom });
     this.paintRoute(clampedIndex, isOutro);
     this.lastRenderedFrame = clampedIndex;
-    this.onFrame?.(frame, clampedIndex);
+    this.onFrame?.(cameraZoom === frame.zoom ? frame : { ...frame, zoom: cameraZoom }, clampedIndex);
   }
 
   followCamera(frame, frameIndex, reset = false) {
