@@ -31,6 +31,7 @@ const currentMode = $('#currentMode');
 const currentSpeed = $('#currentSpeed');
 const currentZoom = $('#currentZoom');
 const currentDate = $('#currentDate');
+const videoDate = $('#videoDate');
 const summary = $('#summary');
 
 let parsedJson = null;
@@ -46,9 +47,9 @@ const CAMERA_MODE_LABELS = {
 };
 
 const CAMERA_MODE_HINTS = {
-  [CameraMode.AUTO]: '하루의 주 활동 지역을 기본 줌으로 유지하고 항공·장거리 철도·페리에서만 넓게 봅니다. 짧은 영상에 권장합니다.',
-  [CameraMode.DAY]: '같은 날은 거의 같은 줌 스케일을 유지합니다. 도시 안의 여러 이동을 안정적으로 보여줄 때 적합합니다.',
-  [CameraMode.SEGMENT]: '도보·지하철·기차 등 각 이동 구간의 거리와 속도에 따라 줌을 적극적으로 바꿉니다.'
+  [CameraMode.AUTO]: '하루 지역을 안정적으로 유지하고 장거리 이동에서만 자연스럽게 넓게 봅니다.',
+  [CameraMode.DAY]: '같은 날은 거의 같은 지도 범위를 유지합니다.',
+  [CameraMode.SEGMENT]: '이동수단과 거리 변화에 맞춰 줌을 더 적극적으로 바꿉니다.'
 };
 
 const MOBILITY_LABELS = {
@@ -62,6 +63,13 @@ const MOBILITY_LABELS = {
   UNKNOWN: '기타',
   OVERVIEW: '전체 경로'
 };
+
+const TRAVEL_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Asia/Tokyo'
+});
 
 status.textContent = '지도 소스 확인 중…';
 const basemap = await resolveBasemap();
@@ -145,6 +153,7 @@ async function loadDefaultTimeline() {
   } catch (error) {
     parsedJson = null;
     loadButton.disabled = true;
+    videoDate.hidden = true;
     status.textContent = `기본 테스트 데이터 로드 실패: ${error.message}`;
   }
 }
@@ -167,6 +176,7 @@ fileInput.addEventListener('change', async () => {
     playButton.disabled = true;
     resetButton.disabled = true;
     seek.disabled = true;
+    videoDate.hidden = true;
     status.textContent = `JSON 파싱 실패: ${error.message}`;
   }
 });
@@ -178,6 +188,7 @@ loadButton.addEventListener('click', () => {
 function analyzeParsedTimeline(sourceLabel) {
   player?.pause();
   playButton.textContent = '재생';
+  videoDate.hidden = true;
   status.textContent = `${sourceLabel} 분석 중…`;
 
   try {
@@ -194,11 +205,12 @@ function analyzeParsedTimeline(sourceLabel) {
     videoDuration.value = String(limits.minSeconds);
     videoDuration.disabled = false;
     updateDurationLabel(limits.minSeconds);
-    durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} (권장 ${formatDuration(limits.recommendedSeconds)})`;
+    durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} · 권장 ${formatDuration(limits.recommendedSeconds)}`;
 
     rebuildPlan(sourceLabel);
   } catch (error) {
     currentData = null;
+    videoDate.hidden = true;
     status.textContent = `계산 실패: ${error.message}`;
   }
 }
@@ -217,8 +229,8 @@ lockCameraToPosition.addEventListener('change', () => {
   updateTrackingControls();
   player?.setLockToPosition(lockCameraToPosition.checked);
   status.textContent = lockCameraToPosition.checked
-    ? '카메라 고정: 현재 경로 머리를 화면 중앙에 유지합니다.'
-    : `카메라 추적: ${formatTrackingSpeed()} 속도로 경로 앞쪽을 따라갑니다.`;
+    ? '현재 위치에 카메라를 고정했습니다.'
+    : `카메라 추적 속도 ${formatTrackingSpeed()}`;
 });
 
 cameraTrackingSpeed.addEventListener('input', () => {
@@ -258,6 +270,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
   if (!currentData?.movements.length) return;
   player?.pause();
   playButton.textContent = '재생';
+  videoDate.hidden = true;
   status.textContent = `${sourceLabel} · 60fps 경로 계산 중…`;
 
   requestAnimationFrame(() => {
@@ -305,15 +318,15 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       summary.innerHTML = [
         '<strong>60 FPS</strong>',
         `<strong>${basemap.label}</strong>`,
-        `<strong>${CAMERA_MODE_LABELS[plan.cameraMode] || plan.cameraMode}</strong>`,
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
-        `<strong>${plan.segments.length}</strong> 이동 구간`,
+        `<strong>${plan.segments.length}</strong> 구간`,
         inferredCount ? `<strong>${inferredCount}</strong> 추정 연결` : '',
         ...Object.entries(classes).map(([key, value]) => `${mobilityLabel(key)} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
 
-      status.textContent = `${currentSourceLabel} · ${basemap.label} · 준비 완료 · 재생 버튼을 눌러 시작`;
+      status.textContent = `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작`;
     } catch (error) {
+      videoDate.hidden = true;
       status.textContent = `카메라 계산 실패: ${error.message}`;
     }
   });
@@ -326,6 +339,7 @@ function updateFrameUi(frame) {
     currentSpeed.textContent = '—';
     currentZoom.textContent = frame.zoom.toFixed(2);
     currentDate.textContent = '여행 전체';
+    videoDate.hidden = true;
   } else {
     const segment = plan.segments[frame.segmentIndex];
     const label = mobilityLabel(frame.mobilityClass);
@@ -333,10 +347,10 @@ function updateFrameUi(frame) {
     currentSpeed.textContent = `${frame.speedKmh.toFixed(1)} km/h`;
     currentZoom.textContent = frame.zoom.toFixed(2);
     const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * frame.progress;
-    currentDate.textContent = new Intl.DateTimeFormat('ko-KR', {
-      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-      timeZone: 'Asia/Tokyo'
-    }).format(new Date(sourceMs));
+    const dateLabel = formatTravelDate(sourceMs);
+    currentDate.textContent = dateLabel;
+    if (videoDate.textContent !== dateLabel) videoDate.textContent = dateLabel;
+    videoDate.hidden = false;
   }
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
 }
@@ -345,6 +359,15 @@ function handlePlaybackComplete() {
   playButton.textContent = '재생';
   seek.value = String(plan?.durationSec || 0);
   status.textContent = `${currentSourceLabel} · 재생 완료 · 재생을 누르면 처음부터 다시 시작`;
+}
+
+function formatTravelDate(ms) {
+  const parts = Object.fromEntries(
+    TRAVEL_DATE_FORMATTER.formatToParts(new Date(ms))
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  );
+  return `${parts.year}.${parts.month}.${parts.day}`;
 }
 
 function mobilityLabel(value) {
