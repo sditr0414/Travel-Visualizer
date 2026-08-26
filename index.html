@@ -19,22 +19,30 @@
   </header>
 
   <main>
-    <aside class="controls">
-      <section>
+    <aside class="controls" aria-label="여행 영상 설정">
+      <section class="timeline-panel">
         <h2>타임라인</h2>
-        <label class="file-picker">Google Timeline JSON
+        <div class="active-source" aria-live="polite">
+          <span>현재 데이터</span>
+          <strong id="currentDataSourceName">타임라인.json</strong>
+          <em id="currentDataSourceType">내장 테스트 데이터</em>
+        </div>
+        <label class="file-picker compact-file-picker">다른 Timeline JSON
+          <span class="file-action">JSON 파일 선택</span>
           <input id="timelineFile" type="file" accept="application/json,.json" />
         </label>
         <div class="date-grid">
           <label>시작일<input id="startDate" type="date" value="2026-03-17" /></label>
           <label>종료일<input id="endDate" type="date" value="2026-03-31" /></label>
         </div>
-        <label class="check"><input id="includeFlights" type="checkbox" checked /> 항공 구간 포함</label>
-        <button id="loadButton" class="primary" disabled>경로 분석</button>
+        <div class="inline-actions">
+          <label class="check"><input id="includeFlights" type="checkbox" checked /> 항공 포함</label>
+          <button id="loadButton" class="primary" disabled>경로 분석</button>
+        </div>
         <p id="status" class="status">지도 소스를 확인하는 중…</p>
       </section>
 
-      <section>
+      <section class="video-panel">
         <h2>영상</h2>
         <div class="setting-row"><span>프레임 레이트</span><strong>60 FPS</strong></div>
         <label class="select-setting">카메라 줌 전략
@@ -44,36 +52,34 @@
             <option value="SEGMENT">이동수단별</option>
           </select>
         </label>
-        <p id="cameraModeHint" class="hint"></p>
+        <p id="cameraModeHint" class="hint compact-hint"></p>
         <div class="setting-head duration-head">
           <span>전체 영상 길이</span>
           <output id="videoDurationLabel">분석 후 설정</output>
         </div>
         <input id="videoDuration" type="range" min="60" max="600" step="5" value="300" disabled aria-label="전체 영상 길이" />
-        <p id="durationHint" class="hint">여행 거리와 날짜를 분석해 최소·권장·최대 시간을 계산합니다.</p>
+        <p id="durationHint" class="hint compact-hint">여행 거리와 날짜를 분석해 시간을 계산합니다.</p>
       </section>
 
-      <section>
+      <section class="playback-panel">
         <h2>재생</h2>
         <div class="button-row">
           <button id="playButton" disabled>재생</button>
           <button id="resetButton" disabled>처음으로</button>
         </div>
-        <label class="check"><input id="lockCameraToPosition" type="checkbox" checked /> 카메라 고정 · 현재 위치를 화면 중앙에 유지</label>
+        <label class="check"><input id="lockCameraToPosition" type="checkbox" checked /> 카메라 고정</label>
         <div class="tracking-setting">
           <div class="setting-head">
-            <span>카메라 추적 속도</span>
+            <span>추적 속도</span>
             <output id="cameraTrackingSpeedLabel">1.0×</output>
           </div>
           <input id="cameraTrackingSpeed" type="range" min="0.5" max="2" step="0.1" value="1" disabled aria-label="카메라 추적 속도" />
-          <p class="hint">카메라 고정을 끈 경우에만 적용됩니다. 낮을수록 천천히, 높을수록 경로를 빠르게 따라갑니다.</p>
         </div>
-        <label class="check"><input id="showFullRoute" type="checkbox" /> 전체 경로 희미하게 표시</label>
+        <label class="check"><input id="showFullRoute" type="checkbox" /> 전체 경로 표시</label>
         <input id="seek" type="range" min="0" max="1" step="0.0167" value="0" disabled aria-label="재생 위치" />
-        <p class="hint">마지막 5~7초에는 자동으로 줌아웃하며 전체 경로를 보여줍니다.</p>
       </section>
 
-      <section>
+      <section class="legend-panel">
         <h2>경로 색상</h2>
         <div class="route-legend" aria-label="이동수단별 경로 색상">
           <span><i class="legend-swatch walk"></i>도보</span>
@@ -86,7 +92,7 @@
         </div>
       </section>
 
-      <section>
+      <section class="metrics-panel">
         <h2>현재 카메라</h2>
         <dl class="metrics">
           <div><dt>이동 성격</dt><dd id="currentMode">—</dd></div>
