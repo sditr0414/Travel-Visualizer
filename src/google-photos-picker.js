@@ -31,29 +31,32 @@ export async function pickGooglePhotos({ clientId, dateRange, onStatus } = {}) {
   try {
     const rangeLabel = formatDateRangeLabel(dateRange);
     onStatus?.(rangeLabel
-      ? `Google Photos에서 ${rangeLabel} 여행 사진을 선택하고 완료를 누르세요.`
-      : 'Google Photos에서 여행 사진을 선택하고 완료를 누르세요.');
+      ? `Google Photos에서 ${rangeLabel} 여행 사진·동영상을 선택하고 완료를 누르세요.`
+      : 'Google Photos에서 여행 사진·동영상을 선택하고 완료를 누르세요.');
     await waitForSelection(session, accessToken, onStatus);
-    onStatus?.('선택한 사진 목록 가져오는 중…');
+    onStatus?.('선택한 미디어 목록 가져오는 중…');
     const mediaItems = await listSelectedMedia(session.id, accessToken);
     const normalized = normalizePickedMediaItems(mediaItems);
     const filtered = filterPhotosToTravelDates(normalized, dateRange);
     if (!filtered.photos.length) {
       if (normalized.length && filtered.excludedOutsideRange) {
-        throw new Error(`${rangeLabel || '현재 여행 기간'}에 해당하는 사진이 없습니다.`);
+        throw new Error(`${rangeLabel || '현재 여행 기간'}에 해당하는 사진·동영상이 없습니다.`);
       }
-      throw new Error('선택한 항목에서 표시 가능한 사진을 찾지 못했습니다.');
+      throw new Error('선택한 항목에서 표시 가능한 사진·동영상을 찾지 못했습니다.');
     }
-    onStatus?.(`${rangeLabel ? `${rangeLabel} · ` : ''}사진 ${filtered.photos.length.toLocaleString()}장 준비 완료`);
+    const selectedVideos = filtered.photos.filter(item => item.mediaType === 'video').length;
+    const selectedPhotos = filtered.photos.length - selectedVideos;
+    onStatus?.(`${rangeLabel ? `${rangeLabel} · ` : ''}사진 ${selectedPhotos.toLocaleString()} · 영상 ${selectedVideos.toLocaleString()} 준비 완료`);
     return {
       photos: filtered.photos,
       accessToken,
       sessionId: session.id,
       stats: {
         picked: mediaItems.length,
-        normalizedPhotos: normalized.length,
-        photos: filtered.photos.length,
-        videos: mediaItems.length - normalized.length,
+        normalizedPhotos: normalized.filter(item => item.mediaType === 'photo').length,
+        photos: selectedPhotos,
+        videos: selectedVideos,
+        media: filtered.photos.length,
         excludedOutsideRange: filtered.excludedOutsideRange,
         gpsPhotos: 0
       }
@@ -75,23 +78,38 @@ export function normalizePickedMediaItems(items) {
   return (items || []).flatMap(item => {
     const mediaFile = item?.mediaFile || {};
     const mimeType = String(mediaFile.mimeType || item?.mimeType || '');
-    const type = String(item?.type || '');
-    if (type === 'VIDEO' || (mimeType && !mimeType.startsWith('image/'))) return [];
+    const type = String(item?.type || '').toUpperCase();
+    const mediaType = type === 'VIDEO' || mimeType.startsWith('video/') ? 'video'
+      : type === 'PHOTO' || mimeType.startsWith('image/') ? 'photo'
+        : null;
+    if (!mediaType) return [];
 
     const takenMs = Date.parse(item?.createTime || '');
     const baseUrl = String(mediaFile.baseUrl || item?.baseUrl || '').trim();
     if (!Number.isFinite(takenMs) || !baseUrl) return [];
 
-    return [{
+    const common = {
       id: item.id || null,
-      title: String(mediaFile.filename || item.filename || 'Google Photos 사진'),
+      title: String(mediaFile.filename || item.filename || (mediaType === 'video' ? 'Google Photos 영상' : 'Google Photos 사진')),
       takenMs,
       lat: null,
       lng: null,
       hasGps: false,
-      remoteUrl: `${baseUrl}=w1600-h1600`,
+      mimeType,
+      mediaType,
       source: 'google-photos-picker'
-    }];
+    };
+
+    if (mediaType === 'video') {
+      return [{
+        ...common,
+        remoteThumbnailUrl: `${baseUrl}=w1600-h1600-no`,
+        remoteVideoUrl: `${baseUrl}=dv`,
+        videoStatus: String(mediaFile?.mediaFileMetadata?.videoMetadata?.status || '')
+      }];
+    }
+
+    return [{ ...common, remoteUrl: `${baseUrl}=w1600-h1600` }];
   }).sort((a, b) => a.takenMs - b.takenMs);
 }
 
@@ -170,7 +188,7 @@ async function waitForSelection(initialSession, accessToken, onStatus) {
     if (session?.mediaItemsSet) return session;
     onStatus?.('Google Photos 선택 완료를 기다리는 중…');
   }
-  throw new Error('Google Photos 사진 선택 시간이 만료됐습니다. 다시 연결해 주세요.');
+  throw new Error('Google Photos 사진·동영상 선택 시간이 만료됐습니다. 다시 연결해 주세요.');
 }
 
 async function listSelectedMedia(sessionId, accessToken) {
