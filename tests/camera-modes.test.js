@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { planPlayback } from '../src/camera-planner.js';
-import { applyCameraMode, CameraMode } from '../src/camera-modes.js';
+import { applyCameraMode, CameraMode, ZOOM_OFFSET_MAX, ZOOM_OFFSET_MIN } from '../src/camera-modes.js';
 
 function movement({ startMs, durationMin, start, end, distanceKm, type, mid }) {
   return {
@@ -27,9 +27,24 @@ function sampleDay() {
   return [subway, walk, train, eveningWalk];
 }
 
-function makePlan(mode) {
-  const base = planPlayback(sampleDay(), { fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700 });
-  return applyCameraMode(base, { mode, viewportWidth: 1100, viewportHeight: 700 });
+function sampleDayWithFlight() {
+  const movements = sampleDay();
+  const last = movements.at(-1);
+  const flight = movement({
+    startMs: last.endMs + 90 * 60_000,
+    durationMin: 95,
+    start: last.end,
+    mid: { lat: 35.0, lng: 130.0 },
+    end: { lat: 37.46, lng: 126.44 },
+    distanceKm: 650,
+    type: 'FLYING'
+  });
+  return [...movements, flight];
+}
+
+function makePlan(mode, zoomOffset = 0, movements = sampleDay()) {
+  const base = planPlayback(movements, { fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700 });
+  return applyCameraMode(base, { mode, zoomOffset, viewportWidth: 1100, viewportHeight: 700 });
 }
 
 function travelFrames(plan) {
@@ -64,4 +79,32 @@ test('automatic mode keeps short-video zoom velocity controlled and still zooms 
   const average = values => values.reduce((sum, frame) => sum + frame.modeTargetZoom, 0) / values.length;
   assert.ok(longFrames.length > 0 && localFrames.length > 0);
   assert.ok(average(longFrames) < average(localFrames) - 1, 'long rail should still receive a wider camera');
+});
+
+test('local zoom offset moves non-flight zoom while leaving flight framing unchanged', () => {
+  const neutral = makePlan(CameraMode.AUTO, 0, sampleDayWithFlight());
+  const closer = makePlan(CameraMode.AUTO, 0.8, sampleDayWithFlight());
+  const neutralFrames = travelFrames(neutral);
+  const closerFrames = travelFrames(closer);
+
+  const localDiffs = [];
+  for (let i = 0; i < neutralFrames.length; i += 1) {
+    const a = neutralFrames[i];
+    const b = closerFrames[i];
+    if (a.mobilityClass === 'FLIGHT') {
+      assert.ok(Math.abs(b.modeTargetZoom - b.targetZoom) < 1e-9, 'flight zoom should ignore local zoom offset');
+    } else if (a.modeTargetZoom < 16.4) {
+      localDiffs.push(b.modeTargetZoom - a.modeTargetZoom);
+    }
+  }
+
+  assert.ok(localDiffs.length > 100, 'test should include enough unclamped local frames');
+  const averageDiff = localDiffs.reduce((sum, value) => sum + value, 0) / localDiffs.length;
+  assert.ok(averageDiff > 0.72, `expected local zoom offset near +0.8, got ${averageDiff}`);
+  assert.equal(closer.zoomOffset, 0.8);
+});
+
+test('local zoom offset is clamped to the supported range', () => {
+  assert.equal(makePlan(CameraMode.AUTO, 9).zoomOffset, ZOOM_OFFSET_MAX);
+  assert.equal(makePlan(CameraMode.AUTO, -9).zoomOffset, ZOOM_OFFSET_MIN);
 });
