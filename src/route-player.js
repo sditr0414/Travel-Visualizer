@@ -172,15 +172,24 @@ export function tailFeatureCollectionForFrame(plan, frameIndex, trailSeconds = 3
 
   const features = [];
   let currentClass = frames[0].mobilityClass || 'UNKNOWN';
+  let currentSceneId = frames[0].sceneId;
   let currentPoints = [frames[0].position];
 
   for (let i = 1; i < frames.length; i += 1) {
+    const previous = frames[i - 1];
     const frame = frames[i];
     const frameClass = frame.mobilityClass || 'UNKNOWN';
-    if (frameClass !== currentClass) {
+    const sceneChanged = frame.sceneId !== currentSceneId;
+    const classChanged = frameClass !== currentClass;
+
+    if (sceneChanged || classChanged) {
       features.push(lineFeature(currentPoints, currentClass));
       currentClass = frameClass;
-      currentPoints = [frames[i - 1].position, frame.position];
+      currentSceneId = frame.sceneId;
+      // Preserve the previous scene visually, but never draw an artificial connector across a scene break.
+      currentPoints = sceneChanged
+        ? [frame.position]
+        : [previous.position, frame.position];
     } else {
       currentPoints.push(frame.position);
     }
@@ -254,9 +263,11 @@ function travelTailFrames(plan, frameIndex, trailSeconds) {
   const maxFrames = Math.max(2, Math.round(seconds * (plan.fps || 60)));
   const result = [];
 
+  // Keep a rolling time window even when the camera planner starts a new scene.
+  // Scene changes are split into separate line features above, so this never creates a teleporting connector.
   for (let j = i; j >= 0 && result.length < maxFrames; j -= 1) {
     const frame = frames[j];
-    if (!frame || frame.kind !== 'TRAVEL' || frame.sceneId !== head.sceneId) break;
+    if (!frame || frame.kind !== 'TRAVEL') break;
     result.push(frame);
   }
   result.reverse();
