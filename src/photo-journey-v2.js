@@ -83,16 +83,16 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
 }
 
 /**
- * A photo journey no longer overlays media while the route keeps moving.
- * Each grouped capture point becomes a stop. Representative media at that stop
- * is shown one item at a time, so photoDisplaySec means seconds per photo.
+ * Photo journey is a move -> stop -> show media -> move sequence.
+ * The passed plan is expanded in-place because main.js constructs RoutePlayer
+ * after this function returns. Photo display time is per photo, not per group.
  */
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
   const baseBeats = buildCorePhotoJourneyBeats(media, plan);
   if (!baseBeats.length) return [];
 
   const settings = resolveJourneyMediaOptions(options);
-  return baseBeats.map(beat => {
+  const prepared = baseBeats.map(beat => {
     const items = normalizeRepresentativeMedia(beat.photos, settings.videoMode);
     const itemDurationsSec = items.map(item => (
       item.mediaType === 'video' && settings.videoMode === VideoPlaybackMode.PLAY
@@ -111,12 +111,15 @@ export function buildPhotoJourneyBeats(media, plan, options = {}) {
       routeVideoSec: beat.videoSec
     };
   });
+
+  const expanded = insertPhotoJourneyStops(plan, prepared);
+  if (expanded.plan && expanded.plan !== plan) Object.assign(plan, expanded.plan);
+  return expanded.beats;
 }
 
 /**
- * Insert stationary frames at every media beat. The original route timing is
- * preserved and media stop time is added on top, so the final photo-journey
- * duration is route duration + all media stop durations.
+ * Insert stationary frames at every media beat. Route timing is preserved and
+ * media time is added, so final duration = route duration + media stop duration.
  */
 export function insertPhotoJourneyStops(plan, beats) {
   if (!plan?.frames?.length || !beats?.length) return { plan, beats: beats || [] };
@@ -156,6 +159,7 @@ export function insertPhotoJourneyStops(plan, beats) {
               ...sourceFrame,
               kind: 'TRAVEL',
               timeSec: frames.length / fps,
+              speedKmh: 0,
               sceneBreak: localFrame === 0 && mediaItemIndex === 0 ? sourceFrame.sceneBreak : false,
               mediaHold: true,
               mediaBeatId: scheduledBeat.beat.id,
@@ -186,6 +190,7 @@ export function insertPhotoJourneyStops(plan, beats) {
   const expandedOutroIndex = frames.findIndex(frame => frame?.kind === 'OUTRO');
   const travelDurationSec = (expandedOutroIndex >= 0 ? expandedOutroIndex : frames.length) / fps;
   const durationSec = frames.length / fps;
+  const baseDurationSec = Number(plan.durationSec) || durationSec;
   const expandedPlan = {
     ...plan,
     frames,
@@ -194,8 +199,8 @@ export function insertPhotoJourneyStops(plan, beats) {
     outroSec: Math.max(0, durationSec - travelDurationSec),
     durationSec,
     targetTotalSeconds: durationSec,
-    baseRouteDurationSec: Number(plan.durationSec) || durationSec,
-    mediaStopDurationSec: Math.max(0, durationSec - (Number(plan.durationSec) || durationSec))
+    baseRouteDurationSec: baseDurationSec,
+    mediaStopDurationSec: Math.max(0, durationSec - baseDurationSec)
   };
 
   return { plan: expandedPlan, beats: expandedBeats };
@@ -228,7 +233,7 @@ export class PhotoJourneyController extends CorePhotoJourneyController {
       this.lastPlacementFrame = -Infinity;
     }
     if (frameIndex - this.lastPlacementFrame >= Math.max(1, Math.round((this.plan.fps || 60) / 5))) {
-      this.placeBeat(beat, frameIndex);
+      this.placeBeat(beat);
       this.lastPlacementFrame = frameIndex;
     }
   }
