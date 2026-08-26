@@ -1,8 +1,6 @@
 import { pickGooglePhotos, releaseGooglePhotosSelection } from './google-photos-picker.js';
 
-const CACHE_DB = 'travel-camera-photo-cache';
-const CACHE_STORE = 'trip-selections';
-const CACHE_VERSION = 1;
+const LEGACY_CACHE_DB = 'travel-camera-photo-cache';
 const journeyMode = document.querySelector('#journeyMode');
 const connectButton = document.querySelector('#googlePhotosConnect');
 const folderInput = document.querySelector('#photoFolderInput');
@@ -11,34 +9,21 @@ const importHint = document.querySelector('#photoImportHint');
 const status = document.querySelector('#status');
 const startDate = document.querySelector('#startDate');
 const endDate = document.querySelector('#endDate');
-const persistPhotos = document.querySelector('#persistGooglePhotos');
-const clearPhotoCache = document.querySelector('#clearPhotoCache');
 
 let configPromise = null;
-let restoredKey = '';
+let hasPhotosThisSession = false;
+
+removeLegacyPhotoCache();
 
 if (journeyMode && connectButton && folderInput && startDate && endDate) {
   const syncMode = () => {
-    const photoMode = journeyMode.value === 'PHOTOS';
     connectButton.hidden = false;
-    updateConnectButtonLabel();
-    if (photoMode) restoreCachedTripPhotos().catch(() => {});
+    updateConnectButtonLabel(hasPhotosThisSession);
   };
+
   journeyMode.addEventListener('change', syncMode);
   startDate.addEventListener('change', handleDateRangeChange);
   endDate.addEventListener('change', handleDateRangeChange);
-  persistPhotos?.addEventListener('change', () => {
-    if (!persistPhotos.checked) importHint.textContent = '이번 실행에서만 사진을 사용합니다. 저장된 기존 사진은 아래 삭제 버튼으로 지울 수 있습니다.';
-  });
-  clearPhotoCache?.addEventListener('click', async () => {
-    await deleteTripSelection(currentDateRange()).catch(() => {});
-    restoredKey = '';
-    clearPhotoCache.disabled = true;
-    persistPhotos.checked = false;
-    importHint.textContent = '이 여행 날짜 범위의 브라우저 저장 사진을 삭제했습니다.';
-    status.textContent = '저장된 여행 사진 삭제 완료';
-    updateConnectButtonLabel();
-  });
   syncMode();
 
   connectButton.addEventListener('click', async () => {
@@ -75,72 +60,34 @@ if (journeyMode && connectButton && folderInput && startDate && endDate) {
       });
 
       applyFilesToPhotoJourney(files);
-      let cacheSaved = false;
-      if (persistPhotos?.checked) {
-        cacheSaved = await saveTripSelection(dateRange, files).catch(() => false);
-      }
+      hasPhotosThisSession = files.length > 0;
       const excluded = Number(pickerResult.stats?.excludedOutsideRange || 0);
       importCount.textContent = `${files.length.toLocaleString()}장 · 일정 자동 필터`;
       importHint.textContent = [
         `${rangeLabel} 범위의 사진만 사용합니다.`,
         excluded ? `범위 밖 ${excluded.toLocaleString()}장은 자동 제외했습니다.` : '',
-        persistPhotos?.checked
-          ? cacheSaved ? '이 브라우저에 저장해 다음 실행부터 자동 복원합니다.' : '브라우저 저장공간이 부족해 이번 실행에서만 사용합니다.'
-          : '브라우저에는 영구 저장하지 않고 이번 실행에서만 사용합니다.'
+        'Google Photos 사진은 브라우저에 저장하지 않고 현재 실행에서만 사용합니다.'
       ].filter(Boolean).join(' ');
       status.textContent = `Google Photos 준비 완료 · ${files.length.toLocaleString()}장`;
-      restoredKey = cacheSaved ? tripCacheKey(dateRange) : '';
-      await refreshCacheControls();
       updateConnectButtonLabel(true);
     } catch (error) {
       importCount.textContent = '연결 실패';
       importHint.textContent = error.message;
       status.textContent = `Google Photos 연결 실패: ${error.message}`;
-      updateConnectButtonLabel();
+      updateConnectButtonLabel(hasPhotosThisSession);
     } finally {
       if (pickerResult?.sessionId && pickerResult?.accessToken) {
         await releaseGooglePhotosSelection(pickerResult.sessionId, pickerResult.accessToken).catch(() => {});
       }
       connectButton.disabled = false;
-      updateConnectButtonLabel(!!pickerResult?.photos?.length);
+      updateConnectButtonLabel(hasPhotosThisSession);
     }
   });
 }
 
 function handleDateRangeChange() {
-  restoredKey = '';
-  updateConnectButtonLabel();
-  refreshCacheControls().catch(() => {});
-  if (journeyMode.value === 'PHOTOS') restoreCachedTripPhotos().catch(() => {});
-}
-
-async function restoreCachedTripPhotos() {
-  const dateRange = currentDateRange();
-  const key = tripCacheKey(dateRange);
-  if (!key || restoredKey === key) return;
-  restoredKey = key;
-
-  const cached = await loadTripSelection(dateRange).catch(() => null);
-  clearPhotoCache.disabled = !cached;
-  if (!cached?.files?.length || cached.consented !== true) {
-    updateConnectButtonLabel();
-    importHint.textContent = `${dateRange.startDate} ~ ${dateRange.endDate} 여행 사진을 처음 한 번 선택하면 됩니다. 저장 옵션을 체크한 경우에만 다음 실행에서 자동 복원됩니다.`;
-    return;
-  }
-
-  persistPhotos.checked = true;
-  applyFilesToPhotoJourney(cached.files);
-  importCount.textContent = `${cached.files.length.toLocaleString()}장 · 자동 복원`;
-  importHint.textContent = `${dateRange.startDate} ~ ${dateRange.endDate}에 사용자가 저장을 허용한 사진을 이 브라우저에서 자동으로 불러왔습니다.`;
-  status.textContent = `Google Photos 로컬 사진 복원 · ${cached.files.length.toLocaleString()}장`;
-  updateConnectButtonLabel(true);
-}
-
-async function refreshCacheControls() {
-  if (!clearPhotoCache) return;
-  const cached = await loadTripSelection(currentDateRange()).catch(() => null);
-  clearPhotoCache.disabled = !cached;
-  if (cached?.consented) persistPhotos.checked = true;
+  hasPhotosThisSession = false;
+  updateConnectButtonLabel(false);
 }
 
 function currentDateRange() {
@@ -148,13 +95,6 @@ function currentDateRange() {
     startDate: String(startDate.value || '').trim(),
     endDate: String(endDate.value || '').trim()
   };
-}
-
-function tripCacheKey(dateRange) {
-  const start = String(dateRange?.startDate || '').trim();
-  const end = String(dateRange?.endDate || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return '';
-  return `${start}__${end}`;
 }
 
 function updateConnectButtonLabel(hasPhotos = false) {
@@ -183,6 +123,7 @@ function formatShortDateRange(start, end) {
 function applyFilesToPhotoJourney(files) {
   const transfer = new DataTransfer();
   for (const file of files) transfer.items.add(file);
+  folderInput.dataset.importSource = 'google-photos-picker';
   folderInput.files = transfer.files;
   folderInput.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -218,73 +159,11 @@ async function loadGooglePhotosConfig() {
   return configPromise;
 }
 
-async function saveTripSelection(dateRange, files) {
-  if (!globalThis.indexedDB || !files.length) return false;
-  const db = await openCacheDb();
-  const key = tripCacheKey(dateRange);
-  if (!key) return false;
-  const record = {
-    key,
-    consented: true,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    savedAt: Date.now(),
-    files: files.map(file => ({
-      name: file.name,
-      type: file.type,
-      lastModified: file.lastModified,
-      blob: file
-    }))
-  };
-  await transactionPromise(db, 'readwrite', store => store.put(record));
-  return true;
-}
-
-async function loadTripSelection(dateRange) {
-  if (!globalThis.indexedDB) return null;
-  const key = tripCacheKey(dateRange);
-  if (!key) return null;
-  const db = await openCacheDb();
-  const record = await transactionPromise(db, 'readonly', store => store.get(key));
-  if (!record?.files?.length || record.consented !== true) return null;
-  return {
-    ...record,
-    files: record.files.map(item => new File([item.blob], item.name, {
-      type: item.type || item.blob?.type || 'image/jpeg',
-      lastModified: Number(item.lastModified) || Date.now()
-    }))
-  };
-}
-
-async function deleteTripSelection(dateRange) {
+function removeLegacyPhotoCache() {
   if (!globalThis.indexedDB) return;
-  const key = tripCacheKey(dateRange);
-  if (!key) return;
-  const db = await openCacheDb();
-  await transactionPromise(db, 'readwrite', store => store.delete(key));
-}
-
-function openCacheDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(CACHE_DB, CACHE_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(CACHE_STORE)) db.createObjectStore(CACHE_STORE, { keyPath: 'key' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('사진 캐시를 열지 못했습니다.'));
-  });
-}
-
-function transactionPromise(db, mode, action) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(CACHE_STORE, mode);
-    const store = tx.objectStore(CACHE_STORE);
-    const request = action(store);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('사진 캐시 작업에 실패했습니다.'));
-    tx.onerror = () => reject(tx.error || new Error('사진 캐시 트랜잭션에 실패했습니다.'));
-  });
+  try {
+    indexedDB.deleteDatabase(LEGACY_CACHE_DB);
+  } catch {}
 }
 
 function safeFilename(value, mimeType, index) {
