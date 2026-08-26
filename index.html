@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./mode-ui.css" />
+  <link rel="stylesheet" href="./media-journey.css" />
 </head>
 <body>
   <header class="appbar">
@@ -25,9 +26,9 @@
       </select>
     </label>
 
-    <label class="gallery-photo-picker" title="기기 또는 컴퓨터의 사진 라이브러리에서 여행 사진 선택">
+    <label class="gallery-photo-picker" title="기기 또는 컴퓨터의 사진·동영상 라이브러리에서 여행 미디어 선택">
       <span>기기 갤러리</span>
-      <input id="photoGalleryInput" type="file" accept="image/*" multiple />
+      <input id="photoGalleryInput" type="file" accept="image/*,video/*" multiple />
     </label>
 
     <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos에서 여행 사진 선택</button>
@@ -87,17 +88,44 @@
               <label>사진 소스</label>
               <output id="photoImportCount">사진 없음</output>
             </div>
-            <p class="hint"><strong>기기 갤러리</strong>를 기본으로 사용합니다. 앱 버전에서는 여행 일정에 해당하는 사진의 촬영시각·GPS를 기기 사진 라이브러리에서 직접 읽고 Timeline과 자동 매칭합니다.</p>
+            <p class="hint"><strong>기기 갤러리</strong>를 기본으로 사용합니다. 앱 버전에서는 여행 일정에 해당하는 사진·동영상의 촬영시각과 GPS를 기기 라이브러리에서 직접 읽고 Timeline과 자동 매칭합니다.</p>
+
+            <div class="photo-playback-settings">
+              <div>
+                <div class="setting-head">
+                  <label for="photoDisplaySeconds">사진 표시 시간</label>
+                  <output id="photoDisplaySecondsLabel">3.0초</output>
+                </div>
+                <input id="photoDisplaySeconds" type="range" min="1.5" max="8" step="0.5" value="3" aria-label="사진 한 장면 표시 시간" />
+              </div>
+
+              <div>
+                <label for="photoVideoMode">동영상</label>
+                <select id="photoVideoMode">
+                  <option value="THUMBNAIL" selected>썸네일만</option>
+                  <option value="PLAY">자동 재생 · 음소거</option>
+                </select>
+              </div>
+
+              <div id="videoMinPlaySetting">
+                <div class="setting-head">
+                  <label for="videoMinPlaySeconds">동영상 최소 재생 시간</label>
+                  <output id="videoMinPlaySecondsLabel">5.0초</output>
+                </div>
+                <input id="videoMinPlaySeconds" type="range" min="2" max="15" step="0.5" value="5" disabled aria-label="동영상 장면 최소 재생 시간" />
+                <p class="hint">재생 모드에서는 이 시간보다 짧아지지 않도록 대표 장면 수를 자동으로 줄입니다.</p>
+              </div>
+            </div>
 
             <div class="photo-import-divider"><span>웹 보조 · Google Photos</span></div>
-            <p class="hint">웹에서는 상단 Google Photos 로그인으로 Picker에서 승인한 사진도 사용할 수 있습니다. 현재 여행 일정 밖 사진은 자동 제외하며, 사진 미리보기는 브라우저에 저장하지 않고 현재 실행에서만 사용합니다.</p>
+            <p class="hint">웹에서는 상단 Google Photos 로그인으로 Picker에서 승인한 사진·동영상도 사용할 수 있습니다. 현재 여행 일정 밖 미디어는 자동 제외하며 브라우저에 영구 저장하지 않습니다.</p>
 
             <div class="photo-import-divider"><span>정밀 GPS · Takeout</span></div>
             <label class="photo-folder-picker">
               <span>Takeout 폴더 선택</span>
-              <input id="photoFolderInput" type="file" accept="image/*,.json,application/json" webkitdirectory directory multiple />
+              <input id="photoFolderInput" type="file" accept="image/*,video/*,.json,application/json" webkitdirectory directory multiple />
             </label>
-            <p id="photoImportHint" class="hint">기기 갤러리/Picker 사진은 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
+            <p id="photoImportHint" class="hint">기기 갤러리/Picker 미디어는 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
           </div>
 
           <div class="setting-block">
@@ -190,7 +218,11 @@
   <script src="/vendor/maplibre-gl.js"></script>
   <script src="/vendor/pmtiles.js"></script>
   <script src="/vendor/basemaps.js"></script>
+  <script type="importmap">
+    {"imports":{"/src/photo-journey.js":"/src/photo-journey-v2.js"}}
+  </script>
   <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/photo-media-settings-ui.js"></script>
   <script type="module" src="./src/gallery-photo-ui.js"></script>
   <script type="module" src="./src/google-photos-ui.js"></script>
 </body>
