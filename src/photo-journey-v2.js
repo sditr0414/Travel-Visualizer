@@ -82,51 +82,171 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
   };
 }
 
+/**
+ * A photo journey no longer overlays media while the route keeps moving.
+ * Each grouped capture point becomes a stop. Representative media at that stop
+ * is shown one item at a time, so photoDisplaySec means seconds per photo.
+ */
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
   const baseBeats = buildCorePhotoJourneyBeats(media, plan);
   if (!baseBeats.length) return [];
 
   const settings = resolveJourneyMediaOptions(options);
-  const travelDuration = Math.max(0.1, Number(plan?.travelDurationSec) || Number(plan?.outroStartSec) || Number(plan?.durationSec) || 0.1);
-  const maxRequiredDuration = settings.videoMode === VideoPlaybackMode.PLAY
-    ? Math.max(settings.photoDisplaySec, settings.videoMinPlaySec)
-    : settings.photoDisplaySec;
-  const maxCount = Math.max(1, Math.min(48, Math.floor(travelDuration / Math.max(0.5, maxRequiredDuration)) || 1));
-  const selected = selectBeatsAcrossVideo(baseBeats, maxCount, travelDuration);
-
-  const prepared = selected.map(beat => {
-    const hasVideo = beat.photos.some(item => item.mediaType === 'video');
-    const desiredDurationSec = Math.min(
-      travelDuration,
-      hasVideo && settings.videoMode === VideoPlaybackMode.PLAY
-        ? Math.max(settings.photoDisplaySec, settings.videoMinPlaySec)
+  return baseBeats.map(beat => {
+    const items = normalizeRepresentativeMedia(beat.photos, settings.videoMode);
+    const itemDurationsSec = items.map(item => (
+      item.mediaType === 'video' && settings.videoMode === VideoPlaybackMode.PLAY
+        ? settings.videoMaxPlaySec
         : settings.photoDisplaySec
-    );
+    ));
+    const stopDurationSec = itemDurationsSec.reduce((sum, value) => sum + value, 0);
     return {
       ...beat,
-      photos: normalizeRepresentativeMedia(beat.photos, settings.videoMode),
-      hasVideo,
+      photos: items,
+      hasVideo: items.some(item => item.mediaType === 'video'),
       videoMode: settings.videoMode,
-      desiredDurationSec
+      itemDurationsSec,
+      desiredDurationSec: stopDurationSec,
+      displayDurationSec: stopDurationSec,
+      routeVideoSec: beat.videoSec
     };
   });
+}
 
-  const windows = allocateBeatWindows(prepared, travelDuration);
-  return prepared.map((beat, index) => ({
-    ...beat,
-    startSec: windows[index].startSec,
-    endSec: windows[index].endSec,
-    displayDurationSec: windows[index].endSec - windows[index].startSec
-  }));
+/**
+ * Insert stationary frames at every media beat. The original route timing is
+ * preserved and media stop time is added on top, so the final photo-journey
+ * duration is route duration + all media stop durations.
+ */
+export function insertPhotoJourneyStops(plan, beats) {
+  if (!plan?.frames?.length || !beats?.length) return { plan, beats: beats || [] };
+
+  const fps = Math.max(1, Math.round(Number(plan.fps) || 60));
+  const firstOutroIndex = plan.frames.findIndex(frame => frame?.kind === 'OUTRO');
+  const travelFrameCount = firstOutroIndex >= 0 ? firstOutroIndex : plan.frames.length;
+  if (!travelFrameCount) return { plan, beats: [] };
+
+  const scheduled = beats.map((beat, order) => {
+    const routeSec = Number.isFinite(Number(beat.routeVideoSec)) ? Number(beat.routeVideoSec) : Number(beat.videoSec) || 0;
+    const sourceFrameIndex = clampInteger(Math.round(routeSec * fps), 0, travelFrameCount - 1);
+    const itemDurationsSec = Array.isArray(beat.itemDurationsSec) && beat.itemDurationsSec.length === beat.photos.length
+      ? beat.itemDurationsSec
+      : beat.photos.map(() => Math.max(0.1, Number(beat.displayDurationSec) || 3) / Math.max(1, beat.photos.length));
+    const itemFrameCounts = itemDurationsSec.map(seconds => Math.max(1, Math.round(Math.max(0.1, Number(seconds) || 0.1) * fps)));
+    return { beat, order, routeSec, sourceFrameIndex, itemDurationsSec, itemFrameCounts };
+  }).sort((a, b) => a.sourceFrameIndex - b.sourceFrameIndex || a.order - b.order);
+
+  const stopsByFrame = new Map();
+  for (const item of scheduled) {
+    if (!stopsByFrame.has(item.sourceFrameIndex)) stopsByFrame.set(item.sourceFrameIndex, []);
+    stopsByFrame.get(item.sourceFrameIndex).push(item);
+  }
+
+  const frames = [];
+  const expandedBeats = [];
+  for (let sourceIndex = 0; sourceIndex < plan.frames.length; sourceIndex += 1) {
+    const sourceFrame = plan.frames[sourceIndex];
+    if (sourceIndex < travelFrameCount) {
+      for (const scheduledBeat of stopsByFrame.get(sourceIndex) || []) {
+        const startFrame = frames.length;
+        let holdOffset = 0;
+        scheduledBeat.itemFrameCounts.forEach((frameCount, mediaItemIndex) => {
+          for (let localFrame = 0; localFrame < frameCount; localFrame += 1) {
+            frames.push({
+              ...sourceFrame,
+              kind: 'TRAVEL',
+              timeSec: frames.length / fps,
+              sceneBreak: localFrame === 0 && mediaItemIndex === 0 ? sourceFrame.sceneBreak : false,
+              mediaHold: true,
+              mediaBeatId: scheduledBeat.beat.id,
+              mediaItemIndex,
+              mediaItemProgress: frameCount > 1 ? localFrame / (frameCount - 1) : 0,
+              mediaHoldOffsetSec: holdOffset + localFrame / fps,
+              mediaAnchor: scheduledBeat.beat.anchor ? { ...scheduledBeat.beat.anchor } : null,
+              mediaTakenMs: scheduledBeat.beat.takenMs
+            });
+          }
+          holdOffset += frameCount / fps;
+        });
+        const endFrame = frames.length;
+        expandedBeats.push({
+          ...scheduledBeat.beat,
+          routeVideoSec: scheduledBeat.routeSec,
+          startSec: startFrame / fps,
+          endSec: endFrame / fps,
+          videoSec: (startFrame + endFrame) / (2 * fps),
+          displayDurationSec: (endFrame - startFrame) / fps
+        });
+      }
+    }
+
+    frames.push({ ...sourceFrame, timeSec: frames.length / fps });
+  }
+
+  const expandedOutroIndex = frames.findIndex(frame => frame?.kind === 'OUTRO');
+  const travelDurationSec = (expandedOutroIndex >= 0 ? expandedOutroIndex : frames.length) / fps;
+  const durationSec = frames.length / fps;
+  const expandedPlan = {
+    ...plan,
+    frames,
+    travelDurationSec,
+    outroStartSec: travelDurationSec,
+    outroSec: Math.max(0, durationSec - travelDurationSec),
+    durationSec,
+    targetTotalSeconds: durationSec,
+    baseRouteDurationSec: Number(plan.durationSec) || durationSec,
+    mediaStopDurationSec: Math.max(0, durationSec - (Number(plan.durationSec) || durationSec))
+  };
+
+  return { plan: expandedPlan, beats: expandedBeats };
 }
 
 export class PhotoJourneyController extends CorePhotoJourneyController {
+  setJourney(plan, beats) {
+    super.setJourney(plan, beats);
+    this.beatsById = new Map((beats || []).map(beat => [beat.id, beat]));
+    this.activeMediaKey = null;
+  }
+
+  render(frame, frameIndex) {
+    if (!this.enabled || !this.plan || !frame?.mediaHold || !frame.mediaBeatId) {
+      this.clearActive();
+      return;
+    }
+    const beat = this.beatsById?.get(frame.mediaBeatId);
+    if (!beat) {
+      this.clearActive();
+      return;
+    }
+
+    const itemIndex = clampInteger(Number(frame.mediaItemIndex) || 0, 0, Math.max(0, beat.photos.length - 1));
+    const mediaKey = `${beat.id}:${itemIndex}`;
+    if (this.activeMediaKey !== mediaKey) {
+      this.activeBeatId = beat.id;
+      this.activeMediaKey = mediaKey;
+      this.renderBeat({ ...beat, photos: beat.photos[itemIndex] ? [beat.photos[itemIndex]] : [], mediaItemIndex: itemIndex });
+      this.lastPlacementFrame = -Infinity;
+    }
+    if (frameIndex - this.lastPlacementFrame >= Math.max(1, Math.round((this.plan.fps || 60) / 5))) {
+      this.placeBeat(beat, frameIndex);
+      this.lastPlacementFrame = frameIndex;
+    }
+  }
+
+  clearActive() {
+    super.clearActive();
+    this.activeMediaKey = null;
+    this.layer?.classList?.remove('media-stop-active');
+    this.card?.classList?.remove('media-stop-card');
+  }
+
   renderBeat(beat) {
     this.revokeUrls();
     this.images.replaceChildren();
-    this.images.dataset.count = String(beat.photos.length);
+    this.images.dataset.count = '1';
 
-    for (const item of beat.photos) {
+    const item = beat.photos[0];
+    if (item) {
       const figure = document.createElement('figure');
       figure.className = `photo-frame${item.mediaType === 'video' ? ' video-frame' : ''}`;
       const node = createMediaNode(item, beat.videoMode, this.objectUrls);
@@ -149,7 +269,7 @@ export class PhotoJourneyController extends CorePhotoJourneyController {
       if (item.mediaType === 'video') {
         const badge = document.createElement('span');
         badge.className = 'video-media-badge';
-        badge.textContent = beat.videoMode === VideoPlaybackMode.PLAY ? '▶ 재생' : '▶ 영상';
+        badge.textContent = beat.videoMode === VideoPlaybackMode.PLAY ? '▶ 영상 재생' : '▶ 영상 썸네일';
         figure.append(badge);
       }
       this.images.append(figure);
@@ -158,12 +278,45 @@ export class PhotoJourneyController extends CorePhotoJourneyController {
     this.place.textContent = beat.placeName || '장소 확인 중…';
     this.time.textContent = formatPhotoTimestamp(beat.takenMs);
     const sourceLabel = beat.positionSource === 'gps' ? '사진 GPS' : 'Timeline 위치 추정';
-    const videoCount = beat.photos.filter(item => item.mediaType === 'video').length;
-    const videoLabel = videoCount ? ` · 영상 ${videoCount}` : '';
-    const extra = beat.sourceCount > beat.photos.length ? ` · +${beat.sourceCount - beat.photos.length}개` : '';
-    this.meta.textContent = `${sourceLabel}${videoLabel}${extra}`;
+    const ordinal = beat.sourceCount > 1 ? ` · ${Number(beat.mediaItemIndex || 0) + 1}/${Math.min(beat.sourceCount, 3)}` : '';
+    const mediaLabel = item?.mediaType === 'video' ? ' · 영상' : ' · 사진';
+    this.meta.textContent = `${sourceLabel}${mediaLabel}${ordinal}`;
     this.card.hidden = false;
+    this.card.classList.add('media-stop-card');
+    this.layer.classList.add('media-stop-active');
     this.setPhotoAnchor(beat.anchor);
+  }
+
+  placeBeat(beat) {
+    if (!beat.anchor || this.card.hidden) return;
+    const stageRect = this.stage.getBoundingClientRect();
+    const compact = stageRect.width < 650;
+    const cardWidth = compact
+      ? Math.max(280, stageRect.width - 24)
+      : Math.min(980, Math.max(520, stageRect.width * 0.76));
+    const cardHeight = compact
+      ? Math.min(stageRect.height * 0.66, Math.max(300, stageRect.height - 150))
+      : Math.min(720, Math.max(380, stageRect.height * 0.74));
+    const x = Math.max(12, (stageRect.width - cardWidth) / 2);
+    const y = Math.max(72, (stageRect.height - cardHeight) / 2 - 12);
+
+    if (!beat.placeName) {
+      let anchorPx = null;
+      try {
+        const projected = this.map.project([beat.anchor.lng, beat.anchor.lat]);
+        anchorPx = { x: projected.x, y: projected.y };
+      } catch {}
+      const resolved = anchorPx ? this.resolvePlaceName(anchorPx) : null;
+      if (resolved) beat.placeName = resolved;
+      if (this.activeBeatId === beat.id) this.place.textContent = beat.placeName || fallbackPlaceName(beat);
+    }
+
+    this.card.style.width = `${Math.round(cardWidth)}px`;
+    this.card.style.height = `${Math.round(cardHeight)}px`;
+    this.card.style.left = `${Math.round(x)}px`;
+    this.card.style.top = `${Math.round(y)}px`;
+    this.card.dataset.slot = 'MEDIA_STOP';
+    this.setLeader(null, null);
   }
 
   revokeUrls() {
@@ -176,12 +329,12 @@ export class PhotoJourneyController extends CorePhotoJourneyController {
 
 function resolveJourneyMediaOptions(options) {
   const domPhotoSec = readNumberControl('#photoDisplaySeconds');
-  const domVideoMinSec = readNumberControl('#videoMinPlaySeconds');
+  const domVideoMaxSec = readNumberControl('#videoMaxPlaySeconds');
   const domVideoMode = readValueControl('#photoVideoMode');
   return {
     photoDisplaySec: clampNumber(options.photoDisplaySec ?? domPhotoSec ?? 3, 1.5, 8),
     videoMode: normalizeVideoMode(options.videoMode ?? domVideoMode),
-    videoMinPlaySec: clampNumber(options.videoMinPlaySec ?? domVideoMinSec ?? 5, 2, 15)
+    videoMaxPlaySec: clampNumber(options.videoMaxPlaySec ?? domVideoMaxSec ?? 5, 2, 15)
   };
 }
 
@@ -204,53 +357,18 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || min));
 }
 
-function selectBeatsAcrossVideo(beats, maxCount, travelDuration) {
-  if (beats.length <= maxCount) return beats;
-  const buckets = Array.from({ length: maxCount }, () => []);
-  const bucketWidth = travelDuration / maxCount;
-  for (const beat of beats) {
-    const index = Math.min(maxCount - 1, Math.max(0, Math.floor(Number(beat.videoSec || 0) / Math.max(0.001, bucketWidth))));
-    buckets[index].push(beat);
-  }
-  return buckets
-    .map(bucket => bucket.sort((a, b) => beatScore(b) - beatScore(a))[0])
-    .filter(Boolean)
-    .sort((a, b) => a.videoSec - b.videoSec);
-}
-
-function beatScore(beat) {
-  const videos = beat.photos.filter(item => item.mediaType === 'video').length;
-  return Number(beat.sourceCount || beat.photos.length) + videos * 0.35;
+function clampInteger(value, min, max) {
+  return Math.min(max, Math.max(min, Math.round(Number(value) || 0)));
 }
 
 function normalizeRepresentativeMedia(items, videoMode) {
-  if (videoMode !== VideoPlaybackMode.PLAY) return items;
-  const videos = items.filter(item => item.mediaType === 'video');
-  if (videos.length <= 1) return items;
+  const source = Array.from(items || []);
+  if (videoMode !== VideoPlaybackMode.PLAY) return source.slice(0, 3);
+  const videos = source.filter(item => item.mediaType === 'video');
+  if (videos.length <= 1) return source.slice(0, 3);
   const selectedVideo = videos[Math.floor(videos.length / 2)];
-  const photos = items.filter(item => item.mediaType !== 'video');
+  const photos = source.filter(item => item.mediaType !== 'video');
   return [selectedVideo, ...photos].slice(0, 3);
-}
-
-function allocateBeatWindows(beats, travelDuration) {
-  if (!beats.length) return [];
-  const durations = beats.map(beat => Math.max(0.1, Math.min(travelDuration, beat.desiredDurationSec)));
-  const totalDuration = durations.reduce((sum, value) => sum + value, 0);
-  const availableGap = Math.max(0, travelDuration - totalDuration);
-  const centers = beats.map(beat => Math.min(travelDuration, Math.max(0, Number(beat.videoSec) || 0)));
-  const rawGaps = [Math.max(0, centers[0])];
-  for (let i = 1; i < centers.length; i += 1) rawGaps.push(Math.max(0, centers[i] - centers[i - 1]));
-  rawGaps.push(Math.max(0, travelDuration - centers.at(-1)));
-  const gapWeight = rawGaps.reduce((sum, value) => sum + value, 0) || rawGaps.length;
-  const scaledGap = index => availableGap * ((rawGaps[index] || 0) / gapWeight);
-
-  let cursor = scaledGap(0);
-  return beats.map((beat, index) => {
-    const startSec = cursor;
-    const endSec = Math.min(travelDuration, startSec + durations[index]);
-    cursor = endSec + scaledGap(index + 1);
-    return { startSec, endSec };
-  });
 }
 
 function createMediaNode(item, videoMode, objectUrls) {
@@ -279,12 +397,9 @@ function createMediaNode(item, videoMode, objectUrls) {
   video.playsInline = true;
   video.preload = 'metadata';
   video.controls = false;
+  video.loop = false;
 
-  if (videoMode === VideoPlaybackMode.PLAY) {
-    video.autoplay = true;
-    video.loop = true;
-    video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
-  } else {
+  if (videoMode === VideoPlaybackMode.THUMBNAIL) {
     video.addEventListener('loadedmetadata', () => {
       const duration = Number(video.duration);
       if (!Number.isFinite(duration) || duration <= 0) return;
@@ -292,6 +407,10 @@ function createMediaNode(item, videoMode, objectUrls) {
     }, { once: true });
   }
   return video;
+}
+
+function fallbackPlaceName(beat) {
+  return beat.positionSource === 'gps' ? '사진 촬영 위치' : 'Timeline 여행 위치';
 }
 
 function isDisplayableMediaFile(file) {
