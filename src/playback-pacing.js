@@ -91,8 +91,9 @@ export function describeDay(items, indices) {
   let weight = 1
     + Math.log2(1 + Math.max(0, distanceKm)) * 0.22
     + Math.log2(1 + segments.length) * 0.11;
-  if (distanceKm >= 500) weight += 0.35;
-  if (roundTrip) weight += 0.9;
+  if (distanceKm >= 500) weight += 0.55;
+  if (distanceKm >= 900) weight += 0.35;
+  if (roundTrip) weight += 1.5;
 
   return {
     key: localDayKey(segments[0]),
