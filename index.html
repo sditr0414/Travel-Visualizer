@@ -44,9 +44,44 @@
         </div>
       </div>
 
+      <div id="photoJourneyLayer" class="photo-journey-layer" hidden aria-live="polite">
+        <svg class="photo-leader-layer" aria-hidden="true">
+          <line id="photoLeader" x1="0" y1="0" x2="0" y2="0"></line>
+          <circle id="photoLeaderDot" cx="-20" cy="-20" r="4"></circle>
+        </svg>
+        <article id="photoCard" class="photo-card" hidden>
+          <div id="photoImages" class="photo-images" data-count="1"></div>
+          <footer class="photo-caption">
+            <strong id="photoTime">—</strong>
+            <span id="photoMeta">—</span>
+          </footer>
+        </article>
+      </div>
+
       <details class="settings-shell">
         <summary>영상 설정</summary>
         <div class="settings-card">
+          <div class="setting-block">
+            <label for="journeyMode">영상 모드</label>
+            <select id="journeyMode">
+              <option value="ROUTE" selected>발자취 · 전체 여정</option>
+              <option value="PHOTOS">사진 여정 · 발자취 + 사진</option>
+            </select>
+            <p id="journeyModeHint" class="hint">전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.</p>
+          </div>
+
+          <div id="photoImportBlock" class="setting-block photo-import-block" hidden>
+            <div class="setting-head">
+              <label>Google Photos 데이터</label>
+              <output id="photoImportCount">사진 없음</output>
+            </div>
+            <label class="photo-folder-picker">
+              <span>Takeout 폴더 선택</span>
+              <input id="photoFolderInput" type="file" accept="image/*,.json,application/json" webkitdirectory directory multiple />
+            </label>
+            <p id="photoImportHint" class="hint">Google Photos Takeout의 사진과 JSON sidecar를 함께 읽어 촬영 시각·GPS를 사용합니다. GPS가 없으면 같은 시각의 Timeline 위치로 보완합니다.</p>
+          </div>
+
           <div class="setting-block">
             <label for="cameraMode">카메라</label>
             <select id="cameraMode">
