@@ -48,6 +48,7 @@ export async function pickGooglePhotos({ clientId, dateRange, onStatus } = {}) {
     return {
       photos: filtered.photos,
       accessToken,
+      sessionId: session.id,
       stats: {
         picked: mediaItems.length,
         normalizedPhotos: normalized.length,
@@ -57,10 +58,17 @@ export async function pickGooglePhotos({ clientId, dateRange, onStatus } = {}) {
         gpsPhotos: 0
       }
     };
+  } catch (error) {
+    await deleteSessionQuietly(session.id, accessToken);
+    throw error;
   } finally {
     try { popup.close(); } catch {}
-    await deleteSessionQuietly(session.id, accessToken);
   }
+}
+
+export async function releaseGooglePhotosSelection(sessionId, accessToken) {
+  if (!sessionId || !accessToken) return;
+  await deleteSessionQuietly(sessionId, accessToken);
 }
 
 export function normalizePickedMediaItems(items) {
