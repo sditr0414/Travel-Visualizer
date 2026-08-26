@@ -51,6 +51,18 @@ const CAMERA_MODE_HINTS = {
   [CameraMode.SEGMENT]: '도보·지하철·기차 등 각 이동 구간의 거리와 속도에 따라 줌을 적극적으로 바꿉니다.'
 };
 
+const MOBILITY_LABELS = {
+  WALK: '도보',
+  BIKE: '자전거',
+  URBAN_TRANSIT: '도시교통',
+  ROAD: '도로',
+  FAST_GROUND: '철도',
+  FERRY: '페리',
+  FLIGHT: '항공',
+  UNKNOWN: '기타',
+  OVERVIEW: '전체 경로'
+};
+
 status.textContent = '지도 소스 확인 중…';
 const basemap = await resolveBasemap();
 status.textContent = `${basemap.label} 불러오는 중…`;
@@ -274,6 +286,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         map,
         plan,
         onFrame: updateFrameUi,
+        onComplete: handlePlaybackComplete,
         lockToPosition: lockCameraToPosition.checked,
         trackingSpeed: Number(cameraTrackingSpeed.value),
         trailSeconds: 3.2
@@ -296,7 +309,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
         `<strong>${plan.segments.length}</strong> 이동 구간`,
         inferredCount ? `<strong>${inferredCount}</strong> 추정 연결` : '',
-        ...Object.entries(classes).map(([key, value]) => `${key} ${value}`)
+        ...Object.entries(classes).map(([key, value]) => `${mobilityLabel(key)} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
 
       status.textContent = `${currentSourceLabel} · ${basemap.label} · 준비 완료 · 재생 버튼을 눌러 시작`;
@@ -315,7 +328,8 @@ function updateFrameUi(frame) {
     currentDate.textContent = '여행 전체';
   } else {
     const segment = plan.segments[frame.segmentIndex];
-    currentMode.textContent = segment.inferred ? `${frame.mobilityClass} · 추정` : frame.mobilityClass;
+    const label = mobilityLabel(frame.mobilityClass);
+    currentMode.textContent = segment.inferred ? `${label} · 추정` : label;
     currentSpeed.textContent = `${frame.speedKmh.toFixed(1)} km/h`;
     currentZoom.textContent = frame.zoom.toFixed(2);
     const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * frame.progress;
@@ -325,6 +339,16 @@ function updateFrameUi(frame) {
     }).format(new Date(sourceMs));
   }
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
+}
+
+function handlePlaybackComplete() {
+  playButton.textContent = '재생';
+  seek.value = String(plan?.durationSec || 0);
+  status.textContent = `${currentSourceLabel} · 재생 완료 · 재생을 누르면 처음부터 다시 시작`;
+}
+
+function mobilityLabel(value) {
+  return MOBILITY_LABELS[value] || value || '기타';
 }
 
 function setCurrentDataSource(name, type) {
