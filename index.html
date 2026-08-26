@@ -16,6 +16,16 @@
       <span>여행 경로 영상 미리보기</span>
     </div>
 
+    <label class="journey-mode-switch" for="journeyMode">
+      <span>모드</span>
+      <select id="journeyMode" aria-label="영상 모드">
+        <option value="ROUTE" selected>발자취</option>
+        <option value="PHOTOS">사진 여정</option>
+      </select>
+    </label>
+
+    <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos 연결</button>
+
     <div class="source-chip" aria-live="polite">
       <span class="source-dot"></span>
       <div>
@@ -64,25 +74,22 @@
       <details class="settings-shell">
         <summary>영상 설정</summary>
         <div class="settings-card">
-          <div class="setting-block">
-            <label for="journeyMode">영상 모드</label>
-            <select id="journeyMode">
-              <option value="ROUTE" selected>발자취 · 전체 여정</option>
-              <option value="PHOTOS">사진 여정 · 발자취 + 사진</option>
-            </select>
-            <p id="journeyModeHint" class="hint">전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.</p>
-          </div>
+          <p id="journeyModeHint" class="mode-hint hint">전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.</p>
 
           <div id="photoImportBlock" class="setting-block photo-import-block" hidden>
             <div class="setting-head">
-              <label>Google Photos 데이터</label>
+              <label>Google Photos</label>
               <output id="photoImportCount">사진 없음</output>
             </div>
+            <label class="text-field-label" for="googlePhotosClientId">OAuth Client ID</label>
+            <input id="googlePhotosClientId" class="text-field" type="text" inputmode="text" autocomplete="off" placeholder="1234567890-….apps.googleusercontent.com" />
+            <p class="hint">Google Cloud의 웹 애플리케이션 Client ID를 한 번 입력하면 이 브라우저에 저장됩니다. 상단의 Google Photos 연결 버튼으로 사진을 선택합니다.</p>
+            <div class="photo-import-divider"><span>또는 GPS가 필요하면</span></div>
             <label class="photo-folder-picker">
               <span>Takeout 폴더 선택</span>
               <input id="photoFolderInput" type="file" accept="image/*,.json,application/json" webkitdirectory directory multiple />
             </label>
-            <p id="photoImportHint" class="hint">Google Photos Takeout의 사진과 JSON sidecar를 함께 읽어 촬영 시각·GPS를 사용합니다. GPS가 없으면 같은 시각의 Timeline 위치로 보완합니다.</p>
+            <p id="photoImportHint" class="hint">Picker 사진은 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
           </div>
 
           <div class="setting-block">
@@ -122,7 +129,7 @@
             <p id="durationHint" class="hint">여행 거리와 날짜를 분석해 자동 계산합니다.</p>
           </div>
 
-          <details class="advanced-settings">
+          <details class="advanced-settings" open>
             <summary>고급 설정</summary>
             <div class="advanced-grid">
               <div class="date-grid wide">
@@ -176,5 +183,6 @@
   <script src="/vendor/pmtiles.js"></script>
   <script src="/vendor/basemaps.js"></script>
   <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/google-photos-ui.js"></script>
 </body>
 </html>
