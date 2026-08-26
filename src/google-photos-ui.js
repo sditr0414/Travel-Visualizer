@@ -58,15 +58,16 @@ if (journeyMode && connectButton && folderInput && startDate && endDate) {
       const selectedPhotos = pickerResult.photos.length - selectedVideos;
       importCount.textContent = `사진 ${selectedPhotos.toLocaleString()} · 영상 ${selectedVideos.toLocaleString()}`;
       importHint.textContent = `${rangeLabel} 미디어를 사진 여정용으로 준비하는 중입니다.`;
+      const selectedVideoMode = photoVideoMode?.value === 'PLAY' ? 'PLAY' : 'THUMBNAIL';
       const downloadResult = await downloadPreviewFiles(pickerResult.photos, pickerResult.accessToken, {
-        playVideos: photoVideoMode?.value === 'PLAY',
+        playVideos: selectedVideoMode === 'PLAY',
         onProgress: progress => {
           connectButton.textContent = `${progress.done}/${progress.total}`;
           importCount.textContent = `${progress.done.toLocaleString()} / ${progress.total.toLocaleString()}개`;
         }
       });
 
-      applyFilesToPhotoJourney(downloadResult.files);
+      applyFilesToPhotoJourney(downloadResult.files, selectedVideoMode);
       hasPhotosThisSession = downloadResult.files.length > 0;
       const excluded = Number(pickerResult.stats?.excludedOutsideRange || 0);
       importCount.textContent = `사진 ${selectedPhotos.toLocaleString()} · 영상 ${selectedVideos.toLocaleString()}`;
@@ -128,10 +129,11 @@ function formatShortDateRange(start, end) {
   return `${Number(a[2])}/${Number(a[3])}–${Number(b[2])}/${Number(b[3])}`;
 }
 
-function applyFilesToPhotoJourney(files) {
+function applyFilesToPhotoJourney(files, selectedVideoMode) {
   const transfer = new DataTransfer();
   for (const file of files) transfer.items.add(file);
   folderInput.dataset.importSource = 'google-photos-picker';
+  folderInput.dataset.googleVideoMode = selectedVideoMode;
   folderInput.files = transfer.files;
   folderInput.dispatchEvent(new Event('change', { bubbles: true }));
 }
