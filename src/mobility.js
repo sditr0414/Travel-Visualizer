@@ -31,6 +31,7 @@ export function inferMobility(segment) {
   const googleClass = GOOGLE_PRIORS[segment.googleType] || MobilityClass.UNKNOWN;
   const googleConfidence = clamp(segment.googleProbability || 0, 0, 1);
   const activityConfidence = clamp(segment.activityProbability || 0, 0, 1);
+  const priorCompatibility = googlePriorCompatibility(segment.googleType, speed, distanceKm);
   const identityAnchor = protectedIdentityAnchor(segment.googleType, {
     speed,
     distanceKm,
@@ -48,7 +49,7 @@ export function inferMobility(segment) {
   add(scores, MobilityClass.FLIGHT, rising(speed, 250, 650) * 1.5 + rising(distanceKm, 250, 800) * 1.0 + straightness * 0.25);
 
   if (googleClass !== MobilityClass.UNKNOWN) {
-    add(scores, googleClass, 0.25 + googleConfidence * 1.15);
+    add(scores, googleClass, (0.25 + googleConfidence * 1.15) * priorCompatibility);
   }
 
   // CYCLING and urban rail frequently overlap in average speed. Google Timeline's
@@ -78,6 +79,7 @@ export function inferMobility(segment) {
     googleClass,
     googleConfidence,
     activityConfidence,
+    priorCompatibility,
     identityAnchor: identityAnchor?.mobilityClass || null
   };
 }
@@ -189,6 +191,18 @@ function protectedIdentityAnchor(googleType, {
   }
 
   return null;
+}
+
+function googlePriorCompatibility(googleType, speed, distanceKm) {
+  if (googleType === 'CYCLING') {
+    if (speed > 70 || distanceKm > 140) return 0.08;
+    if (speed > 55 || distanceKm > 100) return 0.25;
+  }
+  if (googleType === 'IN_SUBWAY' || googleType === 'IN_TRAM') {
+    if (speed > 180 || distanceKm > 180) return 0.1;
+    if (speed > 140 || distanceKm > 120) return 0.3;
+  }
+  return 1;
 }
 
 function add(map, key, value) { map.set(key, (map.get(key) || 0) + Math.max(0, value)); }
