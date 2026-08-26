@@ -98,8 +98,8 @@ test('recommended automatic camera is closer for non-flight travel while flights
   assert.ok(localViewDiffs.length > 100);
   assert.ok(average(localViewDiffs) > 0.24, `AUTO normal view should be closer, got ${average(localViewDiffs)}`);
   assert.ok(average(localLockedDiffs) > 0.40, `AUTO locked view should be noticeably closer, got ${average(localLockedDiffs)}`);
-  assert.equal(closer.autoCloserBias, 0.28);
-  assert.equal(closer.autoLockedCloserBias, 0.46);
+  assert.ok(Math.abs(closer.autoCloserBias - 0.28) < 1e-9);
+  assert.ok(Math.abs(closer.autoLockedCloserBias - 0.46) < 1e-9);
 });
 
 test('day and segment modes are not changed by the automatic closer wrapper', () => {
