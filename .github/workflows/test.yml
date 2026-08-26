@@ -36,8 +36,13 @@ jobs:
           done
           test -s timeline-bundle.js
           grep -q 'BUNDLED_TIMELINE' timeline-bundle.js
-          curl --fail --silent http://localhost:5173/api/map-status | grep -q '"ready"'
-          curl --fail --silent http://localhost:5173/ | grep -q 'Travel Camera Visualizer'
+          grep -q 'BUNDLED_TIMELINE_META' timeline-bundle.js
+          curl --fail --silent http://localhost:5173/api/map-status -o map-status.json
+          grep -q '"ready"' map-status.json
+          curl --fail --silent http://localhost:5173/api/timeline-status -o timeline-status.json
+          grep -q '"semanticSegments"' timeline-status.json
+          curl --fail --silent http://localhost:5173/ -o index-response.html
+          grep -q 'Travel Camera Visualizer' index-response.html
           cat server.log
       - name: Unit tests
         run: npm test
