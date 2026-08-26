@@ -120,13 +120,20 @@ function autoZoom({ segmentZoom, dayZoom, segment, longDistanceException, totalS
     const sceneSeconds = Math.max(0.1, segment.videoSec || 0);
     const { hardLimit, distanceFloor } = longDistanceZoomDepth(mobility, km);
 
-    // Video time still matters so short scenes do not snap to a very wide scale,
-    // but major local trips get a distance-based minimum depth. This prevents a
-    // 300-500 km train from being forced to almost the same scale as a normal
-    // city day just because the final cut is short.
     const timeDepth = clamp(0.95 + sceneSeconds * 0.78, 1.15, hardLimit);
     const depth = clamp(Math.max(distanceFloor, timeDepth), 1.15, hardLimit);
-    return clamp(segmentZoom, dayZoom - depth, dayZoom + 0.1);
+
+    if (mobility === 'FLIGHT') {
+      // Flights keep the previous framing rules. The destination-country
+      // widening below is intentionally not applied to international travel.
+      return clamp(segmentZoom, dayZoom - depth, dayZoom + 0.1);
+    }
+
+    // For major local travel the planner's segment zoom used to become a hard
+    // floor, preventing the distance-aware policy from opening any wider. Use
+    // whichever is wider: the planner's segment framing or the local-distance
+    // framing derived from the day's normal scale.
+    return clamp(Math.min(segmentZoom, dayZoom - depth), 4, dayZoom + 0.1);
   }
 
   const shortVideo = totalSeconds <= 90;
@@ -137,8 +144,6 @@ function autoZoom({ segmentZoom, dayZoom, segment, longDistanceException, totalS
 
 function longDistanceZoomDepth(mobility, km) {
   if (mobility === 'FLIGHT') {
-    // Preserve the existing flight framing. The wider behavior below is only
-    // for travel inside the destination country/region.
     return { hardLimit: 3.6, distanceFloor: 1.15 };
   }
 
