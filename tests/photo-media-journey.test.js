@@ -11,6 +11,8 @@ function buildPlan() {
     kind: 'TRAVEL',
     timeSec: index / fps,
     segmentIndex: 0,
+    progress: index / Math.max(1, fps * travelDurationSec - 1),
+    speedKmh: 45,
     position: {
       lat: 34.7 - index / (fps * travelDurationSec) * 1.2,
       lng: 135.5 - index / (fps * travelDurationSec) * 5.0
@@ -23,7 +25,8 @@ function buildPlan() {
       fps,
       travelDurationSec,
       outroStartSec: travelDurationSec,
-      durationSec: 35,
+      outroSec: 0,
+      durationSec: travelDurationSec,
       frames,
       segments: [{
         startMs,
@@ -47,37 +50,63 @@ function mediaForPlan(startMs) {
   ];
 }
 
-test('photo scenes honor the configured display duration', () => {
+test('photo journey inserts a stationary stop for every selected media location', () => {
   const { startMs, plan } = buildPlan();
+  const baseDuration = plan.durationSec;
   const beats = buildPhotoJourneyBeats(mediaForPlan(startMs), plan, {
     photoDisplaySec: 3,
     videoMode: VideoPlaybackMode.THUMBNAIL,
-    videoMinPlaySec: 5
+    videoMaxPlaySec: 5
   });
 
-  assert.ok(beats.length >= 3);
+  assert.equal(beats.length, 4);
+  assert.ok(Math.abs(plan.durationSec - (baseDuration + 12)) < 1e-9);
+
   for (const beat of beats) {
-    assert.ok(Math.abs(beat.displayDurationSec - 3) < 1e-6);
-  }
-  for (let i = 1; i < beats.length; i += 1) {
-    assert.ok(beats[i].startSec >= beats[i - 1].endSec - 1e-9);
+    assert.ok(Math.abs(beat.displayDurationSec - 3) < 1e-9);
+    const holdFrames = plan.frames.filter(frame => frame.mediaBeatId === beat.id);
+    assert.equal(holdFrames.length, plan.fps * 3);
+    assert.ok(holdFrames.every(frame => frame.mediaHold && frame.speedKmh === 0));
+    const first = holdFrames[0].position;
+    assert.ok(holdFrames.every(frame => frame.position.lat === first.lat && frame.position.lng === first.lng));
   }
 });
 
-test('video playback scenes reserve at least the configured minimum time', () => {
+test('multiple photos at one capture stop are shown sequentially, one photo duration each', () => {
+  const { startMs, plan } = buildPlan();
+  const media = [
+    { title: 'a.jpg', takenMs: startMs + 20 * 60_000, mediaType: 'photo', hasGps: true, lat: 34.3, lng: 133.8 },
+    { title: 'b.jpg', takenMs: startMs + 21 * 60_000, mediaType: 'photo', hasGps: true, lat: 34.3001, lng: 133.8001 }
+  ];
+  const beats = buildPhotoJourneyBeats(media, plan, {
+    photoDisplaySec: 2.5,
+    videoMode: VideoPlaybackMode.THUMBNAIL,
+    videoMaxPlaySec: 5
+  });
+
+  assert.equal(beats.length, 1);
+  assert.equal(beats[0].photos.length, 2);
+  assert.ok(Math.abs(beats[0].displayDurationSec - 5) < 1e-9);
+  const holdFrames = plan.frames.filter(frame => frame.mediaBeatId === beats[0].id);
+  assert.equal(holdFrames.length, 50);
+  assert.equal(holdFrames.filter(frame => frame.mediaItemIndex === 0).length, 25);
+  assert.equal(holdFrames.filter(frame => frame.mediaItemIndex === 1).length, 25);
+});
+
+test('video playback uses the configured maximum stop time instead of a minimum', () => {
   const { startMs, plan } = buildPlan();
   const beats = buildPhotoJourneyBeats(mediaForPlan(startMs), plan, {
     photoDisplaySec: 3,
     videoMode: VideoPlaybackMode.PLAY,
-    videoMinPlaySec: 5
+    videoMaxPlaySec: 5
   });
 
   const videoBeat = beats.find(beat => beat.photos.some(item => item.mediaType === 'video'));
   assert.ok(videoBeat, 'expected a video beat');
-  assert.ok(videoBeat.displayDurationSec >= 5 - 1e-9);
+  assert.ok(Math.abs(videoBeat.displayDurationSec - 5) < 1e-9);
   assert.equal(videoBeat.videoMode, VideoPlaybackMode.PLAY);
 
-  for (let i = 1; i < beats.length; i += 1) {
-    assert.ok(beats[i].startSec >= beats[i - 1].endSec - 1e-9);
-  }
+  const videoHoldFrames = plan.frames.filter(frame => frame.mediaBeatId === videoBeat.id);
+  assert.equal(videoHoldFrames.length, plan.fps * 5);
+  assert.ok(videoHoldFrames.every(frame => frame.mediaItemIndex === 0));
 });
