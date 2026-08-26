@@ -8,6 +8,7 @@ const videoMinPlaySetting = document.querySelector('#videoMinPlaySetting');
 const playButton = document.querySelector('#playButton');
 const resetButton = document.querySelector('#resetButton');
 const seek = document.querySelector('#seek');
+const photoImages = document.querySelector('#photoImages');
 
 if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMinPlaySeconds) {
   const updateLabels = () => {
@@ -46,5 +47,8 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMinPlaySeconds)
   playButton?.addEventListener('click', () => queueMicrotask(syncJourneyVideos));
   resetButton?.addEventListener('click', () => queueMicrotask(syncJourneyVideos));
   seek?.addEventListener('input', () => queueMicrotask(syncJourneyVideos));
+  if (photoImages && globalThis.MutationObserver) {
+    new MutationObserver(() => queueMicrotask(syncJourneyVideos)).observe(photoImages, { childList: true, subtree: true });
+  }
   updateLabels();
 }
