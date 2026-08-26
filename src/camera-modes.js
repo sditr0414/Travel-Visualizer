@@ -2,6 +2,8 @@ import { clamp, haversineMeters, mercatorProject, mercatorUnproject } from './ge
 
 const TILE_SIZE = 512;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+export const ZOOM_OFFSET_MIN = -1.5;
+export const ZOOM_OFFSET_MAX = 1.5;
 
 export const CameraMode = Object.freeze({
   AUTO: 'AUTO',
@@ -11,14 +13,18 @@ export const CameraMode = Object.freeze({
 
 export function applyCameraMode(plan, {
   mode = CameraMode.AUTO,
+  zoomOffset = 0,
   viewportWidth = 1100,
   viewportHeight = 700
 } = {}) {
   if (!plan?.frames?.length || !plan?.segments?.length) return plan;
 
   const resolvedMode = normalizeCameraMode(mode);
+  const resolvedZoomOffset = clamp(Number(zoomOffset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
   const travelFrames = plan.frames.filter(frame => frame.kind === 'TRAVEL');
-  if (!travelFrames.length) return { ...plan, cameraMode: resolvedMode, dayProfiles: {} };
+  if (!travelFrames.length) {
+    return { ...plan, cameraMode: resolvedMode, zoomOffset: resolvedZoomOffset, dayProfiles: {} };
+  }
 
   const width = clamp(Number(viewportWidth) || 1100, 320, 3840);
   const height = clamp(Number(viewportHeight) || 700, 240, 2160);
@@ -31,7 +37,7 @@ export function applyCameraMode(plan, {
     const dayZoom = dayProfile?.zoom ?? frame.targetZoom ?? frame.zoom;
     const segmentZoom = frame.targetZoom ?? frame.zoom;
     const longDistanceException = isLongDistanceException(segment);
-    const targetZoom = resolvedMode === CameraMode.SEGMENT
+    const baseTargetZoom = resolvedMode === CameraMode.SEGMENT
       ? segmentZoom
       : resolvedMode === CameraMode.DAY
         ? dayModeZoom(dayZoom, segmentZoom, segment)
@@ -42,12 +48,14 @@ export function applyCameraMode(plan, {
             longDistanceException,
             totalSeconds: plan.durationSec
           });
+    const targetZoom = applyLocalZoomOffset(baseTargetZoom, segment, resolvedZoomOffset);
 
     frame.cameraMode = resolvedMode;
     frame.dayKey = dayKey;
     frame.dayZoom = dayZoom;
     frame.segmentZoom = segmentZoom;
     frame.longDistanceException = longDistanceException;
+    frame.modeBaseTargetZoom = baseTargetZoom;
     frame.modeTargetZoom = targetZoom;
     return targetZoom;
   });
@@ -78,6 +86,7 @@ export function applyCameraMode(plan, {
   return {
     ...plan,
     cameraMode: resolvedMode,
+    zoomOffset: resolvedZoomOffset,
     dayProfiles: serializableProfiles(dayProfiles)
   };
 }
@@ -165,6 +174,11 @@ function playableZoomAllowance(segment) {
     case 'FLIGHT': return 0;
     default: return 0.30;
   }
+}
+
+function applyLocalZoomOffset(baseZoom, segment, zoomOffset) {
+  if (segment.inference?.mobilityClass === 'FLIGHT') return baseZoom;
+  return clamp(baseZoom + zoomOffset, 4, 17.3);
 }
 
 function positionLockTargetZoom(baseZoom, segment, longDistanceException, mode) {
