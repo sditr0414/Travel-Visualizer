@@ -35,7 +35,7 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
 
   const updateJourneyCopy = () => {
     if (journeyMode.value === 'PHOTOS' && journeyModeHint) {
-      journeyModeHint.textContent = '촬영 위치에 도착하면 경로를 멈추고 사진·동영상을 크게 감상한 뒤 다음 이동을 이어갑니다.';
+      journeyModeHint.textContent = '촬영 위치에 도착하면 경로를 멈추고 왼쪽 지도·경로와 오른쪽 사진·동영상을 분할 화면으로 함께 보여준 뒤 다음 이동을 이어갑니다.';
     }
   };
 
