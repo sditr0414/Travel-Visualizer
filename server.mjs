@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { access, readFile, readdir, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
@@ -18,50 +19,139 @@ const mime = {
   '.pmtiles': 'application/octet-stream'
 };
 
-const timelinePartNames = Array.from({ length: 9 }, (_, index) =>
-  `part-${String(index + 1).padStart(2, '0')}.txt`
-);
+const timelinePartDir = join(root, 'data', 'timeline-parts');
 const localMapFiles = {
   world: join(root, 'maps', 'world-z5.pmtiles'),
   region: join(root, 'maps', 'korea-japan-z14.pmtiles')
 };
 
 async function buildTimelineModule() {
-  const chunks = await Promise.all(timelinePartNames.map(name =>
-    readFile(join(root, 'data', 'timeline-parts', name), 'utf8')
+  const directSource = await findDirectTimelineSource();
+  if (directSource) {
+    const raw = await readFile(directSource);
+    return buildTimelineFromRaw(raw, {
+      sourceType: 'original-json',
+      sourceName: basename(directSource),
+      partCount: 0
+    });
+  }
+
+  const partNames = (await readdir(timelinePartDir))
+    .filter(name => /^part-\d+\.txt$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  if (!partNames.length) throw new Error('Bundled Timeline parts were not found. Run npm run timeline:setup.');
+
+  const chunks = await Promise.all(partNames.map(name =>
+    readFile(join(timelinePartDir, name), 'utf8')
   ));
   const base64 = chunks.join('').replace(/\s+/g, '');
   if (!base64.startsWith('H4sI') || !base64.endsWith('=')) {
     throw new Error('Bundled Timeline data is incomplete.');
   }
 
+  let raw;
+  try {
+    raw = gunzipSync(Buffer.from(base64, 'base64'));
+  } catch (error) {
+    throw new Error(`Bundled Timeline decompression failed: ${error.message}`);
+  }
+
+  const manifest = await readTimelineManifest();
+  const built = buildTimelineFromRaw(raw, {
+    sourceType: manifest?.fullTimeline ? 'full-fixture' : 'fixture',
+    sourceName: manifest?.sourceName || '타임라인.json',
+    partCount: partNames.length,
+    manifest
+  });
+
+  if (manifest) {
+    if (manifest.sourceSha256 && manifest.sourceSha256 !== built.meta.sourceSha256) {
+      throw new Error('Bundled Timeline manifest SHA-256 does not match the fixture.');
+    }
+    if (Number.isFinite(manifest.semanticSegments) && manifest.semanticSegments !== built.meta.semanticSegments) {
+      throw new Error('Bundled Timeline manifest segment count does not match the fixture.');
+    }
+    if (Number.isFinite(manifest.rawSignals) && manifest.rawSignals !== built.meta.rawSignals) {
+      throw new Error('Bundled Timeline manifest rawSignals count does not match the fixture.');
+    }
+  }
+  return built;
+}
+
+function buildTimelineFromRaw(raw, { sourceType, sourceName, partCount, manifest = null }) {
   let json;
   try {
-    const compressed = Buffer.from(base64, 'base64');
-    const text = gunzipSync(compressed).toString('utf8');
-    json = JSON.parse(text);
+    json = JSON.parse(raw.toString('utf8'));
   } catch (error) {
-    // Never ignore gzip CRC/trailer errors. A corrupt fixture must fail in CI/startup
-    // rather than silently producing a possibly wrong trip.
-    throw new Error(`Bundled Timeline decompression failed: ${error.message}`);
+    throw new Error(`Bundled Timeline JSON parsing failed: ${error.message}`);
   }
 
   if (!Array.isArray(json?.semanticSegments) || json.semanticSegments.length < 100) {
     throw new Error('Bundled Timeline data is invalid or incomplete.');
   }
 
+  const semanticSegments = json.semanticSegments.length;
+  const rawSignals = Array.isArray(json.rawSignals) ? json.rawSignals.length : 0;
+  const sourceSha256 = createHash('sha256').update(raw).digest('hex');
+  const fullTimeline = manifest?.fullTimeline ?? semanticSegments >= 8000;
+  const meta = {
+    sourceType,
+    sourceName,
+    fullTimeline,
+    semanticSegments,
+    rawSignals,
+    sourceSha256
+  };
+
+  // rawSignals and userLocationProfile remain preserved in the compressed source,
+  // but the browser player only needs semanticSegments. Sending only the data the
+  // parser consumes keeps the full Timeline usable without a ~49 MB browser payload.
+  const browserJson = { semanticSegments: json.semanticSegments };
   return {
-    module: `export const BUNDLED_TIMELINE = ${JSON.stringify(json)};\n`,
-    segmentCount: json.semanticSegments.length
+    module: [
+      `export const BUNDLED_TIMELINE = ${JSON.stringify(browserJson)};`,
+      `export const BUNDLED_TIMELINE_META = ${JSON.stringify(meta)};`,
+      ''
+    ].join('\n'),
+    meta,
+    partCount
   };
 }
 
+async function findDirectTimelineSource() {
+  const candidates = [
+    process.env.TIMELINE_JSON,
+    join(root, '타임라인.json'),
+    join(root, 'data', '타임라인.json'),
+    resolve(root, '..', '타임라인.json')
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const file = resolve(candidate);
+    try {
+      await access(file);
+      return file;
+    } catch {}
+  }
+  return null;
+}
+
+async function readTimelineManifest() {
+  try {
+    return JSON.parse(await readFile(join(timelinePartDir, 'manifest.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 let timelineModule;
-let timelineSegmentCount = 0;
+let timelineMeta;
+let timelinePartCount = 0;
 try {
   const builtTimeline = await buildTimelineModule();
   timelineModule = builtTimeline.module;
-  timelineSegmentCount = builtTimeline.segmentCount;
+  timelineMeta = builtTimeline.meta;
+  timelinePartCount = builtTimeline.partCount;
 } catch (error) {
   console.error(`Bundled Timeline fixture error: ${error.message}`);
   process.exitCode = 1;
@@ -75,6 +165,18 @@ createServer(async (req, res) => {
     if (url.pathname === '/api/map-status') {
       const status = await getMapStatus();
       const body = JSON.stringify(status);
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': Buffer.byteLength(body),
+        'cache-control': 'no-store'
+      });
+      if (req.method !== 'HEAD') res.end(body);
+      else res.end();
+      return;
+    }
+
+    if (url.pathname === '/api/timeline-status') {
+      const body = JSON.stringify(timelineMeta);
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': Buffer.byteLength(body),
@@ -122,7 +224,11 @@ createServer(async (req, res) => {
   }
 }).listen(port, () => {
   console.log(`Travel Camera Visualizer: http://localhost:${port}`);
-  console.log(`Bundled Timeline: ${timelinePartNames.length} parts · ${timelineSegmentCount} segments ready`);
+  if (timelineMeta.sourceType === 'original-json') {
+    console.log(`Timeline: ${timelineMeta.sourceName} · ${timelineMeta.semanticSegments} semantic segments · original JSON`);
+  } else {
+    console.log(`Bundled Timeline: ${timelinePartCount} parts · ${timelineMeta.semanticSegments} semantic segments · ${timelineMeta.fullTimeline ? 'full' : 'reduced fixture'}`);
+  }
   printMapStatus();
 });
 
