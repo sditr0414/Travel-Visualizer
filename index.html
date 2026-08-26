@@ -25,6 +25,11 @@
       </select>
     </label>
 
+    <label class="gallery-photo-picker" title="기기 또는 컴퓨터의 사진 라이브러리에서 여행 사진 선택">
+      <span>기기 갤러리</span>
+      <input id="photoGalleryInput" type="file" accept="image/*" multiple />
+    </label>
+
     <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos에서 여행 사진 선택</button>
 
     <div class="source-chip" aria-live="polite">
@@ -79,22 +84,26 @@
 
           <div id="photoImportBlock" class="setting-block photo-import-block" hidden>
             <div class="setting-head">
-              <label>Google Photos</label>
+              <label>사진 소스</label>
               <output id="photoImportCount">사진 없음</output>
             </div>
-            <p class="hint">상단의 Google Photos 버튼에서 로그인하고 사진을 승인하면 현재 여행 일정 밖 사진은 자동 제외합니다.</p>
+            <p class="hint"><strong>기기 갤러리</strong>를 기본으로 사용합니다. 앱 버전에서는 여행 일정에 해당하는 사진의 촬영시각·GPS를 기기 사진 라이브러리에서 직접 읽고 Timeline과 자동 매칭합니다.</p>
+
+            <div class="photo-import-divider"><span>웹 보조 · Google Photos</span></div>
+            <p class="hint">웹에서는 상단 Google Photos 로그인으로 Picker에서 승인한 사진도 사용할 수 있습니다. 현재 여행 일정 밖 사진은 자동 제외합니다.</p>
             <label class="check" style="margin-top:8px; white-space:normal; align-items:flex-start;">
               <input id="persistGooglePhotos" type="checkbox" />
-              <span>선택한 여행 사진 미리보기를 이 브라우저에 저장해 다음 실행에도 자동 사용</span>
+              <span>선택한 Google Photos 미리보기를 이 브라우저에 저장해 다음 실행에도 자동 사용</span>
             </label>
             <p class="hint">체크한 경우에만 브라우저 로컬 저장소에 사진 미리보기를 보관합니다. 서버나 GitHub에는 업로드하지 않습니다.</p>
-            <button id="clearPhotoCache" type="button" style="width:100%; margin-top:7px;" disabled>저장된 여행 사진 삭제</button>
-            <div class="photo-import-divider"><span>GPS가 필요하면</span></div>
+            <button id="clearPhotoCache" type="button" style="width:100%; margin-top:7px;" disabled>저장된 Google Photos 사진 삭제</button>
+
+            <div class="photo-import-divider"><span>정밀 GPS · Takeout</span></div>
             <label class="photo-folder-picker">
               <span>Takeout 폴더 선택</span>
               <input id="photoFolderInput" type="file" accept="image/*,.json,application/json" webkitdirectory directory multiple />
             </label>
-            <p id="photoImportHint" class="hint">Picker 사진은 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
+            <p id="photoImportHint" class="hint">기기 갤러리/Picker 사진은 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
           </div>
 
           <div class="setting-block">
@@ -188,6 +197,7 @@
   <script src="/vendor/pmtiles.js"></script>
   <script src="/vendor/basemaps.js"></script>
   <script type="module" src="./src/main.js"></script>
+  <script type="module" src="./src/gallery-photo-ui.js"></script>
   <script type="module" src="./src/google-photos-ui.js"></script>
 </body>
 </html>
