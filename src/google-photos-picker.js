@@ -1,12 +1,13 @@
 const PICKER_API = 'https://photospicker.googleapis.com/v1';
 const PICKER_SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly';
 const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
+const TRAVEL_TIME_ZONE_OFFSET = '+09:00';
 
 let googleIdentityPromise = null;
 
-export async function pickGooglePhotos({ clientId, onStatus } = {}) {
+export async function pickGooglePhotos({ clientId, dateRange, onStatus } = {}) {
   const resolvedClientId = String(clientId || '').trim();
-  if (!resolvedClientId) throw new Error('Google OAuth Client ID가 필요합니다.');
+  if (!resolvedClientId) throw new Error('Google Photos 로그인을 위한 앱 설정이 없습니다.');
 
   onStatus?.('Google 계정 연결 중…');
   const google = await loadGoogleIdentityServices();
@@ -28,19 +29,30 @@ export async function pickGooglePhotos({ clientId, onStatus } = {}) {
   }
 
   try {
-    onStatus?.('Google Photos에서 여행 사진을 선택하고 완료를 누르세요.');
+    const rangeLabel = formatDateRangeLabel(dateRange);
+    onStatus?.(rangeLabel
+      ? `Google Photos에서 ${rangeLabel} 여행 사진을 선택하고 완료를 누르세요.`
+      : 'Google Photos에서 여행 사진을 선택하고 완료를 누르세요.');
     await waitForSelection(session, accessToken, onStatus);
     onStatus?.('선택한 사진 목록 가져오는 중…');
     const mediaItems = await listSelectedMedia(session.id, accessToken);
-    const photos = normalizePickedMediaItems(mediaItems);
-    if (!photos.length) throw new Error('선택한 항목에서 표시 가능한 사진을 찾지 못했습니다.');
-    onStatus?.(`Google Photos 사진 ${photos.length.toLocaleString()}장 준비 완료`);
+    const normalized = normalizePickedMediaItems(mediaItems);
+    const filtered = filterPhotosToTravelDates(normalized, dateRange);
+    if (!filtered.photos.length) {
+      if (normalized.length && filtered.excludedOutsideRange) {
+        throw new Error(`${rangeLabel || '현재 여행 기간'}에 해당하는 사진이 없습니다.`);
+      }
+      throw new Error('선택한 항목에서 표시 가능한 사진을 찾지 못했습니다.');
+    }
+    onStatus?.(`${rangeLabel ? `${rangeLabel} · ` : ''}사진 ${filtered.photos.length.toLocaleString()}장 준비 완료`);
     return {
-      photos,
+      photos: filtered.photos,
       stats: {
         picked: mediaItems.length,
-        photos: photos.length,
-        videos: mediaItems.length - photos.length,
+        normalizedPhotos: normalized.length,
+        photos: filtered.photos.length,
+        videos: mediaItems.length - normalized.length,
+        excludedOutsideRange: filtered.excludedOutsideRange,
         gpsPhotos: 0
       }
     };
@@ -72,6 +84,22 @@ export function normalizePickedMediaItems(items) {
       source: 'google-photos-picker'
     }];
   }).sort((a, b) => a.takenMs - b.takenMs);
+}
+
+export function filterPhotosToTravelDates(photos, dateRange) {
+  const startDate = normalizeDateOnly(dateRange?.startDate);
+  const endDate = normalizeDateOnly(dateRange?.endDate);
+  if (!startDate || !endDate || endDate < startDate) {
+    return { photos: [...(photos || [])], excludedOutsideRange: 0 };
+  }
+
+  const startMs = Date.parse(`${startDate}T00:00:00${TRAVEL_TIME_ZONE_OFFSET}`);
+  const endMs = Date.parse(`${endDate}T23:59:59.999${TRAVEL_TIME_ZONE_OFFSET}`);
+  const filtered = (photos || []).filter(photo => Number(photo?.takenMs) >= startMs && Number(photo?.takenMs) <= endMs);
+  return {
+    photos: filtered,
+    excludedOutsideRange: Math.max(0, (photos?.length || 0) - filtered.length)
+  };
 }
 
 async function loadGoogleIdentityServices() {
@@ -116,7 +144,7 @@ function requestAccessToken(google, clientId) {
       },
       error_callback: error => reject(new Error(error?.message || 'Google 로그인 창을 완료하지 못했습니다.'))
     });
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestAccessToken({ prompt: '' });
   });
 }
 
@@ -179,6 +207,18 @@ function appendAutoClose(uri) {
 function parseGoogleDurationMs(value, fallback) {
   const match = /^([0-9]+(?:\.[0-9]+)?)s$/.exec(String(value || '').trim());
   return match ? Number(match[1]) * 1000 : fallback;
+}
+
+function normalizeDateOnly(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+function formatDateRangeLabel(dateRange) {
+  const start = normalizeDateOnly(dateRange?.startDate);
+  const end = normalizeDateOnly(dateRange?.endDate);
+  if (!start || !end) return '';
+  return start === end ? start : `${start} ~ ${end}`;
 }
 
 function delay(ms) {
