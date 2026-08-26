@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { gzipSync } from 'node:zlib';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -13,6 +14,7 @@ const PART_CHARS = 180_000;
 
 const explicitArg = process.argv.slice(2).find(arg => !arg.startsWith('--'));
 const allowDifferent = process.argv.includes('--allow-different');
+const pushToGitHub = process.argv.includes('--push');
 const source = await findSource(explicitArg);
 if (!source) {
   throw new Error([
@@ -96,11 +98,28 @@ console.log(`  원본: ${formatBytes(raw.length)}`);
 console.log(`  gzip: ${formatBytes(compressed.length)}`);
 console.log(`  fixture: ${parts.length} parts`);
 console.log(`  SHA-256: ${sha256}`);
-console.log('');
-console.log('GitHub에도 반영하려면 다음을 실행하세요:');
-console.log('  git add data/timeline-parts');
-console.log('  git commit -m "Replace bundled Timeline with full source"');
-console.log('  git push origin main');
+
+if (pushToGitHub) {
+  console.log('\nGitHub main에 전체 Timeline fixture 반영 중…');
+  runGit(['add', '-A', 'data/timeline-parts']);
+  const commit = spawnSync('git', ['commit', '-m', 'Replace bundled Timeline with full source'], {
+    cwd: root,
+    stdio: 'inherit',
+    shell: false,
+    windowsHide: true
+  });
+  if (commit.error) throw commit.error;
+  if (commit.status !== 0) {
+    const clean = spawnSync('git', ['diff', '--cached', '--quiet'], { cwd: root, shell: false, windowsHide: true });
+    if (clean.status !== 0) throw new Error(`git commit 종료 코드 ${commit.status}`);
+    console.log('커밋할 Timeline 변경사항이 없습니다.');
+  }
+  runGit(['push', 'origin', 'main']);
+  console.log('GitHub 반영 완료');
+} else {
+  console.log('\nGitHub에도 한 번에 반영하려면:');
+  console.log('  npm run timeline:setup -- --push');
+}
 
 async function findSource(explicit) {
   const candidates = [
@@ -119,6 +138,17 @@ async function findSource(explicit) {
     } catch {}
   }
   return null;
+}
+
+function runGit(args) {
+  const result = spawnSync('git', args, {
+    cwd: root,
+    stdio: 'inherit',
+    shell: false,
+    windowsHide: true
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`git ${args[0]} 종료 코드 ${result.status}`);
 }
 
 function formatBytes(bytes) {
