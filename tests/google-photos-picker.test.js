@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { filterPhotosToTravelDates, normalizePickedMediaItems } from '../src/google-photos-picker.js';
 
-test('Google Photos Picker items become Timeline-matchable photos', () => {
-  const photos = normalizePickedMediaItems([
+test('Google Photos Picker items preserve photos and videos for Timeline matching', () => {
+  const media = normalizePickedMediaItems([
     {
       id: 'photo-1',
       createTime: '2026-03-25T04:06:32Z',
@@ -21,17 +21,24 @@ test('Google Photos Picker items become Timeline-matchable photos', () => {
       mediaFile: {
         baseUrl: 'https://example.test/video',
         mimeType: 'video/mp4',
-        filename: 'clip.mp4'
+        filename: 'clip.mp4',
+        mediaFileMetadata: { videoMetadata: { status: 'READY' } }
       }
     }
   ]);
 
-  assert.equal(photos.length, 1);
-  assert.equal(photos[0].title, 'Hakata.jpg');
-  assert.equal(photos[0].takenMs, Date.parse('2026-03-25T04:06:32Z'));
-  assert.equal(photos[0].hasGps, false);
-  assert.equal(photos[0].source, 'google-photos-picker');
-  assert.equal(photos[0].remoteUrl, 'https://example.test/photo=w1600-h1600');
+  assert.equal(media.length, 2);
+  assert.equal(media[0].mediaType, 'photo');
+  assert.equal(media[0].title, 'Hakata.jpg');
+  assert.equal(media[0].takenMs, Date.parse('2026-03-25T04:06:32Z'));
+  assert.equal(media[0].hasGps, false);
+  assert.equal(media[0].source, 'google-photos-picker');
+  assert.equal(media[0].remoteUrl, 'https://example.test/photo=w1600-h1600');
+
+  assert.equal(media[1].mediaType, 'video');
+  assert.equal(media[1].remoteThumbnailUrl, 'https://example.test/video=w1600-h1600-no');
+  assert.equal(media[1].remoteVideoUrl, 'https://example.test/video=dv');
+  assert.equal(media[1].videoStatus, 'READY');
 });
 
 test('Picker normalization rejects unusable or undated items', () => {
