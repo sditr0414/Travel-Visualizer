@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 const root = fileURLToPath(new URL('.', import.meta.url));
 const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
 const port = Number(process.env.PORT || 5173);
+const googlePhotosClientId = String(process.env.GOOGLE_PHOTOS_CLIENT_ID || '').trim();
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -200,6 +201,21 @@ createServer(async (req, res) => {
       return;
     }
 
+    if (url.pathname === '/api/google-photos-config') {
+      const body = JSON.stringify({
+        configured: !!googlePhotosClientId,
+        clientId: googlePhotosClientId || null
+      });
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': Buffer.byteLength(body),
+        'cache-control': 'no-store'
+      });
+      if (req.method !== 'HEAD') res.end(body);
+      else res.end();
+      return;
+    }
+
     if (url.pathname === '/data/timeline-bundle.js') {
       res.writeHead(200, {
         'content-type': 'text/javascript; charset=utf-8',
@@ -255,6 +271,7 @@ createServer(async (req, res) => {
   } else {
     console.log(`Bundled Timeline: ${timelinePartCount} parts · ${timelineMeta.semanticSegments} semantic segments · ${timelineMeta.fullTimeline ? 'full' : 'reduced fixture'}`);
   }
+  console.log(`Google Photos: ${googlePhotosClientId ? 'login ready' : 'not configured · set GOOGLE_PHOTOS_CLIENT_ID'}`);
   printMapStatus();
 });
 
