@@ -80,14 +80,21 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
   activities.sort((a, b) => a.startMs - b.startMs);
   timelinePaths.sort((a, b) => a.startMs - b.startMs);
 
-  const enriched = activities.map(activity => enrichActivityWithPath(activity, timelinePaths));
-  const movements = bridgeMovementGaps(enriched, timelinePaths, includeFlights);
+  // Flatten and sort Timeline path evidence once. The previous implementation
+  // repeated flatMap/filter over every path for every activity, which scaled
+  // poorly when the original multi-megabyte Timeline export was selected.
+  const allTimelinePoints = timelinePaths
+    .flatMap(path => path.points)
+    .sort((a, b) => a.timeMs - b.timeMs);
+
+  const enriched = activities.map(activity => enrichActivityWithPath(activity, allTimelinePoints));
+  const movements = bridgeMovementGaps(enriched, allTimelinePoints, includeFlights);
   const routePoints = dedupeChronological(movements.flatMap(m => m.points));
   return { movements, routePoints, visits, timelinePaths };
 }
 
-function enrichActivityWithPath(activity, paths) {
-  const rawPoints = pathForActivity(activity, paths);
+function enrichActivityWithPath(activity, allTimelinePoints) {
+  const rawPoints = pathForActivity(activity, allTimelinePoints);
   const pathDistance = pathDistanceMeters(rawPoints);
   const directDistance = haversineMeters(rawPoints[0] || activity.start, rawPoints[rawPoints.length - 1] || activity.end);
   const stated = Number(activity.statedDistanceMeters);
@@ -118,10 +125,9 @@ function enrichActivityWithPath(activity, paths) {
   };
 }
 
-function bridgeMovementGaps(movements, timelinePaths, includeFlights) {
+function bridgeMovementGaps(movements, allTimelinePoints, includeFlights) {
   if (movements.length < 2) return movements;
   const out = [];
-  const allTimelinePoints = timelinePaths.flatMap(p => p.points).sort((a, b) => a.timeMs - b.timeMs);
 
   for (let i = 0; i < movements.length; i += 1) {
     const current = movements[i];
@@ -133,7 +139,7 @@ function bridgeMovementGaps(movements, timelinePaths, includeFlights) {
     const gapMeters = haversineMeters(current.end, next.start);
     if (gapSec < 0 || gapMeters < 140) continue;
 
-    const between = allTimelinePoints.filter(p => p.timeMs > current.endMs && p.timeMs < next.startMs);
+    const between = timelinePointsInRange(allTimelinePoints, current.endMs, next.startMs, true);
     const candidate = dedupeChronological([
       { ...current.end, timeMs: current.endMs },
       ...between,
@@ -184,12 +190,14 @@ function bridgeMovementGaps(movements, timelinePaths, includeFlights) {
   return out.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
 }
 
-function pathForActivity(activity, paths) {
+function pathForActivity(activity, allTimelinePoints) {
   const toleranceMs = 2 * 60 * 1000;
-  const timelinePoints = paths
-    .flatMap(path => path.points)
-    .filter(p => p.timeMs >= activity.startMs - toleranceMs && p.timeMs <= activity.endMs + toleranceMs)
-    .sort((a, b) => a.timeMs - b.timeMs);
+  const timelinePoints = timelinePointsInRange(
+    allTimelinePoints,
+    activity.startMs - toleranceMs,
+    activity.endMs + toleranceMs,
+    false
+  );
 
   if (!timelinePoints.length) {
     return [
@@ -215,6 +223,25 @@ function pathForActivity(activity, paths) {
     ...timelinePoints,
     ...(useActivityEnd ? [{ ...activity.end, timeMs: activity.endMs }] : [])
   ]);
+}
+
+function timelinePointsInRange(points, minMs, maxMs, excludeEdges = false) {
+  if (!points.length || maxMs < minMs) return [];
+  const startIndex = lowerBoundTime(points, minMs, excludeEdges);
+  const endIndex = lowerBoundTime(points, maxMs, !excludeEdges);
+  return points.slice(startIndex, endIndex);
+}
+
+function lowerBoundTime(points, targetMs, strictGreater) {
+  let low = 0;
+  let high = points.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    const value = points[mid].timeMs;
+    if (value < targetMs || strictGreater && value === targetMs) low = mid + 1;
+    else high = mid;
+  }
+  return low;
 }
 
 function inferGapType(distanceKm, speedKmh) {
