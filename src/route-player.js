@@ -20,6 +20,7 @@ export class RoutePlayer {
     map,
     plan,
     onFrame,
+    onComplete,
     lockToPosition = true,
     trailSeconds = 3.2,
     trackingSpeed = DEFAULT_TRACKING_MULTIPLIER
@@ -27,6 +28,7 @@ export class RoutePlayer {
     this.map = map;
     this.plan = plan;
     this.onFrame = onFrame;
+    this.onComplete = onComplete;
     this.lockToPosition = !!lockToPosition;
     this.trailSeconds = Math.max(0.8, Number(trailSeconds) || 3.2);
     this.trackingSpeed = clamp(Number(trackingSpeed) || DEFAULT_TRACKING_MULTIPLIER, 0.5, 2);
@@ -51,6 +53,7 @@ export class RoutePlayer {
 
   play() {
     if (!this.plan.frames.length || this.playing) return;
+    if (this.pauseAt >= this.plan.durationSec) this.reset();
     this.playing = true;
     const now = performance.now();
     this.startedAt = now - this.pauseAt * 1000;
@@ -86,6 +89,7 @@ export class RoutePlayer {
     if (frameIndex !== this.lastRenderedFrame) this.renderFrame(frameIndex, false);
     if (this.pauseAt >= this.plan.durationSec) {
       this.pause();
+      this.onComplete?.();
       return;
     }
     this.raf = requestAnimationFrame(this.tick);
@@ -249,17 +253,9 @@ function travelTailFrames(plan, frameIndex, trailSeconds) {
   const head = frames[i];
   if (!head || head.kind !== 'TRAVEL') return [];
 
-  const classSeconds = {
-    WALK: 4.4,
-    BIKE: 3.8,
-    URBAN_TRANSIT: 3.2,
-    ROAD: 2.8,
-    FAST_GROUND: 2.2,
-    FERRY: 2.8,
-    FLIGHT: 1.8,
-    UNKNOWN: 3.0
-  }[head.mobilityClass] ?? trailSeconds;
-  const seconds = Math.min(Math.max(0.8, trailSeconds), classSeconds);
+  // Use one stable time window for every mode. Per-mode caps caused visible jumps
+  // such as WALK 4.4s -> FAST_GROUND 2.2s at the exact transport boundary.
+  const seconds = Math.max(0.8, Number(trailSeconds) || 3.2);
   const maxFrames = Math.max(2, Math.round(seconds * (plan.fps || 60)));
   const result = [];
 
