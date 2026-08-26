@@ -5,7 +5,9 @@ import {
   effectiveTrackingMultiplier,
   routeHeadFeatureForFrame,
   tailFeatureCollectionForFrame,
+  trackingDemandPxPerSec,
   trackingDurationScale,
+  trackingPanLimitPxPerSec,
   transportColor
 } from '../src/route-player.js';
 
@@ -49,7 +51,7 @@ test('recent route remains visible across a scene boundary without a connector',
   assert.notDeepEqual(collection.features[0].geometry.coordinates.at(-1), collection.features[1].geometry.coordinates[0]);
 });
 
-test('shorter videos automatically allow faster camera tracking', () => {
+test('shorter videos keep a faster global fallback tracking floor', () => {
   const short = {
     targetTotalSeconds: 60,
     durationLimits: { recommendedSeconds: 180 }
@@ -66,10 +68,9 @@ test('shorter videos automatically allow faster camera tracking', () => {
   assert.ok(trackingDurationScale(short) > trackingDurationScale(recommended));
   assert.equal(trackingDurationScale(recommended), 1);
   assert.ok(trackingDurationScale(long) < trackingDurationScale(recommended));
-  assert.ok(Math.abs(trackingDurationScale(short) - Math.sqrt(3)) < 0.01);
 });
 
-test('tracking slider remains a user multiplier on top of duration adaptation', () => {
+test('tracking slider remains a user multiplier on top of automatic adaptation', () => {
   const short = {
     targetTotalSeconds: 60,
     durationLimits: { recommendedSeconds: 180 }
@@ -79,3 +80,61 @@ test('tracking slider remains a user multiplier on top of duration adaptation', 
   assert.ok(Math.abs(effectiveTrackingMultiplier(short, 0.5) - automatic * 0.5) < 1e-9);
   assert.ok(Math.abs(effectiveTrackingMultiplier(short, 2) - automatic * 2) < 1e-9);
 });
+
+test('instantaneous tracking demand follows actual video motion rather than only total duration', () => {
+  const slow = targetMotionPlan({ frameCount: 181, deltaX: 0.002 });
+  const fast = targetMotionPlan({ frameCount: 61, deltaX: 0.002 });
+
+  const slowDemand = trackingDemandPxPerSec(slow, 90);
+  const fastDemand = trackingDemandPxPerSec(fast, 30);
+
+  assert.ok(fastDemand > slowDemand * 2.5, `expected fast=${fastDemand} to materially exceed slow=${slowDemand}`);
+});
+
+test('tracking pan limit rises with instantaneous motion and accumulated lag', () => {
+  const fast = targetMotionPlan({ frameCount: 61, deltaX: 0.002 });
+  const slow = targetMotionPlan({ frameCount: 181, deltaX: 0.002 });
+
+  const slowLimit = trackingPanLimitPxPerSec(slow, 90, 1, 20);
+  const fastLimit = trackingPanLimitPxPerSec(fast, 30, 1, 20);
+  const catchUpLimit = trackingPanLimitPxPerSec(fast, 30, 1, 180);
+
+  assert.ok(fastLimit > slowLimit, `fast limit ${fastLimit} should exceed slow limit ${slowLimit}`);
+  assert.ok(catchUpLimit > fastLimit, `lag catch-up ${catchUpLimit} should exceed normal fast limit ${fastLimit}`);
+});
+
+test('tracking demand never crosses a scene break', () => {
+  const sceneFrames = [
+    ...targetFrames({ frameCount: 31, startX: 0.50, deltaX: 0.0002, sceneId: 0 }),
+    ...targetFrames({ frameCount: 31, startX: 0.80, deltaX: 0.0002, sceneId: 1 })
+  ];
+  const scenePlan = { fps: 60, frames: sceneFrames };
+
+  const before = trackingDemandPxPerSec(scenePlan, 29);
+  const after = trackingDemandPxPerSec(scenePlan, 32);
+
+  assert.ok(before < 1000, `scene jump leaked into pre-break demand: ${before}`);
+  assert.ok(after < 1000, `scene jump leaked into post-break demand: ${after}`);
+});
+
+function targetMotionPlan({ frameCount, deltaX }) {
+  return {
+    fps: 60,
+    targetTotalSeconds: frameCount / 60,
+    durationLimits: { recommendedSeconds: frameCount / 60 },
+    frames: targetFrames({ frameCount, startX: 0.50, deltaX, sceneId: 0 })
+  };
+}
+
+function targetFrames({ frameCount, startX, deltaX, sceneId }) {
+  return Array.from({ length: frameCount }, (_, index) => ({
+    kind: 'TRAVEL',
+    sceneId,
+    mobilityClass: 'FAST_GROUND',
+    zoom: 10,
+    maxPanPxPerSec: 265,
+    targetCenterX: startX + deltaX * index / Math.max(1, frameCount - 1),
+    targetCenterY: 0.40,
+    position: { lat: 35, lng: 135 + index * 0.001 }
+  }));
+}
