@@ -1,11 +1,12 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, join, normalize } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gunzipSync, inflateRawSync } from 'node:zlib';
+import { gunzipSync } from 'node:zlib';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
+const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
 const port = Number(process.env.PORT || 5173);
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -35,19 +36,13 @@ async function buildTimelineModule() {
   }
 
   let json;
-  let recoveredChecksum = false;
   try {
     const compressed = Buffer.from(base64, 'base64');
-    let text;
-    try {
-      text = gunzipSync(compressed).toString('utf8');
-    } catch (gunzipError) {
-      text = inflateGzipPayloadIgnoringTrailer(compressed).toString('utf8');
-      recoveredChecksum = true;
-      console.warn(`Bundled Timeline gzip checksum mismatch recovered: ${gunzipError.message}`);
-    }
+    const text = gunzipSync(compressed).toString('utf8');
     json = JSON.parse(text);
   } catch (error) {
+    // Never ignore gzip CRC/trailer errors. A corrupt fixture must fail in CI/startup
+    // rather than silently producing a possibly wrong trip.
     throw new Error(`Bundled Timeline decompression failed: ${error.message}`);
   }
 
@@ -57,47 +52,16 @@ async function buildTimelineModule() {
 
   return {
     module: `export const BUNDLED_TIMELINE = ${JSON.stringify(json)};\n`,
-    segmentCount: json.semanticSegments.length,
-    recoveredChecksum
+    segmentCount: json.semanticSegments.length
   };
-}
-
-function inflateGzipPayloadIgnoringTrailer(buffer) {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 18 || buffer[0] !== 0x1f || buffer[1] !== 0x8b || buffer[2] !== 0x08) {
-    throw new Error('invalid gzip header');
-  }
-
-  const flags = buffer[3];
-  let offset = 10;
-  const trailerStart = buffer.length - 8;
-
-  if (flags & 0x04) {
-    if (offset + 2 > trailerStart) throw new Error('invalid gzip extra field');
-    const extraLength = buffer.readUInt16LE(offset);
-    offset += 2 + extraLength;
-  }
-  if (flags & 0x08) offset = skipNullTerminatedGzipField(buffer, offset, trailerStart, 'filename');
-  if (flags & 0x10) offset = skipNullTerminatedGzipField(buffer, offset, trailerStart, 'comment');
-  if (flags & 0x02) offset += 2;
-
-  if (offset >= trailerStart) throw new Error('gzip payload is empty or truncated');
-  return inflateRawSync(buffer.subarray(offset, trailerStart));
-}
-
-function skipNullTerminatedGzipField(buffer, offset, limit, label) {
-  while (offset < limit && buffer[offset] !== 0) offset += 1;
-  if (offset >= limit) throw new Error(`invalid gzip ${label} field`);
-  return offset + 1;
 }
 
 let timelineModule;
 let timelineSegmentCount = 0;
-let timelineRecoveredChecksum = false;
 try {
   const builtTimeline = await buildTimelineModule();
   timelineModule = builtTimeline.module;
   timelineSegmentCount = builtTimeline.segmentCount;
-  timelineRecoveredChecksum = builtTimeline.recoveredChecksum;
 } catch (error) {
   console.error(`Bundled Timeline fixture error: ${error.message}`);
   process.exitCode = 1;
@@ -134,8 +98,8 @@ createServer(async (req, res) => {
 
     const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
     const relative = normalize(pathname).replace(/^([/\\])+/, '');
-    const file = join(root, relative);
-    if (!file.startsWith(root)) throw new Error('invalid path');
+    const file = resolve(root, relative);
+    if (file !== root && !file.startsWith(rootPrefix)) throw new Error('invalid path');
     const info = await stat(file);
     if (!info.isFile()) throw new Error('not a file');
 
@@ -158,7 +122,7 @@ createServer(async (req, res) => {
   }
 }).listen(port, () => {
   console.log(`Travel Camera Visualizer: http://localhost:${port}`);
-  console.log(`Bundled Timeline: ${timelinePartNames.length} parts · ${timelineSegmentCount} segments ready${timelineRecoveredChecksum ? ' · checksum recovered' : ''}`);
+  console.log(`Bundled Timeline: ${timelinePartNames.length} parts · ${timelineSegmentCount} segments ready`);
   printMapStatus();
 });
 
