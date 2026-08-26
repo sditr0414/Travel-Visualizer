@@ -14,15 +14,17 @@ jobs:
         with:
           node-version: 20
       - name: Syntax checks
+        shell: bash
         run: |
+          set -euo pipefail
           node --check server.mjs
-          node --check scripts/setup-local-map.mjs
-          node --check src/local-map.js
-          node --check src/main.js
-          node --check src/route-player.js
+          for file in scripts/*.mjs src/*.js tests/*.js; do
+            node --check "$file"
+          done
       - name: Bundled Timeline startup check
         shell: bash
         run: |
+          set -euo pipefail
           node server.mjs > server.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
@@ -34,6 +36,8 @@ jobs:
           done
           test -s timeline-bundle.js
           grep -q 'BUNDLED_TIMELINE' timeline-bundle.js
+          curl --fail --silent http://localhost:5173/api/map-status | grep -q '"ready"'
+          curl --fail --silent http://localhost:5173/ | grep -q 'Travel Camera Visualizer'
           cat server.log
       - name: Unit tests
         run: npm test
