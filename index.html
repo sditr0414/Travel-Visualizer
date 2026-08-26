@@ -88,7 +88,7 @@
               <label>사진 소스</label>
               <output id="photoImportCount">사진 없음</output>
             </div>
-            <p class="hint"><strong>기기 갤러리</strong>를 기본으로 사용합니다. 앱 버전에서는 여행 일정에 해당하는 사진·동영상의 촬영시각과 GPS를 기기 라이브러리에서 직접 읽고 Timeline과 자동 매칭합니다.</p>
+            <p class="hint"><strong>기기 갤러리</strong>를 기본으로 사용합니다. 사진 여정에서는 촬영 위치에 도착하면 경로가 멈추고, 같은 위치의 사진·동영상을 한 개씩 크게 보여준 뒤 다음 이동을 이어갑니다.</p>
 
             <div class="photo-playback-settings">
               <div>
@@ -96,7 +96,8 @@
                   <label for="photoDisplaySeconds">사진 표시 시간</label>
                   <output id="photoDisplaySecondsLabel">3.0초</output>
                 </div>
-                <input id="photoDisplaySeconds" type="range" min="1.5" max="8" step="0.5" value="3" aria-label="사진 한 장면 표시 시간" />
+                <input id="photoDisplaySeconds" type="range" min="1.5" max="8" step="0.5" value="3" aria-label="사진 한 장 표시 시간" />
+                <p class="hint">사진 한 장마다 이 시간만큼 경로가 정지합니다.</p>
               </div>
 
               <div>
@@ -107,13 +108,13 @@
                 </select>
               </div>
 
-              <div id="videoMinPlaySetting">
+              <div id="videoMaxPlaySetting">
                 <div class="setting-head">
-                  <label for="videoMinPlaySeconds">동영상 최소 재생 시간</label>
-                  <output id="videoMinPlaySecondsLabel">5.0초</output>
+                  <label for="videoMaxPlaySeconds">동영상 최대 재생 시간</label>
+                  <output id="videoMaxPlaySecondsLabel">5.0초</output>
                 </div>
-                <input id="videoMinPlaySeconds" type="range" min="2" max="15" step="0.5" value="5" disabled aria-label="동영상 장면 최소 재생 시간" />
-                <p class="hint">재생 모드에서는 이 시간보다 짧아지지 않도록 대표 장면 수를 자동으로 줄입니다.</p>
+                <input id="videoMaxPlaySeconds" type="range" min="2" max="15" step="0.5" value="5" disabled aria-label="동영상 최대 재생 시간" />
+                <p class="hint">자동 재생에서는 동영상 한 개에 할당할 정지 시간을 이 값까지로 제한합니다.</p>
               </div>
             </div>
 
@@ -158,11 +159,11 @@
 
           <div class="setting-block">
             <div class="setting-head">
-              <label for="videoDuration">영상 길이</label>
+              <label for="videoDuration">이동 구간 길이</label>
               <output id="videoDurationLabel">분석 후 설정</output>
             </div>
-            <input id="videoDuration" type="range" min="60" max="600" step="5" value="300" disabled aria-label="전체 영상 길이" />
-            <p id="durationHint" class="hint">여행 거리와 날짜를 분석해 자동 계산합니다.</p>
+            <input id="videoDuration" type="range" min="60" max="600" step="5" value="300" disabled aria-label="이동 구간 영상 길이" />
+            <p id="durationHint" class="hint">사진 여정에서는 여기에 사진·동영상 정지 시간이 추가되어 최종 영상이 더 길어집니다.</p>
           </div>
 
           <details class="advanced-settings" open>
