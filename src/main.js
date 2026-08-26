@@ -5,6 +5,12 @@ import { RoutePlayer } from './route-player.js';
 import { toGeoJSONLine } from './geo.js';
 import { bundledTimelineMeta, loadBundledTimeline } from './bundled-timeline.js';
 import { resolveBasemap } from './local-map.js';
+import {
+  buildPhotoJourneyBeats,
+  JourneyMode,
+  loadGooglePhotosTakeout,
+  PhotoJourneyController
+} from './photo-journey.js';
 
 const $ = sel => document.querySelector(sel);
 const fileInput = $('#timelineFile');
@@ -13,6 +19,12 @@ const currentDataSourceType = $('#currentDataSourceType');
 const startDate = $('#startDate');
 const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
+const journeyMode = $('#journeyMode');
+const journeyModeHint = $('#journeyModeHint');
+const photoImportBlock = $('#photoImportBlock');
+const photoFolderInput = $('#photoFolderInput');
+const photoImportCount = $('#photoImportCount');
+const photoImportHint = $('#photoImportHint');
 const cameraMode = $('#cameraMode');
 const cameraModeHint = $('#cameraModeHint');
 const cameraZoomOffset = $('#cameraZoomOffset');
@@ -37,12 +49,24 @@ const currentZoom = $('#currentZoom');
 const currentDate = $('#currentDate');
 const videoDate = $('#videoDate');
 const summary = $('#summary');
+const stage = $('.stage');
+const photoJourneyLayer = $('#photoJourneyLayer');
+const photoCard = $('#photoCard');
+const photoImages = $('#photoImages');
+const photoPlace = $('#photoPlace');
+const photoTime = $('#photoTime');
+const photoMeta = $('#photoMeta');
+const photoLeader = $('#photoLeader');
+const photoLeaderDot = $('#photoLeaderDot');
 
 let parsedJson = null;
 let currentData = null;
 let currentSourceLabel = '타임라인.json';
 let player = null;
 let plan = null;
+let photoController = null;
+let photoLibrary = [];
+let photoBeats = [];
 
 const CAMERA_MODE_LABELS = {
   [CameraMode.AUTO]: '자동 · 하루 지역 + 장거리 예외',
@@ -54,6 +78,16 @@ const CAMERA_MODE_HINTS = {
   [CameraMode.AUTO]: '하루 지역을 안정적으로 유지하고 장거리 이동에서만 자연스럽게 넓게 봅니다.',
   [CameraMode.DAY]: '같은 날은 거의 같은 지도 범위를 유지합니다.',
   [CameraMode.SEGMENT]: '이동수단과 거리 변화에 맞춰 줌을 더 적극적으로 바꿉니다.'
+};
+
+const JOURNEY_MODE_LABELS = {
+  [JourneyMode.ROUTE]: '발자취',
+  [JourneyMode.PHOTOS]: '사진 여정'
+};
+
+const JOURNEY_MODE_HINTS = {
+  [JourneyMode.ROUTE]: '전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.',
+  [JourneyMode.PHOTOS]: '발자취를 따라가며 촬영 시각과 위치가 맞는 사진을 함께 보여줍니다. 사진 카드는 경로와 주요 UI를 피해서 자동 배치됩니다.'
 };
 
 const PACING_LABELS = {
@@ -79,9 +113,11 @@ const MOBILITY_LABELS = {
 };
 
 const TRAVEL_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
+  year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tokyo'
+});
+const TRAVEL_MINUTE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
   timeZone: 'Asia/Tokyo'
 });
 
@@ -105,6 +141,7 @@ map.on('load', async () => {
   map.addSource('route-all', { type: 'geojson', data: emptyLine() });
   map.addSource('route-progress', { type: 'geojson', data: emptyFeatureCollection() });
   map.addSource('route-head', { type: 'geojson', data: emptyFeatureCollection() });
+  map.addSource('photo-anchor', { type: 'geojson', data: emptyFeatureCollection() });
 
   map.addLayer({
     id: 'route-all',
@@ -143,7 +180,33 @@ map.on('load', async () => {
       'circle-opacity': 1
     }
   });
+  map.addLayer({
+    id: 'photo-anchor',
+    type: 'circle',
+    source: 'photo-anchor',
+    paint: {
+      'circle-radius': 7,
+      'circle-color': '#ffffff',
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#0f172a',
+      'circle-opacity': 0.96
+    }
+  });
 
+  photoController = new PhotoJourneyController({
+    map,
+    stage,
+    layer: photoJourneyLayer,
+    card: photoCard,
+    images: photoImages,
+    place: photoPlace,
+    time: photoTime,
+    meta: photoMeta,
+    leader: photoLeader,
+    leaderDot: photoLeaderDot
+  });
+
+  updateJourneyModeUi();
   updateCameraModeHint();
   updateZoomOffsetLabel();
   updatePlaybackPacingHint();
@@ -198,8 +261,42 @@ fileInput.addEventListener('change', async () => {
     playButton.disabled = true;
     resetButton.disabled = true;
     seek.disabled = true;
+    photoController?.clear();
     videoDate.hidden = true;
     status.textContent = `JSON 파싱 실패: ${error.message}`;
+  }
+});
+
+photoFolderInput.addEventListener('change', async () => {
+  const files = photoFolderInput.files;
+  if (!files?.length) return;
+  player?.pause();
+  playButton.textContent = '재생';
+  photoImportCount.textContent = '읽는 중…';
+  photoImportHint.textContent = 'Google Photos Takeout의 사진 메타데이터와 sidecar JSON을 분석하는 중입니다.';
+  status.textContent = `Google Photos 데이터 읽는 중 · ${files.length.toLocaleString()}개 파일`;
+
+  try {
+    const result = await loadGooglePhotosTakeout(files, {
+      onProgress: progress => {
+        if (progress.total) photoImportCount.textContent = `${progress.found.toLocaleString()}장 찾음`;
+      }
+    });
+    photoLibrary = result.photos;
+    const stats = result.stats;
+    photoImportCount.textContent = `${stats.photos.toLocaleString()}장 · GPS ${stats.gpsPhotos.toLocaleString()}`;
+    photoImportHint.textContent = stats.photos
+      ? `사진 ${stats.photos.toLocaleString()}장 중 GPS ${stats.gpsPhotos.toLocaleString()}장을 직접 사용합니다. 나머지는 촬영 시각에 맞는 Timeline 위치로 보완합니다.`
+      : '사용 가능한 사진을 찾지 못했습니다. Takeout 폴더에서 사진 파일과 JSON sidecar가 함께 선택됐는지 확인하세요.';
+    status.textContent = `Google Photos 데이터 준비 완료 · 사진 ${stats.photos.toLocaleString()}장`;
+    if (currentData && journeyMode.value === JourneyMode.PHOTOS) rebuildPlan('사진 데이터 변경');
+  } catch (error) {
+    photoLibrary = [];
+    photoBeats = [];
+    photoImportCount.textContent = '가져오기 실패';
+    photoImportHint.textContent = error.message;
+    photoController?.clear();
+    status.textContent = `사진 데이터 처리 실패: ${error.message}`;
   }
 });
 
@@ -210,6 +307,7 @@ loadButton.addEventListener('click', () => {
 function analyzeParsedTimeline(sourceLabel) {
   player?.pause();
   playButton.textContent = '재생';
+  photoController?.clearActive();
   videoDate.hidden = true;
   status.textContent = `${sourceLabel} 분석 중…`;
 
@@ -234,6 +332,8 @@ function analyzeParsedTimeline(sourceLabel) {
     currentData = null;
     player = null;
     plan = null;
+    photoBeats = [];
+    photoController?.clear();
     videoDuration.disabled = true;
     playButton.disabled = true;
     resetButton.disabled = true;
@@ -243,6 +343,7 @@ function analyzeParsedTimeline(sourceLabel) {
     map.getSource('route-all')?.setData(emptyLine());
     map.getSource('route-progress')?.setData(emptyFeatureCollection());
     map.getSource('route-head')?.setData(emptyFeatureCollection());
+    map.getSource('photo-anchor')?.setData(emptyFeatureCollection());
     videoDate.hidden = true;
     status.textContent = `계산 실패: ${error.message}`;
   }
@@ -251,6 +352,11 @@ function analyzeParsedTimeline(sourceLabel) {
 videoDuration.addEventListener('input', () => updateDurationLabel(Number(videoDuration.value)));
 videoDuration.addEventListener('change', () => {
   if (currentData) rebuildPlan('영상 길이 변경');
+});
+
+journeyMode.addEventListener('change', () => {
+  updateJourneyModeUi();
+  if (currentData) rebuildPlan('영상 모드 변경');
 });
 
 cameraMode.addEventListener('change', () => {
@@ -296,7 +402,7 @@ playButton.addEventListener('click', () => {
   } else {
     player.play();
     playButton.textContent = '일시정지';
-    status.textContent = `${currentSourceLabel} · 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${PACING_LABELS[plan.pacingMode]} · ${formatDuration(plan.durationSec)}`;
+    status.textContent = `${currentSourceLabel} · ${JOURNEY_MODE_LABELS[journeyMode.value]} · 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${PACING_LABELS[plan.pacingMode]} · ${formatDuration(plan.durationSec)}`;
   }
 });
 
@@ -313,6 +419,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
   if (!currentData?.movements.length) return;
   player?.pause();
   playButton.textContent = '재생';
+  photoController?.clearActive();
   videoDate.hidden = true;
   status.textContent = `${sourceLabel} · 60fps 경로 계산 중…`;
 
@@ -334,10 +441,16 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         viewportHeight
       });
 
+      const photoMode = journeyMode.value === JourneyMode.PHOTOS;
+      photoBeats = photoMode ? buildPhotoJourneyBeats(photoLibrary, plan) : [];
+      photoController?.setEnabled(photoMode);
+      photoController?.setJourney(plan, photoBeats);
+
       const fullRoute = currentData.movements.flatMap(segment => segment.points || []);
       map.getSource('route-all').setData(toGeoJSONLine(fullRoute));
       map.getSource('route-progress').setData(emptyFeatureCollection());
       map.getSource('route-head').setData(emptyFeatureCollection());
+      map.getSource('photo-anchor').setData(emptyFeatureCollection());
       map.setLayoutProperty('route-all', 'visibility', showFullRoute.checked ? 'visible' : 'none');
 
       player = new RoutePlayer({
@@ -347,7 +460,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         onComplete: handlePlaybackComplete,
         lockToPosition: lockCameraToPosition.checked,
         trackingSpeed: Number(cameraTrackingSpeed.value),
-        trailSeconds: 3.2
+        trailSeconds: photoMode ? 4.8 : 3.2
       });
       player.reset();
 
@@ -361,6 +474,8 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       const classes = countBy(plan.segments, segment => segment.inference.mobilityClass);
       const inferredCount = currentData.movements.filter(segment => segment.inferred).length;
       summary.innerHTML = [
+        `<strong>${JOURNEY_MODE_LABELS[journeyMode.value]}</strong>`,
+        photoMode ? `<strong>사진 장면 ${photoBeats.length}</strong>` : '',
         '<strong>60 FPS</strong>',
         `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`,
         `<strong>현지 줌 ${formatZoomOffset(plan.zoomOffset)}</strong>`,
@@ -371,15 +486,18 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         ...Object.entries(classes).map(([key, value]) => `${mobilityLabel(key)} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
 
-      status.textContent = `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작`;
+      status.textContent = photoMode && !photoLibrary.length
+        ? `${currentSourceLabel} · 사진 여정 준비 · Google Photos Takeout 폴더를 선택하세요`
+        : `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작`;
     } catch (error) {
+      photoController?.clear();
       videoDate.hidden = true;
       status.textContent = `카메라 계산 실패: ${error.message}`;
     }
   });
 }
 
-function updateFrameUi(frame) {
+function updateFrameUi(frame, frameIndex) {
   const isOutro = frame.kind === 'OUTRO';
   if (isOutro) {
     currentMode.textContent = '전체 경로';
@@ -394,27 +512,40 @@ function updateFrameUi(frame) {
     currentSpeed.textContent = `${frame.speedKmh.toFixed(1)} km/h`;
     currentZoom.textContent = frame.zoom.toFixed(2);
     const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * frame.progress;
-    const dateLabel = formatTravelDate(sourceMs);
+    const dateLabel = journeyMode.value === JourneyMode.PHOTOS
+      ? formatTravelMinute(sourceMs)
+      : formatTravelDate(sourceMs);
     currentDate.textContent = dateLabel;
     if (videoDate.textContent !== dateLabel) videoDate.textContent = dateLabel;
     videoDate.hidden = false;
   }
+  photoController?.render(frame, frameIndex);
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
 }
 
 function handlePlaybackComplete() {
+  photoController?.clearActive();
   playButton.textContent = '재생';
   seek.value = String(plan?.durationSec || 0);
   status.textContent = `${currentSourceLabel} · 재생 완료 · 재생을 누르면 처음부터 다시 시작`;
 }
 
 function formatTravelDate(ms) {
+  return formatDateParts(TRAVEL_DATE_FORMATTER, ms, false);
+}
+
+function formatTravelMinute(ms) {
+  return formatDateParts(TRAVEL_MINUTE_FORMATTER, ms, true);
+}
+
+function formatDateParts(formatter, ms, includeTime) {
   const parts = Object.fromEntries(
-    TRAVEL_DATE_FORMATTER.formatToParts(new Date(ms))
+    formatter.formatToParts(new Date(ms))
       .filter(part => part.type !== 'literal')
       .map(part => [part.type, part.value])
   );
-  return `${parts.year}.${parts.month}.${parts.day}`;
+  const date = `${parts.year}.${parts.month}.${parts.day}`;
+  return includeTime ? `${date} ${parts.hour}:${parts.minute}` : date;
 }
 
 function mobilityLabel(value) {
@@ -425,6 +556,13 @@ function setCurrentDataSource(name, type) {
   currentDataSourceName.textContent = name || '—';
   currentDataSourceName.title = name || '';
   currentDataSourceType.textContent = type || '';
+}
+
+function updateJourneyModeUi() {
+  const photoMode = journeyMode.value === JourneyMode.PHOTOS;
+  photoImportBlock.hidden = !photoMode;
+  journeyModeHint.textContent = JOURNEY_MODE_HINTS[journeyMode.value] || JOURNEY_MODE_HINTS[JourneyMode.ROUTE];
+  photoController?.setEnabled(photoMode);
 }
 
 function updateCameraModeHint() {
