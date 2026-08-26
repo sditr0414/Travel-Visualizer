@@ -20,7 +20,7 @@ let restoredKey = '';
 if (journeyMode && connectButton && folderInput && startDate && endDate) {
   const syncMode = () => {
     const photoMode = journeyMode.value === 'PHOTOS';
-    connectButton.hidden = !photoMode;
+    connectButton.hidden = false;
     updateConnectButtonLabel();
     if (photoMode) restoreCachedTripPhotos().catch(() => {});
   };
@@ -42,6 +42,11 @@ if (journeyMode && connectButton && folderInput && startDate && endDate) {
   syncMode();
 
   connectButton.addEventListener('click', async () => {
+    if (journeyMode.value !== 'PHOTOS') {
+      journeyMode.value = 'PHOTOS';
+      journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     connectButton.disabled = true;
     let pickerResult = null;
     try {
@@ -56,7 +61,7 @@ if (journeyMode && connectButton && folderInput && startDate && endDate) {
         clientId: config.clientId,
         dateRange,
         onStatus: message => {
-          connectButton.textContent = '연결 중…';
+          connectButton.textContent = 'Google 로그인 중…';
           importHint.textContent = message;
           status.textContent = message;
         }
@@ -97,6 +102,7 @@ if (journeyMode && connectButton && folderInput && startDate && endDate) {
         await releaseGooglePhotosSelection(pickerResult.sessionId, pickerResult.accessToken).catch(() => {});
       }
       connectButton.disabled = false;
+      updateConnectButtonLabel(!!pickerResult?.photos?.length);
     }
   });
 }
@@ -157,9 +163,13 @@ function updateConnectButtonLabel(hasPhotos = false) {
     connectButton.textContent = '사진 새로 선택';
     return;
   }
+  if (journeyMode.value !== 'PHOTOS') {
+    connectButton.textContent = 'Google Photos 로그인';
+    return;
+  }
   const { startDate: start, endDate: end } = currentDateRange();
   const short = formatShortDateRange(start, end);
-  connectButton.textContent = short ? `여행 사진 선택 · ${short}` : 'Google Photos에서 여행 사진 선택';
+  connectButton.textContent = short ? `Google 로그인 · ${short}` : 'Google Photos 로그인';
 }
 
 function formatShortDateRange(start, end) {
