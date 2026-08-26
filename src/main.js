@@ -3,7 +3,7 @@ import { durationLimitsForMovements, planPlayback } from './camera-planner.js';
 import { applyCameraMode, CameraMode } from './camera-modes.js';
 import { RoutePlayer } from './route-player.js';
 import { toGeoJSONLine } from './geo.js';
-import { loadBundledTimeline } from './bundled-timeline.js';
+import { bundledTimelineMeta, loadBundledTimeline } from './bundled-timeline.js';
 import { resolveBasemap } from './local-map.js';
 
 const $ = sel => document.querySelector(sel);
@@ -143,18 +143,24 @@ map.on('error', event => {
 });
 
 async function loadDefaultTimeline() {
-  status.textContent = `${basemap.label} · 타임라인.json 불러오는 중…`;
-  setCurrentDataSource('타임라인.json', '내장 테스트 데이터');
+  const meta = bundledTimelineMeta();
+  const sourceName = meta.sourceName || '타임라인.json';
+  const sourceType = meta.fullTimeline
+    ? `전체 원본 Timeline · ${Number(meta.semanticSegments || 0).toLocaleString()}개`
+    : `축소 Timeline · ${Number(meta.semanticSegments || 0).toLocaleString()}개`;
+
+  status.textContent = `${basemap.label} · ${sourceName} 불러오는 중…`;
+  setCurrentDataSource(sourceName, sourceType);
   try {
     parsedJson = await loadBundledTimeline();
-    currentSourceLabel = '타임라인.json';
+    currentSourceLabel = sourceName;
     loadButton.disabled = false;
     analyzeParsedTimeline(currentSourceLabel);
   } catch (error) {
     parsedJson = null;
     loadButton.disabled = true;
     videoDate.hidden = true;
-    status.textContent = `기본 테스트 데이터 로드 실패: ${error.message}`;
+    status.textContent = `기본 Timeline 로드 실패: ${error.message}`;
   }
 }
 
