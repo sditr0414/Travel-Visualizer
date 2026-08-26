@@ -31,7 +31,7 @@ test('route head is exactly the current travel position', () => {
 
 test('recent route remains visible across a scene boundary without a connector', () => {
   const scenePlan = {
-    fps: 1,
+    fps: 60,
     frames: [
       { kind: 'TRAVEL', sceneId: 0, mobilityClass: 'WALK', position: { lat: 35, lng: 135 } },
       { kind: 'TRAVEL', sceneId: 0, mobilityClass: 'WALK', position: { lat: 35.001, lng: 135.001 } },
