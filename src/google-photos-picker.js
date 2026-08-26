@@ -47,6 +47,7 @@ export async function pickGooglePhotos({ clientId, dateRange, onStatus } = {}) {
     onStatus?.(`${rangeLabel ? `${rangeLabel} · ` : ''}사진 ${filtered.photos.length.toLocaleString()}장 준비 완료`);
     return {
       photos: filtered.photos,
+      accessToken,
       stats: {
         picked: mediaItems.length,
         normalizedPhotos: normalized.length,
@@ -144,7 +145,7 @@ function requestAccessToken(google, clientId) {
       },
       error_callback: error => reject(new Error(error?.message || 'Google 로그인 창을 완료하지 못했습니다.'))
     });
-    tokenClient.requestAccessToken({ prompt: '' });
+    tokenClient.requestAccessToken();
   });
 }
 
