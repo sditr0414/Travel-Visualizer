@@ -1,9 +1,12 @@
 import { clamp, haversineMeters, mercatorProject, mercatorUnproject } from './geo.js';
 import { inferMobility } from './mobility.js';
+import { allocatePlaybackSeconds, PlaybackPacing } from './playback-pacing.js';
 
 const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE = 512;
 const DAY_MS = 86_400_000;
+
+export { PlaybackPacing };
 
 export function durationLimitsForMovements(movements) {
   if (!movements?.length) {
@@ -33,14 +36,18 @@ export function planPlayback(movements, {
   targetTotalSeconds = null,
   maxTotalSeconds = null,
   viewportWidth = 1100,
-  viewportHeight = 700
+  viewportHeight = 700,
+  pacingMode = PlaybackPacing.LOCAL_DAYS
 } = {}) {
   const safeFps = clamp(Math.round(Number(fps) || 60), 24, 120);
+  const resolvedPacingMode = pacingMode === PlaybackPacing.GLOBAL
+    ? PlaybackPacing.GLOBAL
+    : PlaybackPacing.LOCAL_DAYS;
   if (!movements?.length) {
     return {
       frames: [], segments: [], fps: safeFps, durationSec: 0,
       durationLimits: durationLimitsForMovements([]), outroStartSec: 0,
-      outroSec: 0, routeRenderPoints: []
+      outroSec: 0, routeRenderPoints: [], pacingMode: resolvedPacingMode
     };
   }
 
@@ -66,16 +73,12 @@ export function planPlayback(movements, {
     const weight = playbackWeight(inference, path.totalMeters / 1000, movement.inferred);
     return { ...movement, index, path, inference, intent, weight };
   });
-
-  const floorSec = Math.max(2 / safeFps, Math.min(0.12, movementBudgetSec / (enriched.length * 3)));
-  const floorTotal = floorSec * enriched.length;
-  const distributable = Math.max(0, movementBudgetSec - floorTotal);
-  const weightTotal = Math.max(0.001, enriched.reduce((sum, s) => sum + s.weight, 0));
+  const videoSeconds = allocatePlaybackSeconds(enriched, movementBudgetSec, safeFps, resolvedPacingMode);
 
   let cursor = 0;
   let sceneId = 0;
   const segments = enriched.map((segment, index) => {
-    const videoSec = floorSec + distributable * segment.weight / weightTotal;
+    const videoSec = videoSeconds[index];
     const previous = index > 0 ? enriched[index - 1] : null;
     const gapKm = previous ? haversineMeters(previous.end, segment.start) / 1000 : 0;
     const sceneBreakBefore = !!previous && gapKm > 10;
@@ -177,6 +180,7 @@ export function planPlayback(movements, {
     outroSec,
     durationLimits,
     targetTotalSeconds: totalTargetSec,
+    pacingMode: resolvedPacingMode,
     routeRenderPoints: samplePoints(routePoints, 16000)
   };
 }
