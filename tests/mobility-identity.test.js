@@ -68,6 +68,51 @@ test('subway at bicycle-like speed remains urban transit', () => {
   assert.equal(inferred.mobilityClass, MobilityClass.URBAN_TRANSIT);
 });
 
+test('local train remains rail even when average speed overlaps urban transit', () => {
+  const inferred = inferMobility(movement({
+    distanceKm: 9.79,
+    speedKmh: 33.8,
+    type: 'IN_TRAIN',
+    probability: 0,
+    activityProbability: 0.983
+  }));
+  assert.equal(inferred.mobilityClass, MobilityClass.FAST_GROUND);
+  assert.equal(inferred.identityAnchor, MobilityClass.FAST_GROUND);
+});
+
+test('slow bus remains road instead of bicycle or urban rail', () => {
+  const inferred = inferMobility(movement({
+    distanceKm: 3.77,
+    speedKmh: 11.4,
+    type: 'IN_BUS',
+    probability: 0,
+    activityProbability: 0.994
+  }));
+  assert.equal(inferred.mobilityClass, MobilityClass.ROAD);
+});
+
+test('slow ferry remains ferry instead of walking', () => {
+  const inferred = inferMobility(movement({
+    distanceKm: 1.76,
+    speedKmh: 6.2,
+    type: 'IN_FERRY',
+    probability: 0.497,
+    activityProbability: 0.931
+  }));
+  assert.equal(inferred.mobilityClass, MobilityClass.FERRY);
+});
+
+test('creeping passenger vehicle remains road when Timeline activity confidence is high', () => {
+  const inferred = inferMobility(movement({
+    distanceKm: 0.12,
+    speedKmh: 1.0,
+    type: 'IN_PASSENGER_VEHICLE',
+    probability: 0.864,
+    activityProbability: 0.978
+  }));
+  assert.equal(inferred.mobilityClass, MobilityClass.ROAD);
+});
+
 test('physically implausible cycling label is not protected', () => {
   const inferred = inferMobility(movement({
     distanceKm: 80,
@@ -78,4 +123,17 @@ test('physically implausible cycling label is not protected', () => {
   }));
   assert.notEqual(inferred.mobilityClass, MobilityClass.BIKE);
   assert.equal(inferred.identityAnchor, null);
+});
+
+test('physically implausible bus label is discounted', () => {
+  const inferred = inferMobility(movement({
+    distanceKm: 300,
+    speedKmh: 310,
+    type: 'IN_BUS',
+    probability: 0.95,
+    activityProbability: 0.99
+  }));
+  assert.notEqual(inferred.mobilityClass, MobilityClass.ROAD);
+  assert.equal(inferred.identityAnchor, null);
+  assert.ok(inferred.priorCompatibility < 0.2);
 });
