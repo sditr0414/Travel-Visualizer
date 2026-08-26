@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePickedMediaItems } from '../src/google-photos-picker.js';
+import { filterPhotosToTravelDates, normalizePickedMediaItems } from '../src/google-photos-picker.js';
 
 test('Google Photos Picker items become Timeline-matchable photos', () => {
   const photos = normalizePickedMediaItems([
@@ -40,4 +40,29 @@ test('Picker normalization rejects unusable or undated items', () => {
     { id: 'missing-url', createTime: '2026-03-25T04:06:32Z', type: 'PHOTO', mediaFile: { mimeType: 'image/jpeg' } }
   ]);
   assert.deepEqual(photos, []);
+});
+
+test('Google Photos selections are automatically limited to the Timeline trip dates in Japan time', () => {
+  const photos = [
+    { title: 'before.jpg', takenMs: Date.parse('2026-03-16T14:59:59Z') },
+    { title: 'first.jpg', takenMs: Date.parse('2026-03-16T15:00:00Z') },
+    { title: 'middle.jpg', takenMs: Date.parse('2026-03-25T04:06:32Z') },
+    { title: 'last.jpg', takenMs: Date.parse('2026-03-31T14:59:59.999Z') },
+    { title: 'after.jpg', takenMs: Date.parse('2026-03-31T15:00:00Z') }
+  ];
+
+  const result = filterPhotosToTravelDates(photos, {
+    startDate: '2026-03-17',
+    endDate: '2026-03-31'
+  });
+
+  assert.deepEqual(result.photos.map(photo => photo.title), ['first.jpg', 'middle.jpg', 'last.jpg']);
+  assert.equal(result.excludedOutsideRange, 2);
+});
+
+test('invalid date range leaves the selected photos untouched', () => {
+  const photos = [{ title: 'one.jpg', takenMs: Date.parse('2026-03-25T04:06:32Z') }];
+  const result = filterPhotosToTravelDates(photos, { startDate: '', endDate: '' });
+  assert.deepEqual(result.photos, photos);
+  assert.equal(result.excludedOutsideRange, 0);
 });
