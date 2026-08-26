@@ -58,6 +58,15 @@
           </div>
 
           <div class="setting-block">
+            <div class="setting-head">
+              <label for="cameraZoomOffset">현지 줌</label>
+              <output id="cameraZoomOffsetLabel">+0.3</output>
+            </div>
+            <input id="cameraZoomOffset" type="range" min="-1.5" max="1.5" step="0.1" value="0.3" aria-label="현지 카메라 줌 레벨 보정" />
+            <p class="hint">+는 더 가깝게, −는 더 넓게 봅니다. 항공편과 마지막 전체 경로 화면은 그대로 유지합니다.</p>
+          </div>
+
+          <div class="setting-block">
             <label for="playbackPacing">시간 배분</label>
             <select id="playbackPacing">
               <option value="LOCAL_DAYS" selected>현지 여행일 균형 · 권장</option>
