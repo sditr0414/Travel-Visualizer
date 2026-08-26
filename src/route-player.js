@@ -107,9 +107,9 @@ export class RoutePlayer {
       cameraCenter = frame.center;
       this.trackedCenter = null;
     } else if (this.lockToPosition) {
-      cameraCenter = frame.position;
+      cameraCenter = frame.lockedCenter || frame.position;
       cameraZoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom : frame.zoom;
-      this.trackedCenter = { ...frame.position };
+      this.trackedCenter = { ...cameraCenter };
     } else {
       cameraCenter = this.followCamera(frame, clampedIndex, force || frame.sceneBreak);
     }
