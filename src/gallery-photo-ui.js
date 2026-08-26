@@ -6,7 +6,7 @@ const status = document.querySelector('#status');
 
 if (galleryInput && journeyMode && photoFolderInput) {
   galleryInput.addEventListener('change', () => {
-    const files = Array.from(galleryInput.files || []).filter(file => String(file.type || '').startsWith('image/'));
+    const files = Array.from(galleryInput.files || []).filter(file => /^(?:image|video)\//.test(String(file.type || '')));
     if (!files.length) return;
 
     if (journeyMode.value !== 'PHOTOS') {
@@ -25,14 +25,12 @@ if (galleryInput && journeyMode && photoFolderInput) {
     photoFolderInput.files = transfer.files;
     photoFolderInput.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // The shared photo importer also handles Takeout and Google Photos. Keep the
-    // user-facing copy source-neutral after the shared pipeline finishes.
     setTimeout(() => {
       if (/Google Photos 데이터 준비 완료/.test(status?.textContent || '')) {
         status.textContent = status.textContent.replace('Google Photos 데이터 준비 완료', '기기 갤러리 준비 완료');
       }
       if (/Takeout 폴더/.test(importHint?.textContent || '')) {
-        importHint.textContent = '선택한 사진에서 사용할 수 있는 촬영시각을 찾지 못했습니다. 앱 버전에서는 기기 사진 라이브러리의 촬영시각·GPS 메타데이터를 직접 사용합니다.';
+        importHint.textContent = '선택한 미디어에서 사용할 수 있는 촬영시각을 찾지 못했습니다. 앱 버전에서는 기기 사진 라이브러리의 촬영시각·GPS 메타데이터를 직접 사용합니다.';
       }
     }, 0);
   });
