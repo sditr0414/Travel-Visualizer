@@ -52,9 +52,16 @@ export function applyCameraMode(plan, {
     return targetZoom;
   });
 
+  const lockedDesired = travelFrames.map((frame, index) => {
+    const segment = plan.segments[frame.segmentIndex];
+    return positionLockTargetZoom(desired[index], segment, frame.longDistanceException, resolvedMode);
+  });
+
   const smoothed = smoothZoomTrajectory(desired, plan.fps || 60, resolvedMode, plan.durationSec);
+  const smoothedLocked = smoothZoomTrajectory(lockedDesired, plan.fps || 60, resolvedMode, plan.durationSec);
   for (let i = 0; i < travelFrames.length; i += 1) {
     travelFrames[i].zoom = smoothed[i];
+    travelFrames[i].lockedZoom = smoothedLocked[i];
   }
   reconnectOutroZoom(plan.frames, travelFrames.at(-1)?.zoom, plan.fps || 60);
 
@@ -126,6 +133,35 @@ function autoZoom({ segmentZoom, dayZoom, segment, longDistanceException, totalS
   const below = shortVideo ? 0.18 : 0.32;
   const above = shortVideo ? 0.32 : 0.55;
   return clamp(segmentZoom, dayZoom - below, dayZoom + above);
+}
+
+function positionLockTargetZoom(baseZoom, segment, longDistanceException, mode) {
+  if (mode !== CameraMode.AUTO || !longDistanceException) return baseZoom;
+  const mobility = segment.inference?.mobilityClass;
+  if (mobility === 'FLIGHT') return baseZoom;
+
+  const km = segmentDistanceKm(segment);
+  let extra = 0;
+  switch (mobility) {
+    case 'FAST_GROUND':
+      extra = km >= 450 ? 0.78 : km >= 300 ? 0.62 : km >= 150 ? 0.42 : km >= 80 ? 0.25 : 0.12;
+      break;
+    case 'FERRY':
+      extra = km >= 150 ? 0.52 : km >= 70 ? 0.36 : 0.20;
+      break;
+    case 'ROAD':
+      extra = km >= 250 ? 0.46 : km >= 140 ? 0.32 : 0.18;
+      break;
+    case 'URBAN_TRANSIT':
+      extra = km >= 70 ? 0.24 : 0.12;
+      break;
+    case 'UNKNOWN':
+      extra = km >= 150 ? 0.28 : 0.14;
+      break;
+    default:
+      extra = 0;
+  }
+  return clamp(baseZoom - extra, 4, 17.3);
 }
 
 function smoothZoomTrajectory(values, fps, mode, totalSeconds) {
