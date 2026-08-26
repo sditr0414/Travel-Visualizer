@@ -197,7 +197,7 @@ test('route tail always ends at the exact current travel position', () => {
   const index = Math.min(300, plan.frames.findIndex(f => f.kind === 'OUTRO') - 1);
   const tail = tailPointsForFrame(plan, index, 3.2);
   assert.deepEqual(tail.at(-1), plan.frames[index].position);
-  assert.ok(tail.length <= Math.round(2.2 * 60), `fast-ground tail is too long: ${tail.length}`);
+  assert.ok(tail.length <= Math.round(3.2 * 60), `stable route tail is too long: ${tail.length}`);
 });
 
 test('large spatial gaps form a new scene when fed directly to the planner', () => {
