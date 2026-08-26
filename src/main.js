@@ -15,6 +15,8 @@ const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
 const cameraMode = $('#cameraMode');
 const cameraModeHint = $('#cameraModeHint');
+const cameraZoomOffset = $('#cameraZoomOffset');
+const cameraZoomOffsetLabel = $('#cameraZoomOffsetLabel');
 const playbackPacing = $('#playbackPacing');
 const playbackPacingHint = $('#playbackPacingHint');
 const lockCameraToPosition = $('#lockCameraToPosition');
@@ -143,6 +145,7 @@ map.on('load', async () => {
   });
 
   updateCameraModeHint();
+  updateZoomOffsetLabel();
   updatePlaybackPacingHint();
   updateTrackingControls();
   await loadDefaultTimeline();
@@ -255,6 +258,11 @@ cameraMode.addEventListener('change', () => {
   if (currentData) rebuildPlan('카메라 전략 변경');
 });
 
+cameraZoomOffset.addEventListener('input', updateZoomOffsetLabel);
+cameraZoomOffset.addEventListener('change', () => {
+  if (currentData) rebuildPlan('현지 줌 변경');
+});
+
 playbackPacing.addEventListener('change', () => {
   updatePlaybackPacingHint();
   if (currentData) rebuildPlan('시간 배분 변경');
@@ -321,6 +329,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       });
       plan = applyCameraMode(plan, {
         mode: cameraMode.value,
+        zoomOffset: Number(cameraZoomOffset.value),
         viewportWidth,
         viewportHeight
       });
@@ -354,6 +363,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       summary.innerHTML = [
         '<strong>60 FPS</strong>',
         `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`,
+        `<strong>현지 줌 ${formatZoomOffset(plan.zoomOffset)}</strong>`,
         `<strong>${basemap.label}</strong>`,
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
         `<strong>${plan.segments.length}</strong> 구간`,
@@ -419,6 +429,15 @@ function setCurrentDataSource(name, type) {
 
 function updateCameraModeHint() {
   cameraModeHint.textContent = CAMERA_MODE_HINTS[cameraMode.value] || CAMERA_MODE_HINTS[CameraMode.AUTO];
+}
+
+function updateZoomOffsetLabel() {
+  cameraZoomOffsetLabel.textContent = formatZoomOffset(Number(cameraZoomOffset.value) || 0);
+}
+
+function formatZoomOffset(value) {
+  const safe = Number(value) || 0;
+  return `${safe > 0 ? '+' : ''}${safe.toFixed(1)}`;
 }
 
 function updatePlaybackPacingHint() {
