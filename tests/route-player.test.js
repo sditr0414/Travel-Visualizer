@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   TRANSPORT_COLORS,
-  tailFeatureCollectionForFrame,
+  effectiveTrackingMultiplier,
   routeHeadFeatureForFrame,
+  tailFeatureCollectionForFrame,
+  trackingDurationScale,
   transportColor
 } from '../src/route-player.js';
 
@@ -45,4 +47,35 @@ test('recent route remains visible across a scene boundary without a connector',
   assert.deepEqual(collection.features[0].geometry.coordinates.at(-1), [135.001, 35.001]);
   assert.deepEqual(collection.features[1].geometry.coordinates[0], [135.5, 35.5]);
   assert.notDeepEqual(collection.features[0].geometry.coordinates.at(-1), collection.features[1].geometry.coordinates[0]);
+});
+
+test('shorter videos automatically allow faster camera tracking', () => {
+  const short = {
+    targetTotalSeconds: 60,
+    durationLimits: { recommendedSeconds: 180 }
+  };
+  const recommended = {
+    targetTotalSeconds: 180,
+    durationLimits: { recommendedSeconds: 180 }
+  };
+  const long = {
+    targetTotalSeconds: 360,
+    durationLimits: { recommendedSeconds: 180 }
+  };
+
+  assert.ok(trackingDurationScale(short) > trackingDurationScale(recommended));
+  assert.equal(trackingDurationScale(recommended), 1);
+  assert.ok(trackingDurationScale(long) < trackingDurationScale(recommended));
+  assert.ok(Math.abs(trackingDurationScale(short) - Math.sqrt(3)) < 0.01);
+});
+
+test('tracking slider remains a user multiplier on top of duration adaptation', () => {
+  const short = {
+    targetTotalSeconds: 60,
+    durationLimits: { recommendedSeconds: 180 }
+  };
+  const automatic = trackingDurationScale(short);
+
+  assert.ok(Math.abs(effectiveTrackingMultiplier(short, 0.5) - automatic * 0.5) < 1e-9);
+  assert.ok(Math.abs(effectiveTrackingMultiplier(short, 2) - automatic * 2) < 1e-9);
 });
