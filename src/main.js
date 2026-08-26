@@ -8,6 +8,8 @@ import { resolveBasemap } from './local-map.js';
 
 const $ = sel => document.querySelector(sel);
 const fileInput = $('#timelineFile');
+const currentDataSourceName = $('#currentDataSourceName');
+const currentDataSourceType = $('#currentDataSourceType');
 const startDate = $('#startDate');
 const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
@@ -33,6 +35,7 @@ const summary = $('#summary');
 
 let parsedJson = null;
 let currentData = null;
+let currentSourceLabel = '타임라인.json';
 let player = null;
 let plan = null;
 
@@ -120,11 +123,13 @@ map.on('error', event => {
 });
 
 async function loadDefaultTimeline() {
-  status.textContent = `${basemap.label} · 내장 테스트 Timeline(2026-03-17~31) 자동 로드 중…`;
+  status.textContent = `${basemap.label} · 타임라인.json 불러오는 중…`;
+  setCurrentDataSource('타임라인.json', '내장 테스트 데이터');
   try {
     parsedJson = await loadBundledTimeline();
+    currentSourceLabel = '타임라인.json';
     loadButton.disabled = false;
-    analyzeParsedTimeline('내장 테스트 Timeline', true);
+    analyzeParsedTimeline(currentSourceLabel);
   } catch (error) {
     parsedJson = null;
     loadButton.disabled = true;
@@ -136,24 +141,29 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
   if (!file) return;
   status.textContent = `파일 읽는 중: ${file.name}`;
+  setCurrentDataSource(file.name, '직접 선택 파일');
   try {
     parsedJson = JSON.parse(await file.text());
+    currentSourceLabel = file.name;
     loadButton.disabled = false;
-    analyzeParsedTimeline(file.name, false);
+    analyzeParsedTimeline(currentSourceLabel);
   } catch (error) {
     parsedJson = null;
     currentData = null;
     loadButton.disabled = true;
     videoDuration.disabled = true;
+    playButton.disabled = true;
+    resetButton.disabled = true;
+    seek.disabled = true;
     status.textContent = `JSON 파싱 실패: ${error.message}`;
   }
 });
 
 loadButton.addEventListener('click', () => {
-  if (parsedJson) analyzeParsedTimeline('현재 Timeline', false);
+  if (parsedJson) analyzeParsedTimeline(currentSourceLabel);
 });
 
-function analyzeParsedTimeline(sourceLabel, autoPlay = false) {
+function analyzeParsedTimeline(sourceLabel) {
   player?.pause();
   playButton.textContent = '재생';
   status.textContent = `${sourceLabel} 분석 중…`;
@@ -174,7 +184,7 @@ function analyzeParsedTimeline(sourceLabel, autoPlay = false) {
     updateDurationLabel(limits.minSeconds);
     durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} (권장 ${formatDuration(limits.recommendedSeconds)})`;
 
-    rebuildPlan(sourceLabel, autoPlay);
+    rebuildPlan(sourceLabel);
   } catch (error) {
     currentData = null;
     status.textContent = `계산 실패: ${error.message}`;
@@ -183,12 +193,12 @@ function analyzeParsedTimeline(sourceLabel, autoPlay = false) {
 
 videoDuration.addEventListener('input', () => updateDurationLabel(Number(videoDuration.value)));
 videoDuration.addEventListener('change', () => {
-  if (currentData) rebuildPlan('영상 길이 변경', false);
+  if (currentData) rebuildPlan('영상 길이 변경');
 });
 
 cameraMode.addEventListener('change', () => {
   updateCameraModeHint();
-  if (currentData) rebuildPlan('카메라 전략 변경', false);
+  if (currentData) rebuildPlan('카메라 전략 변경');
 });
 
 lockCameraToPosition.addEventListener('change', () => {
@@ -215,9 +225,11 @@ playButton.addEventListener('click', () => {
   if (player.playing) {
     player.pause();
     playButton.textContent = '재생';
+    status.textContent = `${currentSourceLabel} · 일시정지`;
   } else {
     player.play();
     playButton.textContent = '일시정지';
+    status.textContent = `${currentSourceLabel} · 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
   }
 });
 
@@ -225,17 +237,18 @@ resetButton.addEventListener('click', () => {
   player?.reset();
   playButton.textContent = '재생';
   seek.value = '0';
+  status.textContent = `${currentSourceLabel} · 처음 위치 · 재생 대기`;
 });
 
 seek.addEventListener('input', () => player?.seek(Number(seek.value)));
 
-function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
+function rebuildPlan(sourceLabel = 'Timeline') {
   if (!currentData?.movements.length) return;
   player?.pause();
   playButton.textContent = '재생';
   status.textContent = `${sourceLabel} · 60fps 경로 계산 중…`;
 
-  requestAnimationFrame(async () => {
+  requestAnimationFrame(() => {
     try {
       const viewportWidth = map.getCanvas().clientWidth || 1100;
       const viewportHeight = map.getCanvas().clientHeight || 700;
@@ -286,15 +299,7 @@ function rebuildPlan(sourceLabel = 'Timeline', autoPlay = false) {
         ...Object.entries(classes).map(([key, value]) => `${key} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
 
-      if (autoPlay) {
-        status.textContent = `${basemap.label} 준비 중 · 첫 화면 타일 로딩…`;
-        await waitForMapIdle(1800);
-        player.play();
-        playButton.textContent = '일시정지';
-        status.textContent = `내장 테스트 Timeline 자동 재생 중 · ${basemap.label} · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
-      } else {
-        status.textContent = `${basemap.label} · ${CAMERA_MODE_LABELS[plan.cameraMode]} 준비 완료 · 마지막 ${plan.outroSec.toFixed(1)}초 전체 경로`;
-      }
+      status.textContent = `${currentSourceLabel} · ${basemap.label} · 준비 완료 · 재생 버튼을 눌러 시작`;
     } catch (error) {
       status.textContent = `카메라 계산 실패: ${error.message}`;
     }
@@ -320,6 +325,12 @@ function updateFrameUi(frame) {
     }).format(new Date(sourceMs));
   }
   seek.value = String(Math.min(frame.timeSec, plan.durationSec));
+}
+
+function setCurrentDataSource(name, type) {
+  currentDataSourceName.textContent = name || '—';
+  currentDataSourceName.title = name || '';
+  currentDataSourceType.textContent = type || '';
 }
 
 function updateCameraModeHint() {
@@ -361,22 +372,6 @@ function simplifyAndLocalizeBaseMap(targetMap) {
       try { targetMap.setLayoutProperty(layer.id, 'text-field', labelExpression); } catch {}
     }
   }
-}
-
-function waitForMapIdle(timeoutMs = 1800) {
-  if (map.loaded() && map.areTilesLoaded?.()) return Promise.resolve();
-  return new Promise(resolve => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      map.off('idle', finish);
-      resolve();
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    map.once('idle', finish);
-  });
 }
 
 function updateDurationLabel(seconds) {
