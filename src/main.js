@@ -1,5 +1,5 @@
+import { durationLimitsForMovements, planPlayback, PlaybackPacing } from './camera-planner.js';
 import { parseTimeline } from './timeline-parser.js';
-import { durationLimitsForMovements, planPlayback } from './camera-planner.js';
 import { applyCameraMode, CameraMode } from './camera-modes.js';
 import { RoutePlayer } from './route-player.js';
 import { toGeoJSONLine } from './geo.js';
@@ -15,6 +15,8 @@ const endDate = $('#endDate');
 const includeFlights = $('#includeFlights');
 const cameraMode = $('#cameraMode');
 const cameraModeHint = $('#cameraModeHint');
+const playbackPacing = $('#playbackPacing');
+const playbackPacingHint = $('#playbackPacingHint');
 const lockCameraToPosition = $('#lockCameraToPosition');
 const cameraTrackingSpeed = $('#cameraTrackingSpeed');
 const cameraTrackingSpeedLabel = $('#cameraTrackingSpeedLabel');
@@ -50,6 +52,16 @@ const CAMERA_MODE_HINTS = {
   [CameraMode.AUTO]: '하루 지역을 안정적으로 유지하고 장거리 이동에서만 자연스럽게 넓게 봅니다.',
   [CameraMode.DAY]: '같은 날은 거의 같은 지도 범위를 유지합니다.',
   [CameraMode.SEGMENT]: '이동수단과 거리 변화에 맞춰 줌을 더 적극적으로 바꿉니다.'
+};
+
+const PACING_LABELS = {
+  [PlaybackPacing.LOCAL_DAYS]: '현지 여행일 균형',
+  [PlaybackPacing.GLOBAL]: '전체 이동 균형'
+};
+
+const PACING_HINTS = {
+  [PlaybackPacing.LOCAL_DAYS]: '항공편의 비중은 유지하고 현지 이동을 날짜별로 나눕니다. 장거리 당일치기와 왕복 이동에는 추가 시간을 확보합니다.',
+  [PlaybackPacing.GLOBAL]: '모든 이동구간이 전체 영상 시간을 직접 나눕니다. 긴 여행에서는 특정 현지 날짜가 매우 빠르게 지나갈 수 있습니다.'
 };
 
 const MOBILITY_LABELS = {
@@ -131,6 +143,7 @@ map.on('load', async () => {
   });
 
   updateCameraModeHint();
+  updatePlaybackPacingHint();
   updateTrackingControls();
   await loadDefaultTimeline();
 });
@@ -231,6 +244,11 @@ cameraMode.addEventListener('change', () => {
   if (currentData) rebuildPlan('카메라 전략 변경');
 });
 
+playbackPacing.addEventListener('change', () => {
+  updatePlaybackPacingHint();
+  if (currentData) rebuildPlan('시간 배분 변경');
+});
+
 lockCameraToPosition.addEventListener('change', () => {
   updateTrackingControls();
   player?.setLockToPosition(lockCameraToPosition.checked);
@@ -259,7 +277,7 @@ playButton.addEventListener('click', () => {
   } else {
     player.play();
     playButton.textContent = '일시정지';
-    status.textContent = `${currentSourceLabel} · 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${formatDuration(plan.durationSec)}`;
+    status.textContent = `${currentSourceLabel} · 재생 중 · ${CAMERA_MODE_LABELS[plan.cameraMode]} · ${PACING_LABELS[plan.pacingMode]} · ${formatDuration(plan.durationSec)}`;
   }
 });
 
@@ -287,7 +305,8 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         fps: 60,
         targetTotalSeconds: Number(videoDuration.value),
         viewportWidth,
-        viewportHeight
+        viewportHeight,
+        pacingMode: playbackPacing.value
       });
       plan = applyCameraMode(plan, {
         mode: cameraMode.value,
@@ -323,6 +342,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       const inferredCount = currentData.movements.filter(segment => segment.inferred).length;
       summary.innerHTML = [
         '<strong>60 FPS</strong>',
+        `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`,
         `<strong>${basemap.label}</strong>`,
         `<strong>${formatDuration(plan.durationSec)}</strong>`,
         `<strong>${plan.segments.length}</strong> 구간`,
@@ -388,6 +408,10 @@ function setCurrentDataSource(name, type) {
 
 function updateCameraModeHint() {
   cameraModeHint.textContent = CAMERA_MODE_HINTS[cameraMode.value] || CAMERA_MODE_HINTS[CameraMode.AUTO];
+}
+
+function updatePlaybackPacingHint() {
+  playbackPacingHint.textContent = PACING_HINTS[playbackPacing.value] || PACING_HINTS[PlaybackPacing.LOCAL_DAYS];
 }
 
 function updateTrackingControls() {
