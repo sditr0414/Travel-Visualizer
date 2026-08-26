@@ -32,7 +32,6 @@ export class RoutePlayer {
     this.lockToPosition = !!lockToPosition;
     this.trailSeconds = Math.max(0.8, Number(trailSeconds) || 3.2);
     this.trackingSpeed = clamp(Number(trackingSpeed) || DEFAULT_TRACKING_MULTIPLIER, 0.5, 2);
-    this.durationTrackingScale = trackingDurationScale(plan);
     this.playing = false;
     this.startedAt = 0;
     this.pauseAt = 0;
@@ -110,7 +109,7 @@ export class RoutePlayer {
       cameraCenter = frame.position;
       this.trackedCenter = { ...frame.position };
     } else {
-      cameraCenter = this.followCamera(frame, force || frame.sceneBreak);
+      cameraCenter = this.followCamera(frame, clampedIndex, force || frame.sceneBreak);
     }
 
     this.map.jumpTo({ center: [cameraCenter.lng, cameraCenter.lat], zoom: frame.zoom });
@@ -119,10 +118,9 @@ export class RoutePlayer {
     this.onFrame?.(frame, clampedIndex);
   }
 
-  followCamera(frame, reset = false) {
-    const desired = Number.isFinite(frame.targetCenterX) && Number.isFinite(frame.targetCenterY)
-      ? mercatorUnproject({ x: frame.targetCenterX, y: frame.targetCenterY })
-      : frame.center || frame.position;
+  followCamera(frame, frameIndex, reset = false) {
+    const desiredProjected = trackingTargetProjected(frame);
+    const desired = desiredProjected ? mercatorUnproject(desiredProjected) : frame.center || frame.position;
 
     if (reset || !this.trackedCenter) {
       this.trackedCenter = { ...frame.position };
@@ -130,16 +128,17 @@ export class RoutePlayer {
     }
 
     const currentProjected = mercatorProject(this.trackedCenter);
-    const desiredProjected = mercatorProject(desired);
     const scale = TILE_SIZE * 2 ** frame.zoom;
     const dxPx = (desiredProjected.x - currentProjected.x) * scale;
     const dyPx = (desiredProjected.y - currentProjected.y) * scale;
     const distancePx = Math.hypot(dxPx, dyPx);
-    const basePanPxPerSec = Math.max(120, Number(frame.maxPanPxPerSec) || 240);
-    const maxStepPx = basePanPxPerSec
-      * this.trackingSpeed
-      * this.durationTrackingScale
-      / Math.max(1, this.plan.fps || 60);
+    const panLimitPxPerSec = trackingPanLimitPxPerSec(
+      this.plan,
+      frameIndex,
+      this.trackingSpeed,
+      distancePx
+    );
+    const maxStepPx = panLimitPxPerSec / Math.max(1, this.plan.fps || 60);
     const movePx = Math.min(Math.max(0, distancePx - 4), maxStepPx);
     const ratio = movePx / Math.max(distancePx, 1e-9);
 
@@ -174,16 +173,80 @@ export function trackingDurationScale(plan) {
   const recommendedSeconds = Number(plan?.durationLimits?.recommendedSeconds);
   const actualSeconds = Number(plan?.targetTotalSeconds ?? plan?.durationSec);
   if (!(recommendedSeconds > 0) || !(actualSeconds > 0)) return 1;
-
-  // The camera planner already absorbs part of time compression by widening zoom.
-  // Square-root scaling lets follow speed react to duration without double-counting
-  // the full compression ratio and making short cuts feel twitchy.
   return clamp(Math.sqrt(recommendedSeconds / actualSeconds), 0.72, 1.85);
 }
 
 export function effectiveTrackingMultiplier(plan, userMultiplier = DEFAULT_TRACKING_MULTIPLIER) {
   const user = clamp(Number(userMultiplier) || DEFAULT_TRACKING_MULTIPLIER, 0.5, 2);
   return trackingDurationScale(plan) * user;
+}
+
+/**
+ * Measure how fast the planned look-ahead target is moving on screen around this
+ * exact frame. Because frame positions already include video time compression,
+ * this value automatically rises for short/fast cuts and falls for long/slow cuts.
+ * Scene boundaries are never crossed, so teleports cannot contaminate the speed.
+ */
+export function trackingDemandPxPerSec(plan, frameIndex) {
+  const frames = plan?.frames || [];
+  if (!frames.length) return 0;
+  const fps = Math.max(1, Number(plan?.fps) || 60);
+  const i = Math.max(0, Math.min(Number(frameIndex) || 0, frames.length - 1));
+  const frame = frames[i];
+  if (!frame || frame.kind !== 'TRAVEL') return 0;
+
+  const radius = Math.max(1, Math.round(fps * 0.10));
+  let left = i;
+  let right = i;
+
+  while (left > 0 && i - left < radius) {
+    const candidate = frames[left - 1];
+    if (!candidate || candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
+    left -= 1;
+  }
+  while (right < frames.length - 1 && right - i < radius) {
+    const candidate = frames[right + 1];
+    if (!candidate || candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
+    right += 1;
+  }
+
+  if (left === right) return 0;
+  const a = trackingTargetProjected(frames[left]);
+  const b = trackingTargetProjected(frames[right]);
+  if (!a || !b) return 0;
+
+  const zoom = Number.isFinite(frame.zoom) ? frame.zoom : 10;
+  const scale = TILE_SIZE * 2 ** zoom;
+  const distancePx = Math.hypot((b.x - a.x) * scale, (b.y - a.y) * scale);
+  const seconds = (right - left) / fps;
+  return distancePx / Math.max(seconds, 1 / fps);
+}
+
+/**
+ * Follow speed is driven primarily by instantaneous video motion. The old global
+ * duration factor remains only as a low-speed floor. A small lead margin plus a
+ * lag-dependent catch-up term prevents the camera from permanently falling behind.
+ */
+export function trackingPanLimitPxPerSec(plan, frameIndex, userMultiplier = 1, lagPx = 0) {
+  const frames = plan?.frames || [];
+  const i = Math.max(0, Math.min(Number(frameIndex) || 0, Math.max(0, frames.length - 1)));
+  const frame = frames[i];
+  const basePan = Math.max(120, Number(frame?.maxPanPxPerSec) || 240);
+  const demand = trackingDemandPxPerSec(plan, i);
+  const durationFloor = basePan * trackingDurationScale(plan) * 0.82;
+  const synchronized = demand > 0 ? demand * 1.16 + 36 : 0;
+  const catchUp = Math.max(0, Number(lagPx) - 36) * 2.8;
+  const automatic = clamp(Math.max(basePan * 0.72, durationFloor, synchronized) + catchUp, 120, 2600);
+  const user = clamp(Number(userMultiplier) || 1, 0.5, 2);
+  return clamp(automatic * user, 80, 3600);
+}
+
+function trackingTargetProjected(frame) {
+  if (Number.isFinite(frame?.targetCenterX) && Number.isFinite(frame?.targetCenterY)) {
+    return { x: frame.targetCenterX, y: frame.targetCenterY };
+  }
+  const point = frame?.center || frame?.position;
+  return point ? mercatorProject(point) : null;
 }
 
 export function transportColor(mobilityClass) {
