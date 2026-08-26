@@ -44,6 +44,8 @@ jobs:
           grep -q '"ready"' map-status.json
           curl --fail --silent http://localhost:5173/api/timeline-status -o timeline-status.json
           grep -q '"semanticSegments"' timeline-status.json
+          curl --fail --silent http://localhost:5173/api/google-photos-config -o google-photos-config.json
+          grep -q '"configured":false' google-photos-config.json
           curl --fail --silent http://localhost:5173/ -o index-response.html
           grep -q 'Travel Camera Visualizer' index-response.html
           curl --fail --silent http://localhost:5173/vendor/maplibre-gl.js -o maplibre-gl.js
