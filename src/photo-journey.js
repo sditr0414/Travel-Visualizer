@@ -7,7 +7,7 @@ export const JourneyMode = Object.freeze({
 
 const IMAGE_EXTENSIONS = /\.(?:jpe?g|png|webp|gif|avif)$/i;
 const SIDECAR_SUFFIX = /(?:\.supplemental-metadata)?\.json$/i;
-const JST_FORMATTER = new Intl.DateTimeFormat('ko-KR', {
+const JST_FORMATTER = new Intl.DateTimeFormat('en-US', {
   year: 'numeric', month: '2-digit', day: '2-digit',
   hour: '2-digit', minute: '2-digit', hour12: false,
   timeZone: 'Asia/Tokyo'
@@ -120,7 +120,8 @@ export function buildPhotoJourneyBeats(photos, plan) {
       photos: photosForBeat,
       anchor,
       positionSource: anchor?.positionSource || 'timeline',
-      sourceCount: group.items.length
+      sourceCount: group.items.length,
+      placeName: null
     };
   });
 }
@@ -137,6 +138,15 @@ export function activePhotoBeatAtTime(beats, timeSec) {
     else return beat;
   }
   return null;
+}
+
+export function formatPhotoTimestamp(ms) {
+  const parts = Object.fromEntries(
+    JST_FORMATTER.formatToParts(new Date(ms))
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  );
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 export function choosePhotoPlacement({
@@ -201,12 +211,13 @@ export function choosePhotoPlacement({
 }
 
 export class PhotoJourneyController {
-  constructor({ map, stage, layer, card, images, time, meta, leader, leaderDot }) {
+  constructor({ map, stage, layer, card, images, place, time, meta, leader, leaderDot }) {
     this.map = map;
     this.stage = stage;
     this.layer = layer;
     this.card = card;
     this.images = images;
+    this.place = place;
     this.time = time;
     this.meta = meta;
     this.leader = leader;
@@ -295,7 +306,8 @@ export class PhotoJourneyController {
       this.images.append(figure);
     }
 
-    this.time.textContent = formatPhotoTime(beat.takenMs);
+    this.place.textContent = beat.placeName || '장소 확인 중…';
+    this.time.textContent = formatPhotoTimestamp(beat.takenMs);
     const sourceLabel = beat.positionSource === 'gps' ? '사진 GPS' : 'Timeline 위치 추정';
     const extra = beat.sourceCount > beat.photos.length ? ` · +${beat.sourceCount - beat.photos.length}장` : '';
     this.meta.textContent = `${sourceLabel}${extra}`;
@@ -326,6 +338,11 @@ export class PhotoJourneyController {
     });
     if (!placement) return;
 
+    if (!beat.placeName) {
+      beat.placeName = this.resolvePlaceName(anchorPx) || fallbackPlaceName(beat);
+      if (this.activeBeatId === beat.id) this.place.textContent = beat.placeName;
+    }
+
     this.previousSlot = placement.slot;
     this.card.style.width = `${Math.round(cardWidth)}px`;
     this.card.style.height = `${Math.round(cardHeight)}px`;
@@ -335,6 +352,45 @@ export class PhotoJourneyController {
 
     const anchorVisible = anchorPx.x >= 0 && anchorPx.y >= 0 && anchorPx.x <= stageRect.width && anchorPx.y <= stageRect.height;
     this.setLeader(anchorVisible ? anchorPx : null, placement.rect);
+  }
+
+  resolvePlaceName(anchorPx) {
+    if (!Number.isFinite(anchorPx?.x) || !Number.isFinite(anchorPx?.y)) return null;
+    let features;
+    try {
+      const radius = 46;
+      features = this.map.queryRenderedFeatures([
+        [anchorPx.x - radius, anchorPx.y - radius],
+        [anchorPx.x + radius, anchorPx.y + radius]
+      ]);
+    } catch {
+      return null;
+    }
+
+    const candidates = [];
+    for (const feature of features || []) {
+      const name = featurePlaceName(feature?.properties);
+      if (!name) continue;
+      const layerId = String(feature?.layer?.id || '').toLowerCase();
+      if (/route|photo-anchor|housenumber|house_number|gate/.test(layerId)) continue;
+      let priority = 40;
+      if (/place|city|town|village|locality|neigh|district|region/.test(layerId)) priority = 0;
+      else if (/station|rail|transit|airport|ferry/.test(layerId)) priority = 12;
+      else if (/road|street/.test(layerId)) priority = 28;
+      else if (/poi|amenity/.test(layerId)) priority = 34;
+
+      let distance = 30;
+      const coordinates = feature?.geometry?.type === 'Point' ? feature.geometry.coordinates : null;
+      if (Array.isArray(coordinates) && coordinates.length >= 2) {
+        try {
+          const point = this.map.project(coordinates);
+          distance = Math.hypot(point.x - anchorPx.x, point.y - anchorPx.y);
+        } catch {}
+      }
+      candidates.push({ name, score: priority * 100 + distance });
+    }
+    candidates.sort((a, b) => a.score - b.score);
+    return candidates[0]?.name || null;
   }
 
   setPhotoAnchor(anchor) {
@@ -534,6 +590,25 @@ function forbiddenRectsWithinStage(stage, stageRect) {
   }).filter(rect => rect.width > 0 && rect.height > 0);
 }
 
+function featurePlaceName(properties) {
+  if (!properties) return null;
+  const candidates = [
+    properties['name:ko'], properties.name_ko, properties.name,
+    properties['name:ja'], properties.name_ja,
+    properties['name:en'], properties.name_en,
+    properties.ref
+  ];
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text && text.length <= 80) return text;
+  }
+  return null;
+}
+
+function fallbackPlaceName(beat) {
+  return beat.positionSource === 'gps' ? '사진 촬영 위치' : 'Timeline 여행 위치';
+}
+
 function buildImageIndex(files) {
   const byPath = new Map();
   const byName = new Map();
@@ -599,10 +674,6 @@ function isDisplayableImageFile(file) {
 
 function normalizePath(value) {
   return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '');
-}
-
-function formatPhotoTime(ms) {
-  return JST_FORMATTER.format(new Date(ms)).replace(/\.\s?/g, '.').replace(/\.$/, '');
 }
 
 function median(values) {
