@@ -25,7 +25,7 @@
       </select>
     </label>
 
-    <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos 연결</button>
+    <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos에서 여행 사진 선택</button>
 
     <div class="source-chip" aria-live="polite">
       <span class="source-dot"></span>
@@ -82,10 +82,8 @@
               <label>Google Photos</label>
               <output id="photoImportCount">사진 없음</output>
             </div>
-            <label class="text-field-label" for="googlePhotosClientId">OAuth Client ID</label>
-            <input id="googlePhotosClientId" class="text-field" type="text" inputmode="text" autocomplete="off" placeholder="1234567890-….apps.googleusercontent.com" />
-            <p class="hint">Google Cloud의 웹 애플리케이션 Client ID를 한 번 입력하면 이 브라우저에 저장됩니다. 상단의 Google Photos 연결 버튼으로 사진을 선택합니다.</p>
-            <div class="photo-import-divider"><span>또는 GPS가 필요하면</span></div>
+            <p class="hint">상단의 Google Photos 버튼에서 로그인하고 사진을 승인하면, 현재 여행 일정의 시작일·종료일 밖 사진은 자동 제외합니다.</p>
+            <div class="photo-import-divider"><span>GPS가 필요하면</span></div>
             <label class="photo-folder-picker">
               <span>Takeout 폴더 선택</span>
               <input id="photoFolderInput" type="file" accept="image/*,.json,application/json" webkitdirectory directory multiple />
