@@ -1,0 +1,34 @@
+.photo-playback-settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #2b374b;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, .62);
+}
+.photo-playback-settings > div { min-width: 0; }
+.photo-playback-settings label { color: #cbd5e1; font-size: 10px; font-weight: 700; }
+.photo-playback-settings output { color: #fff; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.photo-frame video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #0f172a;
+}
+.video-media-badge {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, .78);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+#videoMinPlaySetting[data-disabled="true"] { opacity: .48; }
