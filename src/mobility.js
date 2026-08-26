@@ -30,6 +30,13 @@ export function inferMobility(segment) {
   const straightness = clamp(directKm / Math.max(distanceKm, 0.05), 0, 1);
   const googleClass = GOOGLE_PRIORS[segment.googleType] || MobilityClass.UNKNOWN;
   const googleConfidence = clamp(segment.googleProbability || 0, 0, 1);
+  const activityConfidence = clamp(segment.activityProbability || 0, 0, 1);
+  const identityAnchor = protectedIdentityAnchor(segment.googleType, {
+    speed,
+    distanceKm,
+    googleConfidence,
+    activityConfidence
+  });
 
   const scores = new Map(Object.values(MobilityClass).map(k => [k, 0]));
   add(scores, MobilityClass.WALK, bell(speed, 4.8, 5.5) * 1.35 + falloff(distanceKm, 8) * 0.35);
@@ -44,7 +51,15 @@ export function inferMobility(segment) {
     add(scores, googleClass, 0.25 + googleConfidence * 1.15);
   }
 
-  if (speed < 8 && distanceKm < 5) add(scores, MobilityClass.WALK, 0.8);
+  // CYCLING and urban rail frequently overlap in average speed. Google Timeline's
+  // selected type remains valuable identity evidence even when its candidate
+  // probability is exported as 0. Protect that identity only while the observed
+  // distance/speed stays physically plausible for the selected mode.
+  if (identityAnchor) {
+    add(scores, identityAnchor.mobilityClass, identityAnchor.boost);
+  }
+
+  if (speed < 8 && distanceKm < 5 && !identityAnchor) add(scores, MobilityClass.WALK, 0.8);
   if (speed > 350 || distanceKm > 400 && speed > 180) add(scores, MobilityClass.FLIGHT, 1.2);
   if (speed > 90 && distanceKm > 15) add(scores, MobilityClass.FAST_GROUND, 0.55);
 
@@ -61,7 +76,9 @@ export function inferMobility(segment) {
     distanceKm,
     straightness,
     googleClass,
-    googleConfidence
+    googleConfidence,
+    activityConfidence,
+    identityAnchor: identityAnchor?.mobilityClass || null
   };
 }
 
@@ -141,6 +158,37 @@ export function cameraIntentForMovement(segment, inference) {
     targetTraversalPxPerSec,
     maxPanPxPerSec
   };
+}
+
+function protectedIdentityAnchor(googleType, {
+  speed,
+  distanceKm,
+  googleConfidence,
+  activityConfidence
+}) {
+  const selectedTypeEvidence = Math.max(googleConfidence, activityConfidence * 0.8);
+
+  if (googleType === 'CYCLING') {
+    const physicallyPlausible = speed <= 55 && distanceKm <= 100;
+    if (physicallyPlausible && selectedTypeEvidence >= 0.55) {
+      return {
+        mobilityClass: MobilityClass.BIKE,
+        boost: 0.75 + selectedTypeEvidence * 0.9
+      };
+    }
+  }
+
+  if (googleType === 'IN_SUBWAY' || googleType === 'IN_TRAM') {
+    const physicallyPlausible = speed <= 140 && distanceKm <= 120;
+    if (physicallyPlausible && selectedTypeEvidence >= 0.55) {
+      return {
+        mobilityClass: MobilityClass.URBAN_TRANSIT,
+        boost: 0.85 + selectedTypeEvidence * 0.9
+      };
+    }
+  }
+
+  return null;
 }
 
 function add(map, key, value) { map.set(key, (map.get(key) || 0) + Math.max(0, value)); }
