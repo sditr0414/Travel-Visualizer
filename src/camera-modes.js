@@ -116,58 +116,16 @@ function buildLocalClusters(segments) {
 function autoZoom({ segmentZoom, dayZoom, segment, longDistanceException, totalSeconds }) {
   if (longDistanceException) {
     const mobility = segment.inference?.mobilityClass;
-    const km = segmentDistanceKm(segment);
+    const hardLimit = mobility === 'FLIGHT' ? 3.6 : mobility === 'FAST_GROUND' ? 2.8 : 2.5;
     const sceneSeconds = Math.max(0.1, segment.videoSec || 0);
-    const { hardLimit, distanceFloor } = longDistanceZoomDepth(mobility, km);
-
-    const timeDepth = clamp(0.95 + sceneSeconds * 0.78, 1.15, hardLimit);
-    const depth = clamp(Math.max(distanceFloor, timeDepth), 1.15, hardLimit);
-
-    if (mobility === 'FLIGHT') {
-      // Flights keep the previous framing rules. The destination-country
-      // widening below is intentionally not applied to international travel.
-      return clamp(segmentZoom, dayZoom - depth, dayZoom + 0.1);
-    }
-
-    // For major local travel the planner's segment zoom used to become a hard
-    // floor, preventing the distance-aware policy from opening any wider. Use
-    // whichever is wider: the planner's segment framing or the local-distance
-    // framing derived from the day's normal scale.
-    return clamp(Math.min(segmentZoom, dayZoom - depth), 4, dayZoom + 0.1);
+    const timeLimitedDepth = clamp(0.9 + sceneSeconds * 0.72, 1.15, hardLimit);
+    return clamp(segmentZoom, dayZoom - timeLimitedDepth, dayZoom + 0.1);
   }
 
   const shortVideo = totalSeconds <= 90;
   const below = shortVideo ? 0.18 : 0.32;
   const above = shortVideo ? 0.32 : 0.55;
   return clamp(segmentZoom, dayZoom - below, dayZoom + above);
-}
-
-function longDistanceZoomDepth(mobility, km) {
-  if (mobility === 'FLIGHT') {
-    return { hardLimit: 3.6, distanceFloor: 1.15 };
-  }
-
-  if (mobility === 'FAST_GROUND') {
-    if (km >= 450) return { hardLimit: 4.15, distanceFloor: 3.55 };
-    if (km >= 300) return { hardLimit: 3.85, distanceFloor: 3.20 };
-    if (km >= 150) return { hardLimit: 3.45, distanceFloor: 2.75 };
-    if (km >= 80) return { hardLimit: 3.10, distanceFloor: 2.35 };
-    return { hardLimit: 2.85, distanceFloor: 1.80 };
-  }
-
-  if (mobility === 'FERRY') {
-    if (km >= 150) return { hardLimit: 3.35, distanceFloor: 2.70 };
-    if (km >= 70) return { hardLimit: 3.00, distanceFloor: 2.25 };
-    return { hardLimit: 2.65, distanceFloor: 1.70 };
-  }
-
-  if (mobility === 'ROAD') {
-    if (km >= 250) return { hardLimit: 3.15, distanceFloor: 2.55 };
-    if (km >= 140) return { hardLimit: 2.85, distanceFloor: 2.20 };
-    return { hardLimit: 2.55, distanceFloor: 1.65 };
-  }
-
-  return { hardLimit: 2.5, distanceFloor: 1.45 };
 }
 
 function smoothZoomTrajectory(values, fps, mode, totalSeconds) {
