@@ -13,6 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Syntax checks
         shell: bash
         run: |
@@ -43,6 +46,8 @@ jobs:
           grep -q '"semanticSegments"' timeline-status.json
           curl --fail --silent http://localhost:5173/ -o index-response.html
           grep -q 'Travel Camera Visualizer' index-response.html
+          curl --fail --silent http://localhost:5173/vendor/maplibre-gl.js -o maplibre-gl.js
+          test -s maplibre-gl.js
           cat server.log
       - name: Unit tests
         run: npm test

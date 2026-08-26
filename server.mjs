@@ -24,6 +24,12 @@ const localMapFiles = {
   world: join(root, 'maps', 'world-z5.pmtiles'),
   region: join(root, 'maps', 'korea-japan-z14.pmtiles')
 };
+const vendorFiles = new Map([
+  ['/vendor/maplibre-gl.js', join(root, 'node_modules', 'maplibre-gl', 'dist', 'maplibre-gl.js')],
+  ['/vendor/maplibre-gl.css', join(root, 'node_modules', 'maplibre-gl', 'dist', 'maplibre-gl.css')],
+  ['/vendor/pmtiles.js', join(root, 'node_modules', 'pmtiles', 'dist', 'pmtiles.js')],
+  ['/vendor/basemaps.js', join(root, 'node_modules', '@protomaps', 'basemaps', 'dist', 'basemaps.js')]
+]);
 
 async function buildTimelineModule() {
   const directSource = await findDirectTimelineSource();
@@ -57,6 +63,9 @@ async function buildTimelineModule() {
   }
 
   const manifest = await readTimelineManifest();
+  if (!manifest) {
+    throw new Error('Bundled Timeline manifest is missing. Run npm run timeline:setup.');
+  }
   const built = buildTimelineFromRaw(raw, {
     sourceType: manifest?.fullTimeline ? 'full-fixture' : 'fixture',
     sourceName: manifest?.sourceName || '타임라인.json',
@@ -64,16 +73,14 @@ async function buildTimelineModule() {
     manifest
   });
 
-  if (manifest) {
-    if (manifest.sourceSha256 && manifest.sourceSha256 !== built.meta.sourceSha256) {
-      throw new Error('Bundled Timeline manifest SHA-256 does not match the fixture.');
-    }
-    if (Number.isFinite(manifest.semanticSegments) && manifest.semanticSegments !== built.meta.semanticSegments) {
-      throw new Error('Bundled Timeline manifest segment count does not match the fixture.');
-    }
-    if (Number.isFinite(manifest.rawSignals) && manifest.rawSignals !== built.meta.rawSignals) {
-      throw new Error('Bundled Timeline manifest rawSignals count does not match the fixture.');
-    }
+  if (!manifest.sourceSha256 || manifest.sourceSha256 !== built.meta.sourceSha256) {
+    throw new Error('Bundled Timeline manifest SHA-256 does not match the fixture.');
+  }
+  if (!Number.isFinite(manifest.semanticSegments) || manifest.semanticSegments !== built.meta.semanticSegments) {
+    throw new Error('Bundled Timeline manifest segment count does not match the fixture.');
+  }
+  if (!Number.isFinite(manifest.rawSignals) || manifest.rawSignals !== built.meta.rawSignals) {
+    throw new Error('Bundled Timeline manifest rawSignals count does not match the fixture.');
   }
   return built;
 }
@@ -158,6 +165,12 @@ try {
   throw error;
 }
 
+try {
+  await Promise.all([...vendorFiles.values()].map(file => access(file)));
+} catch {
+  throw new Error('Browser map dependencies are missing. Run npm ci before npm start.');
+}
+
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -194,6 +207,19 @@ createServer(async (req, res) => {
         'cache-control': 'no-store'
       });
       if (req.method !== 'HEAD') res.end(timelineModule);
+      else res.end();
+      return;
+    }
+
+    if (vendorFiles.has(url.pathname)) {
+      const file = vendorFiles.get(url.pathname);
+      const body = await readFile(file);
+      res.writeHead(200, {
+        'content-type': mime[extname(file)] || 'application/octet-stream',
+        'content-length': body.length,
+        'cache-control': 'public, max-age=31536000, immutable'
+      });
+      if (req.method !== 'HEAD') res.end(body);
       else res.end();
       return;
     }

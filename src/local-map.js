@@ -9,11 +9,12 @@ export async function resolveBasemap() {
 
   if (status.ready && hasRuntime) {
     registerPmtilesProtocol();
+    const includeLabels = globalThis.navigator?.onLine !== false;
     return {
       local: true,
       label: '로컬 하이브리드 지도',
       detail: '세계 z0–5 · 한국/일본 z6–14',
-      style: createHybridStyle()
+      style: createHybridStyle({ includeLabels })
     };
   }
 
@@ -34,7 +35,7 @@ function registerPmtilesProtocol() {
   protocolRegistered = true;
 }
 
-function createHybridStyle() {
+function createHybridStyle({ includeLabels = true } = {}) {
   const flavor = globalThis.basemaps.namedFlavor('grayscale');
   const worldLayers = prepareLayers(
     globalThis.basemaps.layers('world', flavor, { lang: 'ko' }),
@@ -50,9 +51,18 @@ function createHybridStyle() {
   );
 
   const origin = globalThis.location.origin;
+  const layers = [
+    {
+      id: 'local-background',
+      type: 'background',
+      paint: { 'background-color': flavor.background || '#f4f4f1' }
+    },
+    ...worldLayers,
+    ...regionLayers
+  ];
   return {
     version: 8,
-    glyphs: GLYPHS_URL,
+    ...(includeLabels ? { glyphs: GLYPHS_URL } : {}),
     sources: {
       world: {
         type: 'vector',
@@ -65,15 +75,7 @@ function createHybridStyle() {
         attribution: '© OpenStreetMap contributors · Protomaps'
       }
     },
-    layers: [
-      {
-        id: 'local-background',
-        type: 'background',
-        paint: { 'background-color': flavor.background || '#f4f4f1' }
-      },
-      ...worldLayers,
-      ...regionLayers
-    ]
+    layers: includeLabels ? layers : layers.filter(layer => layer.type !== 'symbol')
   };
 }
 

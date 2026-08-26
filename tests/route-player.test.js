@@ -64,7 +64,8 @@ test('position lock uses the preplanned wider locked zoom while unlocked keeps n
     frames: [{
       kind: 'TRAVEL', sceneId: 0, sceneBreak: true, segmentIndex: 0,
       mobilityClass: 'FAST_GROUND', position: { lat: 35, lng: 135 },
-      center: { lat: 35, lng: 135 }, zoom: 8.4, lockedZoom: 7.7
+      center: { lat: 35, lng: 135 }, zoom: 8.4,
+      lockedCenter: { lat: 35.01, lng: 135.01 }, lockedZoom: 7.7
     }],
     segments: []
   };
@@ -72,6 +73,7 @@ test('position lock uses the preplanned wider locked zoom while unlocked keeps n
   const player = new RoutePlayer({ map, plan: zoomPlan, lockToPosition: true });
   player.renderFrame(0, true);
   assert.equal(calls.at(-1).zoom, 7.7);
+  assert.deepEqual(calls.at(-1).center, [135.01, 35.01]);
 
   player.setLockToPosition(false);
   assert.equal(calls.at(-1).zoom, 8.4);

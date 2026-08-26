@@ -216,6 +216,22 @@ test('large spatial gaps form a new scene when fed directly to the planner', () 
   assert.ok(plan.segments[1].sceneBreakBefore);
 });
 
+test('sub-kilometer endpoint discontinuities become camera cuts', () => {
+  const a = movement({ distanceKm: 1, durationMin: 10, type: 'WALKING', probability: 0.95 });
+  a.end = { lat: 35.0, lng: 135.0 };
+  a.points = [{ lat: 34.995, lng: 134.995 }, a.end];
+  const b = movement({ distanceKm: 2, durationMin: 8, type: 'IN_TRAIN', probability: 0.95 });
+  b.startMs = a.endMs;
+  b.endMs = b.startMs + 8 * 60_000;
+  b.start = { lat: 35.006, lng: 135.006 };
+  b.end = { lat: 35.02, lng: 135.02 };
+  b.points = [b.start, b.end];
+  const plan = planPlayback([a, b], { fps: 60, targetTotalSeconds: 60 });
+  assert.ok(plan.segments[1].gapKm > 0.5 && plan.segments[1].gapKm < 1);
+  assert.equal(plan.segments[1].sceneBreakBefore, true);
+  assert.notEqual(plan.segments[0].sceneId, plan.segments[1].sceneId);
+});
+
 test('train to walk zoom remains frame-continuous at 60fps', () => {
   const train = movement({ distanceKm: 30, durationMin: 20, type: 'IN_TRAIN', probability: 0.95 });
   train.points = [{ lat: 35, lng: 135 }, { lat: 35.15, lng: 135.2 }];

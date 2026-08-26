@@ -81,7 +81,10 @@ export function planPlayback(movements, {
     const videoSec = videoSeconds[index];
     const previous = index > 0 ? enriched[index - 1] : null;
     const gapKm = previous ? haversineMeters(previous.end, segment.start) / 1000 : 0;
-    const sceneBreakBefore = !!previous && gapKm > 10;
+    // Adjacent Google activities can share a timestamp while their recorded
+    // endpoints disagree by hundreds of meters. Treat that impossible motion
+    // as an intentional camera cut instead of whipping the map between points.
+    const sceneBreakBefore = !!previous && gapKm > 0.5;
     if (sceneBreakBefore) sceneId += 1;
     const result = {
       ...segment,

@@ -8,9 +8,10 @@ Google Timeline JSON을 기반으로 여행 동선을 60fps로 재생하면서 �
 
 Node.js 20 이상이 필요합니다.
 
-먼저 로컬 지도를 한 번 준비합니다.
+먼저 고정된 버전의 브라우저 지도 런타임을 설치하고 로컬 지도를 한 번 준비합니다.
 
 ```bash
+npm ci
 npm run map:setup
 ```
 
@@ -35,7 +36,7 @@ npm start
 http://localhost:5173
 ```
 
-로컬 PMTiles 두 파일이 존재하면 자동으로 **로컬 하이브리드 지도**를 사용합니다. 파일이 없으면 OpenFreeMap Positron 온라인 지도로 fallback합니다.
+로컬 PMTiles 두 파일이 존재하면 자동으로 **로컬 하이브리드 지도**를 사용합니다. MapLibre, PMTiles, Protomaps 브라우저 런타임은 프로젝트가 직접 제공하며, 파일이 없으면 OpenFreeMap Positron 온라인 지도로 fallback합니다. 지도 글꼴은 Protomaps glyph 서비스를 사용하므로 완전한 오프라인 상태에서는 지명 없이 기본 지형과 경로가 표시될 수 있습니다.
 
 페이지가 열리면 Timeline을 분석하고 첫 프레임만 준비합니다. 자동 재생하지 않으며 `재생` 버튼을 눌러야 영상이 시작됩니다.
 

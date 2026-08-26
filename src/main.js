@@ -229,6 +229,17 @@ function analyzeParsedTimeline(sourceLabel) {
     rebuildPlan(sourceLabel);
   } catch (error) {
     currentData = null;
+    player = null;
+    plan = null;
+    videoDuration.disabled = true;
+    playButton.disabled = true;
+    resetButton.disabled = true;
+    seek.disabled = true;
+    seek.value = '0';
+    summary.replaceChildren();
+    map.getSource('route-all')?.setData(emptyLine());
+    map.getSource('route-progress')?.setData(emptyFeatureCollection());
+    map.getSource('route-head')?.setData(emptyFeatureCollection());
     videoDate.hidden = true;
     status.textContent = `계산 실패: ${error.message}`;
   }

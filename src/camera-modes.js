@@ -1,4 +1,4 @@
-import { clamp, haversineMeters, mercatorProject } from './geo.js';
+import { clamp, haversineMeters, mercatorProject, mercatorUnproject } from './geo.js';
 
 const TILE_SIZE = 512;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -34,7 +34,7 @@ export function applyCameraMode(plan, {
     const targetZoom = resolvedMode === CameraMode.SEGMENT
       ? segmentZoom
       : resolvedMode === CameraMode.DAY
-        ? dayZoom
+        ? dayModeZoom(dayZoom, segmentZoom, segment)
         : autoZoom({
             segmentZoom,
             dayZoom,
@@ -63,6 +63,16 @@ export function applyCameraMode(plan, {
     travelFrames[i].zoom = smoothed[i];
     travelFrames[i].lockedZoom = smoothedLocked[i];
   }
+  recomputeTravelCenters(travelFrames, width, height, plan.fps || 60, {
+    zoomKey: 'zoom',
+    centerKey: 'center',
+    targetProjected: targetCenterProjected
+  });
+  recomputeTravelCenters(travelFrames, width, height, plan.fps || 60, {
+    zoomKey: 'lockedZoom',
+    centerKey: 'lockedCenter',
+    targetProjected: frame => mercatorProject(frame.position)
+  });
   reconnectOutroZoom(plan.frames, travelFrames.at(-1)?.zoom, plan.fps || 60);
 
   return {
@@ -121,18 +131,40 @@ function buildLocalClusters(segments) {
 }
 
 function autoZoom({ segmentZoom, dayZoom, segment, longDistanceException, totalSeconds }) {
+  const mobility = segment.inference?.mobilityClass;
+  if (mobility === 'FLIGHT') return segmentZoom;
+
   if (longDistanceException) {
-    const mobility = segment.inference?.mobilityClass;
     const hardLimit = mobility === 'FLIGHT' ? 3.6 : mobility === 'FAST_GROUND' ? 2.8 : 2.5;
     const sceneSeconds = Math.max(0.1, segment.videoSec || 0);
     const timeLimitedDepth = clamp(0.9 + sceneSeconds * 0.72, 1.15, hardLimit);
-    return clamp(segmentZoom, dayZoom - timeLimitedDepth, dayZoom + 0.1);
+    const preferred = clamp(segmentZoom, dayZoom - timeLimitedDepth, dayZoom + 0.1);
+    return Math.min(preferred, segmentZoom + playableZoomAllowance(segment));
   }
 
   const shortVideo = totalSeconds <= 90;
   const below = shortVideo ? 0.18 : 0.32;
   const above = shortVideo ? 0.32 : 0.55;
-  return clamp(segmentZoom, dayZoom - below, dayZoom + above);
+  const preferred = clamp(segmentZoom, dayZoom - below, dayZoom + above);
+  return Math.min(preferred, segmentZoom + playableZoomAllowance(segment));
+}
+
+function dayModeZoom(dayZoom, segmentZoom, segment) {
+  if (segment.inference?.mobilityClass === 'FLIGHT') return segmentZoom;
+  return Math.min(dayZoom, segmentZoom + playableZoomAllowance(segment));
+}
+
+function playableZoomAllowance(segment) {
+  switch (segment.inference?.mobilityClass) {
+    case 'WALK': return 0.45;
+    case 'BIKE': return 0.40;
+    case 'URBAN_TRANSIT': return 0.35;
+    case 'ROAD': return 0.30;
+    case 'FAST_GROUND': return 0.24;
+    case 'FERRY': return 0.20;
+    case 'FLIGHT': return 0;
+    default: return 0.30;
+  }
 }
 
 function positionLockTargetZoom(baseZoom, segment, longDistanceException, mode) {
@@ -168,10 +200,20 @@ function smoothZoomTrajectory(values, fps, mode, totalSeconds) {
   if (values.length < 2) return [...values];
   const config = zoomMotionConfig(mode, totalSeconds);
   let out = anticipateZoomOut(values, fps, config.previewSec, config.previewAllowance);
+  out = kinematicZoomOutEnvelope(out, fps, config.maxVelocity, config.previewAllowance);
   out = asymmetricSmooth(out, fps, config.zoomOutTau, config.zoomInTau);
   out = limitKinematics(out, fps, config.maxVelocity, config.maxAcceleration);
   out = smoothEma(out, config.finalTau, fps);
   return out.map(value => clamp(value, 4, 17.3));
+}
+
+function kinematicZoomOutEnvelope(values, fps, maxVelocity, allowance) {
+  const out = [...values];
+  const maxStep = Math.max(0.001, maxVelocity / Math.max(1, fps));
+  for (let i = out.length - 2; i >= 0; i -= 1) {
+    out[i] = Math.min(out[i], out[i + 1] + maxStep + allowance / Math.max(1, fps));
+  }
+  return out;
 }
 
 function zoomMotionConfig(mode, totalSeconds) {
@@ -218,6 +260,57 @@ function reconnectOutroZoom(frames, startZoom, fps) {
     const t = smootherstep(clamp((i + 1) / transitionFrames, 0, 1));
     outro[i].zoom = startZoom + (finalZoom - startZoom) * t;
   }
+}
+
+function recomputeTravelCenters(frames, width, height, fps, options) {
+  let sceneStart = 0;
+  for (let i = 1; i <= frames.length; i += 1) {
+    if (i === frames.length || frames[i].sceneId !== frames[sceneStart].sceneId) {
+      solveCenterRange(frames, sceneStart, i, width, height, fps, options);
+      sceneStart = i;
+    }
+  }
+}
+
+function solveCenterRange(frames, start, end, width, height, fps, {
+  zoomKey,
+  centerKey,
+  targetProjected
+}) {
+  if (start >= end) return;
+  const firstTarget = targetProjected(frames[start]);
+  frames[start][centerKey] = mercatorUnproject(firstTarget);
+
+  for (let i = start + 1; i < end; i += 1) {
+    const frame = frames[i];
+    const previous = mercatorProject(frames[i - 1][centerKey]);
+    const target = targetProjected(frame);
+    const scale = TILE_SIZE * 2 ** frame[zoomKey];
+    const errorPxX = (target.x - previous.x) * scale;
+    const errorPxY = (target.y - previous.y) * scale;
+    const errorPx = Math.hypot(errorPxX, errorPxY);
+    const maxStepPx = Math.max(120, Number(frame.maxPanPxPerSec) || 240) / Math.max(1, fps);
+    const movePx = Math.min(Math.max(0, errorPx - 5), maxStepPx);
+    const ratio = movePx / Math.max(errorPx, 1e-9);
+    let nextX = previous.x + errorPxX * ratio / scale;
+    let nextY = previous.y + errorPxY * ratio / scale;
+
+    const marker = mercatorProject(frame.position);
+    const safeX = width * 0.40;
+    const safeY = height * 0.38;
+    const markerPxX = (marker.x - nextX) * scale;
+    const markerPxY = (marker.y - nextY) * scale;
+    if (Math.abs(markerPxX) > safeX) nextX += (markerPxX - Math.sign(markerPxX) * safeX) / scale;
+    if (Math.abs(markerPxY) > safeY) nextY += (markerPxY - Math.sign(markerPxY) * safeY) / scale;
+    frame[centerKey] = mercatorUnproject({ x: nextX, y: nextY });
+  }
+}
+
+function targetCenterProjected(frame) {
+  if (Number.isFinite(frame.targetCenterX) && Number.isFinite(frame.targetCenterY)) {
+    return { x: frame.targetCenterX, y: frame.targetCenterY };
+  }
+  return mercatorProject(frame.center || frame.position);
 }
 
 function isLongDistanceException(segment) {
