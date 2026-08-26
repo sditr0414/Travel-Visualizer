@@ -32,6 +32,7 @@ export class RoutePlayer {
     this.lockToPosition = !!lockToPosition;
     this.trailSeconds = Math.max(0.8, Number(trailSeconds) || 3.2);
     this.trackingSpeed = clamp(Number(trackingSpeed) || DEFAULT_TRACKING_MULTIPLIER, 0.5, 2);
+    this.durationTrackingScale = trackingDurationScale(plan);
     this.playing = false;
     this.startedAt = 0;
     this.pauseAt = 0;
@@ -135,7 +136,10 @@ export class RoutePlayer {
     const dyPx = (desiredProjected.y - currentProjected.y) * scale;
     const distancePx = Math.hypot(dxPx, dyPx);
     const basePanPxPerSec = Math.max(120, Number(frame.maxPanPxPerSec) || 240);
-    const maxStepPx = basePanPxPerSec * this.trackingSpeed / Math.max(1, this.plan.fps || 60);
+    const maxStepPx = basePanPxPerSec
+      * this.trackingSpeed
+      * this.durationTrackingScale
+      / Math.max(1, this.plan.fps || 60);
     const movePx = Math.min(Math.max(0, distancePx - 4), maxStepPx);
     const ratio = movePx / Math.max(distancePx, 1e-9);
 
@@ -166,6 +170,22 @@ export class RoutePlayer {
   }
 }
 
+export function trackingDurationScale(plan) {
+  const recommendedSeconds = Number(plan?.durationLimits?.recommendedSeconds);
+  const actualSeconds = Number(plan?.targetTotalSeconds ?? plan?.durationSec);
+  if (!(recommendedSeconds > 0) || !(actualSeconds > 0)) return 1;
+
+  // The camera planner already absorbs part of time compression by widening zoom.
+  // Square-root scaling lets follow speed react to duration without double-counting
+  // the full compression ratio and making short cuts feel twitchy.
+  return clamp(Math.sqrt(recommendedSeconds / actualSeconds), 0.72, 1.85);
+}
+
+export function effectiveTrackingMultiplier(plan, userMultiplier = DEFAULT_TRACKING_MULTIPLIER) {
+  const user = clamp(Number(userMultiplier) || DEFAULT_TRACKING_MULTIPLIER, 0.5, 2);
+  return trackingDurationScale(plan) * user;
+}
+
 export function transportColor(mobilityClass) {
   return TRANSPORT_COLORS[mobilityClass] || TRANSPORT_COLORS.UNKNOWN;
 }
@@ -190,7 +210,6 @@ export function tailFeatureCollectionForFrame(plan, frameIndex, trailSeconds = 3
       features.push(lineFeature(currentPoints, currentClass));
       currentClass = frameClass;
       currentSceneId = frame.sceneId;
-      // Preserve the previous scene visually, but never draw an artificial connector across a scene break.
       currentPoints = sceneChanged
         ? [frame.position]
         : [previous.position, frame.position];
@@ -253,14 +272,10 @@ function travelTailFrames(plan, frameIndex, trailSeconds) {
   const head = frames[i];
   if (!head || head.kind !== 'TRAVEL') return [];
 
-  // Use one stable time window for every mode. Per-mode caps caused visible jumps
-  // such as WALK 4.4s -> FAST_GROUND 2.2s at the exact transport boundary.
   const seconds = Math.max(0.8, Number(trailSeconds) || 3.2);
   const maxFrames = Math.max(2, Math.round(seconds * (plan.fps || 60)));
   const result = [];
 
-  // Keep a rolling time window even when the camera planner starts a new scene.
-  // Scene changes are split into separate line features above, so this never creates a teleporting connector.
   for (let j = i; j >= 0 && result.length < maxFrames; j -= 1) {
     const frame = frames[j];
     if (!frame || frame.kind !== 'TRAVEL') break;
