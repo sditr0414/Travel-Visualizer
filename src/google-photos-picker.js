@@ -1,0 +1,186 @@
+const PICKER_API = 'https://photospicker.googleapis.com/v1';
+const PICKER_SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly';
+const GIS_SCRIPT = 'https://accounts.google.com/gsi/client';
+
+let googleIdentityPromise = null;
+
+export async function pickGooglePhotos({ clientId, onStatus } = {}) {
+  const resolvedClientId = String(clientId || '').trim();
+  if (!resolvedClientId) throw new Error('Google OAuth Client ID가 필요합니다.');
+
+  onStatus?.('Google 계정 연결 중…');
+  const google = await loadGoogleIdentityServices();
+  const accessToken = await requestAccessToken(google, resolvedClientId);
+
+  onStatus?.('Google Photos 선택 세션 만드는 중…');
+  const session = await pickerRequest('/sessions', accessToken, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}'
+  });
+  if (!session?.id || !session?.pickerUri) throw new Error('Google Photos 선택 세션을 만들지 못했습니다.');
+
+  const pickerUrl = appendAutoClose(session.pickerUri);
+  const popup = globalThis.open?.(pickerUrl, 'google-photos-picker', 'popup=yes,width=1100,height=760,resizable=yes,scrollbars=yes');
+  if (!popup) {
+    await deleteSessionQuietly(session.id, accessToken);
+    throw new Error('Google Photos 선택창이 차단됐습니다. 브라우저 팝업을 허용한 뒤 다시 시도하세요.');
+  }
+
+  try {
+    onStatus?.('Google Photos에서 여행 사진을 선택하고 완료를 누르세요.');
+    await waitForSelection(session, accessToken, onStatus);
+    onStatus?.('선택한 사진 목록 가져오는 중…');
+    const mediaItems = await listSelectedMedia(session.id, accessToken);
+    const photos = normalizePickedMediaItems(mediaItems);
+    if (!photos.length) throw new Error('선택한 항목에서 표시 가능한 사진을 찾지 못했습니다.');
+    onStatus?.(`Google Photos 사진 ${photos.length.toLocaleString()}장 준비 완료`);
+    return {
+      photos,
+      stats: {
+        picked: mediaItems.length,
+        photos: photos.length,
+        videos: mediaItems.length - photos.length,
+        gpsPhotos: 0
+      }
+    };
+  } finally {
+    try { popup.close(); } catch {}
+    await deleteSessionQuietly(session.id, accessToken);
+  }
+}
+
+export function normalizePickedMediaItems(items) {
+  return (items || []).flatMap(item => {
+    const mediaFile = item?.mediaFile || {};
+    const mimeType = String(mediaFile.mimeType || item?.mimeType || '');
+    const type = String(item?.type || '');
+    if (type === 'VIDEO' || (mimeType && !mimeType.startsWith('image/'))) return [];
+
+    const takenMs = Date.parse(item?.createTime || '');
+    const baseUrl = String(mediaFile.baseUrl || item?.baseUrl || '').trim();
+    if (!Number.isFinite(takenMs) || !baseUrl) return [];
+
+    return [{
+      id: item.id || null,
+      title: String(mediaFile.filename || item.filename || 'Google Photos 사진'),
+      takenMs,
+      lat: null,
+      lng: null,
+      hasGps: false,
+      remoteUrl: `${baseUrl}=w1600-h1600`,
+      source: 'google-photos-picker'
+    }];
+  }).sort((a, b) => a.takenMs - b.takenMs);
+}
+
+async function loadGoogleIdentityServices() {
+  if (globalThis.google?.accounts?.oauth2) return globalThis.google;
+  if (googleIdentityPromise) return googleIdentityPromise;
+
+  googleIdentityPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${GIS_SCRIPT}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => resolve(globalThis.google), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google 로그인 라이브러리를 불러오지 못했습니다.')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GIS_SCRIPT;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => globalThis.google?.accounts?.oauth2
+      ? resolve(globalThis.google)
+      : reject(new Error('Google 로그인 라이브러리가 초기화되지 않았습니다.'));
+    script.onerror = () => reject(new Error('Google 로그인 라이브러리를 불러오지 못했습니다.'));
+    document.head.append(script);
+  });
+  return googleIdentityPromise;
+}
+
+function requestAccessToken(google, clientId) {
+  return new Promise((resolve, reject) => {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: PICKER_SCOPE,
+      callback: response => {
+        if (response?.error) {
+          reject(new Error(response.error_description || response.error));
+          return;
+        }
+        if (!response?.access_token) {
+          reject(new Error('Google OAuth access token을 받지 못했습니다.'));
+          return;
+        }
+        resolve(response.access_token);
+      },
+      error_callback: error => reject(new Error(error?.message || 'Google 로그인 창을 완료하지 못했습니다.'))
+    });
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  });
+}
+
+async function waitForSelection(initialSession, accessToken, onStatus) {
+  const started = Date.now();
+  let session = initialSession;
+  const timeoutMs = Math.max(30_000, parseGoogleDurationMs(session?.pollingConfig?.timeoutIn, 10 * 60_000));
+
+  while (Date.now() - started < timeoutMs) {
+    if (session?.mediaItemsSet) return session;
+    const pollMs = Math.max(1_000, parseGoogleDurationMs(session?.pollingConfig?.pollInterval, 2_000));
+    await delay(pollMs);
+    session = await pickerRequest(`/sessions/${encodeURIComponent(initialSession.id)}`, accessToken);
+    if (session?.mediaItemsSet) return session;
+    onStatus?.('Google Photos 선택 완료를 기다리는 중…');
+  }
+  throw new Error('Google Photos 사진 선택 시간이 만료됐습니다. 다시 연결해 주세요.');
+}
+
+async function listSelectedMedia(sessionId, accessToken) {
+  const items = [];
+  let pageToken = '';
+  do {
+    const params = new URLSearchParams({ sessionId, pageSize: '100' });
+    if (pageToken) params.set('pageToken', pageToken);
+    const response = await pickerRequest(`/mediaItems?${params}`, accessToken);
+    items.push(...(response?.mediaItems || []));
+    pageToken = response?.nextPageToken || '';
+  } while (pageToken);
+  return items;
+}
+
+async function pickerRequest(path, accessToken, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.set('authorization', `Bearer ${accessToken}`);
+  const response = await fetch(`${PICKER_API}${path}`, { ...options, headers });
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = {}; }
+  }
+  if (!response.ok) {
+    const message = data?.error?.message || `Google Photos API 오류 (HTTP ${response.status})`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+async function deleteSessionQuietly(sessionId, accessToken) {
+  try {
+    await pickerRequest(`/sessions/${encodeURIComponent(sessionId)}`, accessToken, { method: 'DELETE' });
+  } catch {}
+}
+
+function appendAutoClose(uri) {
+  const clean = String(uri || '').replace(/\/+$/, '');
+  return clean.endsWith('/autoclose') ? clean : `${clean}/autoclose`;
+}
+
+function parseGoogleDurationMs(value, fallback) {
+  const match = /^([0-9]+(?:\.[0-9]+)?)s$/.exec(String(value || '').trim());
+  return match ? Number(match[1]) * 1000 : fallback;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
