@@ -23,6 +23,18 @@ const GOOGLE_PRIORS = {
   FLYING: MobilityClass.FLIGHT
 };
 
+const IDENTITY_RULES = Object.freeze({
+  WALKING: { mobilityClass: MobilityClass.WALK, maxSpeed: 18, maxDistance: 30, baseBoost: 0.55, evidenceBoost: 0.75 },
+  CYCLING: { mobilityClass: MobilityClass.BIKE, maxSpeed: 55, maxDistance: 100, baseBoost: 0.75, evidenceBoost: 0.90 },
+  IN_SUBWAY: { mobilityClass: MobilityClass.URBAN_TRANSIT, maxSpeed: 140, maxDistance: 120, baseBoost: 0.85, evidenceBoost: 0.90 },
+  IN_TRAM: { mobilityClass: MobilityClass.URBAN_TRANSIT, maxSpeed: 140, maxDistance: 120, baseBoost: 0.85, evidenceBoost: 0.90 },
+  IN_TRAIN: { mobilityClass: MobilityClass.FAST_GROUND, maxSpeed: 360, maxDistance: 900, baseBoost: 0.82, evidenceBoost: 0.90 },
+  IN_BUS: { mobilityClass: MobilityClass.ROAD, maxSpeed: 140, maxDistance: 350, baseBoost: 0.72, evidenceBoost: 0.85 },
+  IN_PASSENGER_VEHICLE: { mobilityClass: MobilityClass.ROAD, maxSpeed: 220, maxDistance: 600, baseBoost: 0.68, evidenceBoost: 0.85 },
+  IN_FERRY: { mobilityClass: MobilityClass.FERRY, maxSpeed: 95, maxDistance: 350, baseBoost: 0.92, evidenceBoost: 0.90 },
+  FLYING: { mobilityClass: MobilityClass.FLIGHT, maxSpeed: 1300, maxDistance: 16000, minSpeed: 80, minDistance: 20, baseBoost: 0.90, evidenceBoost: 0.90 }
+});
+
 export function inferMobility(segment) {
   const speed = Math.max(0, segment.avgSpeedKmh || 0);
   const distanceKm = Math.max(0, segment.distanceMeters || 0) / 1000;
@@ -52,10 +64,10 @@ export function inferMobility(segment) {
     add(scores, googleClass, (0.25 + googleConfidence * 1.15) * priorCompatibility);
   }
 
-  // CYCLING and urban rail frequently overlap in average speed. Google Timeline's
-  // selected type remains valuable identity evidence even when its candidate
-  // probability is exported as 0. Protect that identity only while the observed
-  // distance/speed stays physically plausible for the selected mode.
+  // Timeline's selected transport type is identity evidence, while speed and
+  // distance are plausibility evidence. This prevents slow trains/ferries/buses
+  // and stop-heavy trams from being recolored as another mode just because their
+  // average speed overlaps. The anchor is disabled when physics clearly conflicts.
   if (identityAnchor) {
     add(scores, identityAnchor.mobilityClass, identityAnchor.boost);
   }
@@ -168,39 +180,32 @@ function protectedIdentityAnchor(googleType, {
   googleConfidence,
   activityConfidence
 }) {
+  const rule = IDENTITY_RULES[googleType];
+  if (!rule) return null;
+
   const selectedTypeEvidence = Math.max(googleConfidence, activityConfidence * 0.8);
+  if (selectedTypeEvidence < 0.55) return null;
+  if (speed > rule.maxSpeed || distanceKm > rule.maxDistance) return null;
+  if (Number.isFinite(rule.minSpeed) && speed < rule.minSpeed && distanceKm < (rule.minDistance ?? Infinity)) return null;
 
-  if (googleType === 'CYCLING') {
-    const physicallyPlausible = speed <= 55 && distanceKm <= 100;
-    if (physicallyPlausible && selectedTypeEvidence >= 0.55) {
-      return {
-        mobilityClass: MobilityClass.BIKE,
-        boost: 0.75 + selectedTypeEvidence * 0.9
-      };
-    }
-  }
-
-  if (googleType === 'IN_SUBWAY' || googleType === 'IN_TRAM') {
-    const physicallyPlausible = speed <= 140 && distanceKm <= 120;
-    if (physicallyPlausible && selectedTypeEvidence >= 0.55) {
-      return {
-        mobilityClass: MobilityClass.URBAN_TRANSIT,
-        boost: 0.85 + selectedTypeEvidence * 0.9
-      };
-    }
-  }
-
-  return null;
+  return {
+    mobilityClass: rule.mobilityClass,
+    boost: rule.baseBoost + selectedTypeEvidence * rule.evidenceBoost
+  };
 }
 
 function googlePriorCompatibility(googleType, speed, distanceKm) {
-  if (googleType === 'CYCLING') {
-    if (speed > 70 || distanceKm > 140) return 0.08;
-    if (speed > 55 || distanceKm > 100) return 0.25;
-  }
-  if (googleType === 'IN_SUBWAY' || googleType === 'IN_TRAM') {
-    if (speed > 180 || distanceKm > 180) return 0.1;
-    if (speed > 140 || distanceKm > 120) return 0.3;
+  const rule = IDENTITY_RULES[googleType];
+  if (!rule) return 1;
+
+  const severeSpeed = speed > rule.maxSpeed * 1.28;
+  const severeDistance = distanceKm > rule.maxDistance * 1.55;
+  if (severeSpeed || severeDistance) return 0.08;
+
+  if (speed > rule.maxSpeed || distanceKm > rule.maxDistance) return 0.28;
+
+  if (Number.isFinite(rule.minSpeed) && speed < rule.minSpeed && distanceKm < (rule.minDistance ?? Infinity)) {
+    return 0.25;
   }
   return 1;
 }
