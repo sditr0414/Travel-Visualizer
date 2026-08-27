@@ -84,7 +84,20 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
   const matchedFiles = new Set();
   const media = [];
   const totalWork = jsonFiles.length + mediaFiles.length;
+  const selectedVideoCount = mediaFiles.filter(file => mediaTypeForFile(file) === 'video').length;
+  const selectedPhotoCount = mediaFiles.length - selectedVideoCount;
   let processed = 0;
+
+  reportPhotoProgress({
+    phase: 'METADATA',
+    processed: 0,
+    total: Math.max(1, totalWork),
+    photos: selectedPhotoCount,
+    videos: selectedVideoCount,
+    message: jsonFiles.length
+      ? '사진 메타데이터와 Takeout sidecar를 분석합니다.'
+      : 'EXIF 촬영시각·GPS를 분석합니다.'
+  });
 
   for (const sidecar of jsonFiles) {
     processed += 1;
@@ -107,7 +120,16 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
       } catch {}
     }
     if (processed % IMPORT_YIELD_EVERY === 0) {
-      onProgress?.({ processed, total: totalWork, found: media.length });
+      const progress = { processed, total: totalWork, found: media.length };
+      onProgress?.(progress);
+      reportPhotoProgress({
+        phase: 'METADATA',
+        processed,
+        total: Math.max(1, totalWork),
+        photos: selectedPhotoCount,
+        videos: selectedVideoCount,
+        message: `${processed.toLocaleString()} / ${totalWork.toLocaleString()} 메타데이터 분석`
+      });
       await yieldToBrowser();
     }
   }
@@ -134,8 +156,17 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
       }
     }
 
-    if (localProcessed % IMPORT_YIELD_EVERY === 0) {
-      onProgress?.({ processed, total: totalWork, found: media.length });
+    if (localProcessed % IMPORT_YIELD_EVERY === 0 || localProcessed === mediaFiles.length) {
+      const progress = { processed, total: totalWork, found: media.length };
+      onProgress?.(progress);
+      reportPhotoProgress({
+        phase: 'METADATA',
+        processed,
+        total: Math.max(1, totalWork),
+        photos: selectedPhotoCount,
+        videos: selectedVideoCount,
+        message: `${localProcessed.toLocaleString()} / ${mediaFiles.length.toLocaleString()} 미디어 분석`
+      });
       await yieldToBrowser();
     }
   }
@@ -143,11 +174,22 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
   media.sort((a, b) => a.takenMs - b.takenMs);
   onProgress?.({ processed: totalWork, total: totalWork, found: media.length });
   const videoCount = media.filter(item => item.mediaType === 'video').length;
+  const photoCount = media.length - videoCount;
+
+  reportPhotoProgress({
+    phase: 'MATCH',
+    processed: 0,
+    total: Math.max(1, media.length),
+    photos: photoCount,
+    videos: videoCount,
+    message: `촬영시각 ${media.length.toLocaleString()}개를 Timeline과 매칭합니다.`
+  });
+
   return {
     photos: media,
     stats: {
       files: files.length,
-      images: media.length - videoCount,
+      images: photoCount,
       videos: videoCount,
       sidecars: jsonFiles.length,
       photos: media.length,
@@ -160,9 +202,42 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
 }
 
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
-  const beats = buildPhotoJourneyBeatsV2(media, plan, options);
-  updateMatchDiagnostics(media, beats);
-  return beats;
+  const items = Array.isArray(media) ? media : [];
+  const videoCount = items.filter(item => item?.mediaType === 'video').length;
+  const photoCount = items.length - videoCount;
+
+  reportPhotoProgress({
+    phase: 'MATCH',
+    processed: 0,
+    total: Math.max(1, items.length),
+    photos: photoCount,
+    videos: videoCount,
+    message: '촬영시각과 Timeline 위치를 매칭하는 중입니다.'
+  });
+
+  try {
+    const beats = buildPhotoJourneyBeatsV2(media, plan, options);
+    updateMatchDiagnostics(media, beats);
+    reportPhotoProgress({
+      phase: 'BUILD',
+      processed: 1,
+      total: 2,
+      photos: photoCount,
+      videos: videoCount,
+      scenes: beats.length,
+      message: `${beats.length.toLocaleString()}개 촬영 지점으로 사진 여정을 구성합니다.`
+    });
+    scheduleCompleteProgress(photoCount, videoCount, beats.length);
+    return beats;
+  } catch (error) {
+    reportPhotoProgress({
+      phase: 'ERROR',
+      photos: photoCount,
+      videos: videoCount,
+      message: error?.message || '사진 여정 구성에 실패했습니다.'
+    });
+    throw error;
+  }
 }
 
 function createMediaNode(item, videoMode, objectUrls) {
@@ -237,6 +312,26 @@ function updateMatchDiagnostics(media, beats) {
   } else if (hint && total && (beats || []).length) {
     hint.textContent = `사진 ${photoCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개를 읽었고 Timeline에 ${(beats || []).length.toLocaleString()}개 촬영 지점을 매칭했습니다. 실제 표시: 사진 ${matchedPhotoCount.toLocaleString()}장 · 영상 ${matchedVideoCount.toLocaleString()}개.`;
   }
+}
+
+function scheduleCompleteProgress(photos, videos, scenes) {
+  if (typeof setTimeout !== 'function') return;
+  setTimeout(() => {
+    reportPhotoProgress({
+      phase: 'COMPLETE',
+      processed: 1,
+      total: 1,
+      photos,
+      videos,
+      scenes,
+      message: '사진 여정 준비가 완료되었습니다.'
+    });
+  }, 0);
+}
+
+function reportPhotoProgress(detail) {
+  if (typeof globalThis.window?.dispatchEvent !== 'function' || typeof globalThis.CustomEvent !== 'function') return;
+  globalThis.window.dispatchEvent(new CustomEvent('travel-camera:photo-progress', { detail }));
 }
 
 function yieldToBrowser() {
