@@ -15,28 +15,72 @@ const importHint = document.querySelector('#photoImportHint');
 const status = document.querySelector('#status');
 const loadButton = document.querySelector('#loadButton');
 const videoDuration = document.querySelector('#videoDuration');
+const videoDurationLabel = document.querySelector('#videoDurationLabel');
+const durationHint = document.querySelector('#durationHint');
+const videoDurationTitle = document.querySelector('label[for="videoDuration"]');
 
+// Keep the user-facing term simple. In photo journey mode, media stop time is
+// still added to the route playback internally, but this control remains the
+// primary video-length control from the user's point of view.
+if (videoDurationTitle) videoDurationTitle.textContent = '영상 길이';
+if (videoDuration) videoDuration.setAttribute('aria-label', '영상 길이');
+
+// main.js recalculates duration limits when "설정 적용" is pressed and writes
+// the minimum value back into this range. Guard that one programmatic reset at
+// the input-property level so the recalculation itself reads the preserved value.
+// If a changed date range makes the old value invalid, clamp it to the new range.
 if (loadButton && videoDuration) {
+  const valueDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  let preservingApply = false;
   let preservedVideoDuration = null;
 
-  loadButton.addEventListener('click', () => {
-    const value = Number(videoDuration.value);
-    preservedVideoDuration = Number.isFinite(value) ? value : null;
-  }, { capture: true });
+  if (valueDescriptor?.get && valueDescriptor?.set) {
+    Object.defineProperty(videoDuration, 'value', {
+      configurable: true,
+      enumerable: valueDescriptor.enumerable,
+      get() {
+        return valueDescriptor.get.call(this);
+      },
+      set(nextValue) {
+        if (!preservingApply || !Number.isFinite(preservedVideoDuration)) {
+          valueDescriptor.set.call(this, nextValue);
+          return;
+        }
 
-  loadButton.addEventListener('click', () => {
-    queueMicrotask(() => {
-      if (!Number.isFinite(preservedVideoDuration)) return;
-      const min = Number(videoDuration.min);
-      const max = Number(videoDuration.max);
-      const lower = Number.isFinite(min) ? min : preservedVideoDuration;
-      const upper = Number.isFinite(max) ? max : preservedVideoDuration;
-      const restored = Math.min(upper, Math.max(lower, preservedVideoDuration));
-      videoDuration.value = String(restored);
-      videoDuration.dispatchEvent(new Event('input', { bubbles: true }));
-      preservedVideoDuration = null;
+        const min = Number(this.min);
+        const max = Number(this.max);
+        const lower = Number.isFinite(min) ? min : preservedVideoDuration;
+        const upper = Number.isFinite(max) ? max : preservedVideoDuration;
+        const restored = Math.min(upper, Math.max(lower, preservedVideoDuration));
+        valueDescriptor.set.call(this, String(restored));
+      }
     });
-  });
+
+    loadButton.addEventListener('click', () => {
+      const current = Number(valueDescriptor.get.call(videoDuration));
+      preservedVideoDuration = Number.isFinite(current) ? current : null;
+      preservingApply = Number.isFinite(preservedVideoDuration);
+
+      // main.js schedules its actual playback plan in requestAnimationFrame.
+      // Keep the guard through that frame, then release it.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          preservingApply = false;
+          preservedVideoDuration = null;
+          const displayed = Number(valueDescriptor.get.call(videoDuration));
+          if (videoDurationLabel && Number.isFinite(displayed)) {
+            const value = Math.max(0, Math.round(displayed));
+            const h = Math.floor(value / 3600);
+            const m = Math.floor((value % 3600) / 60);
+            const s = value % 60;
+            videoDurationLabel.textContent = h > 0
+              ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+              : `${m}:${String(s).padStart(2, '0')}`;
+          }
+        });
+      });
+    }, { capture: true });
+  }
 }
 
 if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds) {
@@ -61,6 +105,9 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
   const updateJourneyCopy = () => {
     if (journeyMode.value === 'PHOTOS' && journeyModeHint) {
       journeyModeHint.textContent = '촬영 위치에 도착하면 경로를 멈추고 왼쪽 지도·경로와 오른쪽 사진·동영상을 분할 화면으로 함께 보여준 뒤 다음 이동을 이어갑니다.';
+    }
+    if (durationHint && journeyMode.value === 'PHOTOS') {
+      durationHint.dataset.photoJourneyCopy = 'true';
     }
   };
 
