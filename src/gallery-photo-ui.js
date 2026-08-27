@@ -77,6 +77,11 @@ if (galleryInput && journeyMode) {
       window.dispatchEvent(new CustomEvent('travel-camera:local-media-ready', {
         detail: result
       }));
+
+      // Rebuild through the existing main.js change handler. The photo-journey
+      // adapter now owns the active local library, so no hidden input/DataTransfer
+      // bridge is required.
+      journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
     } catch (error) {
       if (generation !== importGeneration) return;
       const message = error?.message || '기기 갤러리 분석에 실패했습니다.';
