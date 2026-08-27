@@ -25,7 +25,7 @@ const MEDIA_EXTENSIONS = /\.(?:jpe?g|png|webp|gif|avif|heic|heif|mp4|m4v|mov|web
 const VIDEO_EXTENSIONS = /\.(?:mp4|m4v|mov|webm)$/i;
 const SIDECAR_SUFFIX = /(?:\.supplemental-metadata)?\.json$/i;
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
-const sessionPreviewUrls = new Set();
+const IMPORT_YIELD_EVERY = 6;
 
 export class PhotoJourneyController extends PhotoJourneyControllerV2 {
   renderBeat(beat) {
@@ -77,8 +77,6 @@ export class PhotoJourneyController extends PhotoJourneyControllerV2 {
 }
 
 export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
-  releaseSessionPreviewUrls();
-
   const files = Array.from(fileList || []);
   const mediaFiles = files.filter(isDisplayableMediaFile);
   const jsonFiles = files.filter(file => /\.json$/i.test(file.name));
@@ -90,46 +88,56 @@ export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
 
   for (const sidecar of jsonFiles) {
     processed += 1;
-    if (sidecar.size > 3_000_000) continue;
-    try {
-      const metadata = parseGooglePhotosMetadata(JSON.parse(await sidecar.text()), sidecar.name);
-      if (!metadata?.takenMs) continue;
-      const file = findMatchingMedia(sidecar, metadata, mediaIndex);
-      if (!file || matchedFiles.has(file)) continue;
-      matchedFiles.add(file);
-      media.push({
-        ...metadata,
-        title: cleanMediaTitle(metadata.title || file.name),
-        file,
-        previewUrl: createSessionPreviewUrl(file),
-        mediaType: mediaTypeForFile(file),
-        source: 'google-photos-takeout'
-      });
-    } catch {}
-    if (processed % 25 === 0) onProgress?.({ processed, total: totalWork, found: media.length });
+    if (sidecar.size <= 3_000_000) {
+      try {
+        const metadata = parseGooglePhotosMetadata(JSON.parse(await sidecar.text()), sidecar.name);
+        if (metadata?.takenMs) {
+          const file = findMatchingMedia(sidecar, metadata, mediaIndex);
+          if (file && !matchedFiles.has(file)) {
+            matchedFiles.add(file);
+            media.push({
+              ...metadata,
+              title: cleanMediaTitle(metadata.title || file.name),
+              file,
+              mediaType: mediaTypeForFile(file),
+              source: 'google-photos-takeout'
+            });
+          }
+        }
+      } catch {}
+    }
+    if (processed % IMPORT_YIELD_EVERY === 0) {
+      onProgress?.({ processed, total: totalWork, found: media.length });
+      await yieldToBrowser();
+    }
   }
 
+  let localProcessed = 0;
   for (const file of mediaFiles) {
     processed += 1;
-    if (matchedFiles.has(file)) continue;
+    localProcessed += 1;
+    if (!matchedFiles.has(file)) {
+      const embedded = await readLocalMediaMetadata(file);
+      const fileTime = Number(file.lastModified);
+      const takenMs = Number(embedded?.takenMs) || fileTime;
+      if (takenMs > Date.UTC(2000, 0, 1)) {
+        media.push({
+          title: cleanMediaTitle(file.name),
+          takenMs,
+          lat: Number.isFinite(embedded?.lat) ? embedded.lat : null,
+          lng: Number.isFinite(embedded?.lng) ? embedded.lng : null,
+          hasGps: !!embedded?.hasGps,
+          file,
+          mediaType: mediaTypeForFile(file),
+          source: embedded?.source || 'file-time'
+        });
+      }
+    }
 
-    const embedded = await readLocalMediaMetadata(file);
-    const fileTime = Number(file.lastModified);
-    const takenMs = Number(embedded?.takenMs) || fileTime;
-    if (!(takenMs > Date.UTC(2000, 0, 1))) continue;
-
-    media.push({
-      title: cleanMediaTitle(file.name),
-      takenMs,
-      lat: Number.isFinite(embedded?.lat) ? embedded.lat : null,
-      lng: Number.isFinite(embedded?.lng) ? embedded.lng : null,
-      hasGps: !!embedded?.hasGps,
-      file,
-      previewUrl: createSessionPreviewUrl(file),
-      mediaType: mediaTypeForFile(file),
-      source: embedded?.source || 'file-time'
-    });
-    if (processed % 10 === 0) onProgress?.({ processed, total: totalWork, found: media.length });
+    if (localProcessed % IMPORT_YIELD_EVERY === 0) {
+      onProgress?.({ processed, total: totalWork, found: media.length });
+      await yieldToBrowser();
+    }
   }
 
   media.sort((a, b) => a.takenMs - b.takenMs);
@@ -158,22 +166,21 @@ export function buildPhotoJourneyBeats(media, plan, options = {}) {
 }
 
 function createMediaNode(item, videoMode, objectUrls) {
-  const stableUrl = String(item?.previewUrl || '');
-  let url = stableUrl;
-  if (!url && item?.file) {
-    try {
-      url = URL.createObjectURL(item.file);
-      objectUrls.push(url);
-    } catch {
-      url = '';
-    }
+  if (!item?.file) return null;
+
+  let url = '';
+  try {
+    url = URL.createObjectURL(item.file);
+    objectUrls.push(url);
+  } catch {
+    return null;
   }
-  if (!url) return null;
 
   if (item.mediaType !== 'video') {
     const img = document.createElement('img');
     img.alt = item.title || '여행 사진';
     img.decoding = 'async';
+    img.loading = 'eager';
     img.src = url;
     return img;
   }
@@ -182,6 +189,7 @@ function createMediaNode(item, videoMode, objectUrls) {
     const img = document.createElement('img');
     img.alt = `${item.title || '여행 영상'} 썸네일`;
     img.decoding = 'async';
+    img.loading = 'eager';
     img.src = url;
     return img;
   }
@@ -231,22 +239,11 @@ function updateMatchDiagnostics(media, beats) {
   }
 }
 
-function createSessionPreviewUrl(file) {
-  if (!file || typeof URL?.createObjectURL !== 'function') return null;
-  try {
-    const url = URL.createObjectURL(file);
-    sessionPreviewUrls.add(url);
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-function releaseSessionPreviewUrls() {
-  for (const url of sessionPreviewUrls) {
-    try { URL.revokeObjectURL(url); } catch {}
-  }
-  sessionPreviewUrls.clear();
+function yieldToBrowser() {
+  return new Promise(resolve => {
+    if (typeof setTimeout === 'function') setTimeout(resolve, 0);
+    else resolve();
+  });
 }
 
 function formatDateOnly(ms) {
