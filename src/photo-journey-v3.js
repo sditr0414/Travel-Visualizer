@@ -43,14 +43,14 @@ export class PhotoJourneyController extends PhotoJourneyControllerV2 {
           figure.classList.add('photo-load-error');
           node.remove();
           const fallback = document.createElement('span');
-          fallback.textContent = '미리보기 불가';
+          fallback.textContent = item.mediaType === 'video' ? '영상 재생 불가' : '미리보기 불가';
           figure.append(fallback);
         }, { once: true });
         figure.append(node);
       } else {
         figure.classList.add('photo-load-error');
         const fallback = document.createElement('span');
-        fallback.textContent = '미리보기 불가';
+        fallback.textContent = item.mediaType === 'video' ? '영상 재생 불가' : '미리보기 불가';
         figure.append(fallback);
       }
 
@@ -260,32 +260,47 @@ function createMediaNode(item, videoMode, objectUrls) {
     return img;
   }
 
-  if (!String(item.file?.type || '').startsWith('video/')) {
-    const img = document.createElement('img');
-    img.alt = `${item.title || '여행 영상'} 썸네일`;
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.src = url;
-    return img;
-  }
-
+  // mediaType is authoritative. Local file pickers may return an empty or
+  // generic MIME type for MP4/MOV, so MIME must not decide whether we create
+  // an <img> or <video> node.
   const video = document.createElement('video');
   video.setAttribute('aria-label', item.title || '여행 영상');
   video.src = url;
   video.muted = true;
+  video.defaultMuted = true;
   video.playsInline = true;
-  video.preload = 'metadata';
+  video.setAttribute('playsinline', '');
+  video.preload = videoMode === VideoPlaybackMode.PLAY ? 'auto' : 'metadata';
   video.controls = false;
   video.loop = false;
 
-  if (videoMode === VideoPlaybackMode.THUMBNAIL) {
+  if (videoMode === VideoPlaybackMode.PLAY) {
+    const tryPlay = () => {
+      if (!shouldPlayJourneyVideo()) return;
+      video.play().catch(() => {
+        video.dataset.playbackBlocked = 'true';
+      });
+    };
+    video.autoplay = shouldPlayJourneyVideo();
+    video.addEventListener('loadeddata', tryPlay, { once: true });
+    video.addEventListener('canplay', tryPlay, { once: true });
+    queueMicrotask(tryPlay);
+  } else {
     video.addEventListener('loadedmetadata', () => {
       const duration = Number(video.duration);
       if (!Number.isFinite(duration) || duration <= 0) return;
       try { video.currentTime = Math.min(0.12, duration / 2); } catch {}
+      try { video.pause(); } catch {}
     }, { once: true });
   }
   return video;
+}
+
+function shouldPlayJourneyVideo() {
+  const journeyMode = String(globalThis.document?.querySelector?.('#journeyMode')?.value || '');
+  const videoMode = String(globalThis.document?.querySelector?.('#photoVideoMode')?.value || '');
+  const playText = String(globalThis.document?.querySelector?.('#playButton')?.textContent || '').trim();
+  return journeyMode === JourneyMode.PHOTOS && videoMode === VideoPlaybackMode.PLAY && playText === '일시정지';
 }
 
 function updateMatchDiagnostics(media, beats) {
