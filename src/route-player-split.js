@@ -10,24 +10,23 @@ import { mercatorProject, mercatorUnproject } from './geo.js';
 
 const TILE_SIZE = 512;
 const SPLIT_BREAKPOINT = 820;
-const MEDIA_ENTER_MS = 560;
-const MEDIA_EXIT_MS = 440;
+const LAYOUT_ENTER_MS = 520;
+const LAYOUT_EXIT_MS = 440;
 
 /**
- * RoutePlayer variant used by the browser UI. During a photo/video hold it keeps
- * the approach route visible instead of letting the rolling trail collapse into
- * repeated stationary points. It also shifts the stopped location into the map
- * half of the split view with a short cinematic camera transition.
+ * Photo journey keeps a stable map/media composition for the whole TRAVEL
+ * section. The camera is biased into the visible map pane before media appears,
+ * so showing or hiding a photo does not cause a full-screen -> split-screen jump.
  */
 export class RoutePlayer extends CoreRoutePlayer {
   constructor(options) {
     super(options);
-    this.mediaCameraActive = false;
+    this.photoLayoutActive = false;
     this.mediaCameraKey = null;
   }
 
   reset() {
-    this.mediaCameraActive = false;
+    this.photoLayoutActive = false;
     this.mediaCameraKey = null;
     super.reset();
   }
@@ -36,35 +35,41 @@ export class RoutePlayer extends CoreRoutePlayer {
     const frames = this.plan?.frames || [];
     const clampedIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, frames.length - 1)));
     const frame = frames[clampedIndex];
-    const isMediaHold = !!(frame?.mediaHold && frame.position && frame.kind === 'TRAVEL');
+    const usePhotoLayout = !!(
+      frame?.kind === 'TRAVEL' &&
+      frame.position &&
+      isPhotoJourneyMode()
+    );
 
-    if (!isMediaHold) {
-      if (!this.mediaCameraActive) {
+    syncPhotoJourneyLayout(usePhotoLayout);
+
+    if (!usePhotoLayout) {
+      if (!this.photoLayoutActive) {
         super.renderFrame(index, force);
         return;
       }
 
       const requestedCamera = captureCoreCameraRequest(this, () => super.renderFrame(index, force));
-      this.mediaCameraActive = false;
+      this.photoLayoutActive = false;
       this.mediaCameraKey = null;
-      if (requestedCamera) animateCamera(this.map, requestedCamera, MEDIA_EXIT_MS);
+      if (requestedCamera) animateCamera(this.map, requestedCamera, LAYOUT_EXIT_MS);
       return;
     }
 
     const requestedCamera = captureCoreCameraRequest(this, () => super.renderFrame(index, force));
-    const splitCamera = requestedCamera ? this.splitCameraForFrame(frame, requestedCamera) : null;
-    if (!splitCamera) return;
+    const paneCamera = requestedCamera ? this.photoPaneCameraForFrame(frame, requestedCamera) : null;
+    if (!paneCamera) return;
 
-    const mediaKey = String(frame.mediaBeatId || `${frame.mediaTakenMs || ''}`);
-    const entering = !this.mediaCameraActive || this.mediaCameraKey !== mediaKey;
-    this.mediaCameraActive = true;
-    this.mediaCameraKey = mediaKey;
-    this.trackedCenter = { lng: splitCamera.center[0], lat: splitCamera.center[1] };
+    const enteringLayout = !this.photoLayoutActive;
+    this.photoLayoutActive = true;
+    this.mediaCameraKey = frame.mediaHold ? String(frame.mediaBeatId || frame.mediaTakenMs || '') : null;
+    this.trackedCenter = { lng: paneCamera.center[0], lat: paneCamera.center[1] };
 
-    if (entering) animateCamera(this.map, splitCamera, MEDIA_ENTER_MS);
+    if (enteringLayout) animateCamera(this.map, paneCamera, LAYOUT_ENTER_MS);
+    else applyCamera(this.map, paneCamera);
   }
 
-  splitCameraForFrame(frame, requestedCamera) {
+  photoPaneCameraForFrame(frame, requestedCamera) {
     const canvas = this.map?.getCanvas?.();
     const width = Number(canvas?.clientWidth) || 0;
     const height = Number(canvas?.clientHeight) || 0;
@@ -76,8 +81,8 @@ export class RoutePlayer extends CoreRoutePlayer {
     const point = mercatorProject(frame.position);
     const scale = TILE_SIZE * 2 ** zoom;
     const narrow = width <= SPLIT_BREAKPOINT;
-    const targetX = narrow ? 0.50 : 0.28;
-    const targetY = narrow ? 0.24 : 0.50;
+    const targetX = narrow ? 0.50 : 0.30;
+    const targetY = narrow ? 0.26 : 0.50;
     const center = mercatorUnproject({
       x: point.x + (0.50 - targetX) * width / scale,
       y: point.y + (0.50 - targetY) * height / scale
@@ -156,6 +161,20 @@ function captureCoreCameraRequest(player, render) {
   return requested;
 }
 
+function isPhotoJourneyMode() {
+  return String(globalThis.document?.querySelector?.('#journeyMode')?.value || '') === 'PHOTOS';
+}
+
+function syncPhotoJourneyLayout(active) {
+  const stage = globalThis.document?.querySelector?.('.stage');
+  stage?.classList?.toggle('photo-journey-layout-active', !!active);
+}
+
+function applyCamera(map, options) {
+  if (!map || !options) return;
+  try { map.jumpTo(options); } catch {}
+}
+
 function animateCamera(map, options, duration) {
   if (!map || !options) return;
   const target = {
@@ -170,7 +189,7 @@ function animateCamera(map, options, duration) {
       return;
     } catch {}
   }
-  try { map.jumpTo(options); } catch {}
+  applyCamera(map, options);
 }
 
 function smootherStep(value) {
