@@ -1,6 +1,8 @@
 const host = document.querySelector('#photoImportBlock');
 
 if (host && !document.querySelector('#photoImportProgress')) {
+  ensureProgressStyles();
+
   const progress = document.createElement('section');
   progress.id = 'photoImportProgress';
   progress.className = 'photo-import-progress';
@@ -113,4 +115,30 @@ function renderProgress(next) {
   }
 
   root.classList.toggle('is-error', phase === 'ERROR');
+}
+
+function ensureProgressStyles() {
+  if (document.querySelector('#photoProgressStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'photoProgressStyles';
+  style.textContent = `
+    .photo-import-progress{grid-column:1/-1;margin:8px 0 10px;padding:10px 11px;border:1px solid #334155;border-radius:10px;background:rgba(2,6,23,.58);min-width:0}
+    .photo-import-progress[hidden]{display:none}
+    .photo-progress-head,.photo-progress-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+    .photo-progress-head strong{color:#f8fafc;font-size:11px}
+    .photo-progress-head span{color:#bfdbfe;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+    .photo-progress-track{height:7px;margin:8px 0;border-radius:999px;overflow:hidden;background:#1e293b}
+    .photo-progress-track i{display:block;width:0;height:100%;border-radius:inherit;background:#3b82f6;transition:width .16s ease}
+    .photo-progress-meta{color:#94a3b8;font-size:9px;line-height:1.3}
+    .photo-progress-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .photo-progress-meta span:last-child{flex:0 0 auto;color:#cbd5e1;font-variant-numeric:tabular-nums}
+    .photo-progress-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:9px 0 0;padding:0;list-style:none}
+    .photo-progress-steps li{min-width:0;padding:5px 4px;border:1px solid #273449;border-radius:7px;background:#111827;color:#64748b;font-size:8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .photo-progress-steps li.is-active{border-color:#3b82f6;color:#dbeafe;background:rgba(30,64,175,.24)}
+    .photo-progress-steps li.is-done{border-color:#166534;color:#bbf7d0;background:rgba(22,101,52,.20)}
+    .photo-import-progress.is-error{border-color:#7f1d1d}
+    .photo-import-progress.is-error .photo-progress-track i{background:#ef4444}
+    @media(max-width:640px){.photo-progress-meta{align-items:flex-start;flex-direction:column;gap:3px}.photo-progress-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  `;
+  document.head.append(style);
 }
