@@ -95,18 +95,49 @@
   background: #2b374b;
 }
 
-/* Desktop settings workspace: favor width over an internal scroll column. */
-@media (min-width: 900px) {
-  .settings-shell {
-    width: min(1040px, calc(100vw - 28px));
-  }
+/* Open settings as a viewport-safe workspace instead of a clipped right rail. */
+.settings-shell[open] {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.settings-shell[open]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, .46);
+  backdrop-filter: blur(2px);
+}
+.settings-shell[open] > summary {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 14px;
+  margin: 0;
+  pointer-events: auto;
+}
+.settings-shell[open] > .settings-card {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1120px, calc(100% - 48px));
+  max-height: calc(100% - 88px);
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+}
 
-  .settings-card {
+@media (min-width: 900px) {
+  .settings-shell { width: 330px; }
+
+  .settings-shell[open] > .settings-card {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px 12px;
-    max-height: none;
-    overflow: visible;
     padding: 14px;
   }
 
@@ -167,14 +198,9 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .advanced-grid .wide {
-    grid-column: span 2;
-  }
-
+  .advanced-grid .wide { grid-column: span 2; }
   .advanced-grid .date-grid.wide,
-  .advanced-grid button.wide {
-    grid-column: span 2;
-  }
+  .advanced-grid button.wide { grid-column: span 2; }
 
   .route-legend {
     grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -191,7 +217,10 @@
 
 @media (max-width: 899px) {
   .settings-shell { width: min(430px, calc(100vw - 28px)); }
-  .settings-card { max-height: calc(100vh - 112px); overflow-y: auto; }
+  .settings-shell[open] > .settings-card {
+    width: min(720px, calc(100% - 24px));
+    max-height: calc(100% - 76px);
+  }
 }
 
 @media (max-width: 760px) {
@@ -204,6 +233,22 @@
   .gallery-photo-picker,
   .google-photos-connect { padding: 0 8px; font-size: 9px; }
   .google-photos-connect { max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
+
+  .settings-shell[open] > summary {
+    top: 8px;
+    right: 8px;
+  }
+  .settings-shell[open] > .settings-card {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    max-height: calc(100% - 54px);
+    border-radius: 16px 16px 0 0;
+    padding: 14px 12px 18px;
+  }
 }
 
 @media (max-width: 520px) {
