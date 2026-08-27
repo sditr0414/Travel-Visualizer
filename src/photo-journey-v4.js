@@ -10,6 +10,7 @@ import {
 } from './photo-journey-v3.js';
 
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
+const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|prefecture|region|province|state|county/i;
 let localGalleryMedia = [];
 let preferLocalGallery = false;
 
@@ -67,6 +68,12 @@ export class PhotoJourneyController extends PhotoJourneyControllerV3 {
     this.layer.classList.add('media-stop-active');
     this.setPhotoAnchor(beat.anchor);
   }
+
+  resolvePlaceName(anchorPx) {
+    const features = collectAdministrativeFeatures(this.map, anchorPx);
+    const administrative = administrativePlaceLabel(features, anchorPx, coordinate => this.map.project(coordinate));
+    return administrative || super.resolvePlaceName(anchorPx);
+  }
 }
 
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
@@ -95,6 +102,131 @@ export function useLocalGalleryMedia(media) {
 export function clearLocalGalleryMedia() {
   localGalleryMedia = [];
   preferLocalGallery = false;
+}
+
+/**
+ * Resolve a photo GPS point to administrative labels rather than a nearby POI.
+ * The preferred result is "city · district/ward". If only one level is present,
+ * that level is returned. This function is exported so the ranking can be tested
+ * without MapLibre.
+ */
+export function administrativePlaceLabel(features, anchorPx, projectCoordinate = null) {
+  const candidates = [];
+  for (const feature of features || []) {
+    const name = administrativeFeatureName(feature?.properties);
+    if (!name) continue;
+    const level = administrativeFeatureLevel(feature);
+    if (!level) continue;
+
+    let distance = 9999;
+    const coordinate = representativeFeatureCoordinate(feature?.geometry);
+    if (coordinate && typeof projectCoordinate === 'function') {
+      try {
+        const point = projectCoordinate(coordinate);
+        if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
+          distance = Math.hypot(point.x - Number(anchorPx?.x || 0), point.y - Number(anchorPx?.y || 0));
+        }
+      } catch {}
+    }
+
+    const maxDistance = level === 'district' ? 320 : level === 'city' ? 560 : 760;
+    if (distance !== 9999 && distance > maxDistance) continue;
+    candidates.push({ name, level, distance });
+  }
+
+  const nearest = level => candidates
+    .filter(item => item.level === level)
+    .sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name))[0] || null;
+
+  const district = nearest('district');
+  const city = nearest('city');
+  const region = nearest('region');
+  const parts = [];
+  if (city?.name) parts.push(city.name);
+  if (district?.name && !parts.some(value => sameAdministrativeName(value, district.name))) parts.push(district.name);
+  if (!parts.length && region?.name) parts.push(region.name);
+  return parts.slice(0, 2).join(' · ') || null;
+}
+
+function collectAdministrativeFeatures(map, anchorPx) {
+  const collected = [];
+  try {
+    const radius = 220;
+    collected.push(...(map.queryRenderedFeatures([
+      [anchorPx.x - radius, anchorPx.y - radius],
+      [anchorPx.x + radius, anchorPx.y + radius]
+    ]) || []));
+  } catch {}
+
+  let layers = [];
+  try { layers = map.getStyle?.()?.layers || []; } catch {}
+  const queried = new Set();
+  for (const layer of layers) {
+    const source = layer?.source;
+    const sourceLayer = layer?.['source-layer'];
+    const hint = `${layer?.id || ''} ${sourceLayer || ''}`;
+    if (!source || !sourceLayer || !ADMIN_LAYER_HINT.test(hint)) continue;
+    const key = `${source}:${sourceLayer}`;
+    if (queried.has(key)) continue;
+    queried.add(key);
+    try {
+      const features = map.querySourceFeatures(source, { sourceLayer }) || [];
+      for (const feature of features.slice(0, 4000)) {
+        collected.push({ ...feature, layer: feature.layer || { id: layer.id, 'source-layer': sourceLayer } });
+      }
+    } catch {}
+  }
+  return collected;
+}
+
+function administrativeFeatureLevel(feature) {
+  const properties = feature?.properties || {};
+  const hint = [
+    feature?.layer?.id,
+    feature?.layer?.['source-layer'],
+    properties.place,
+    properties.class,
+    properties.kind,
+    properties['pmap:kind'],
+    properties.type,
+    properties.featurecla
+  ].map(value => String(value || '').toLowerCase()).join(' ');
+  const admin = Number(properties.admin_level ?? properties.adminLevel);
+
+  if (/ward|district|borough|neigh|suburb|quarter/.test(hint) || (Number.isFinite(admin) && admin >= 8)) return 'district';
+  if (/city|town|municip|village|locality/.test(hint) || (Number.isFinite(admin) && admin >= 6 && admin < 8)) return 'city';
+  if (/prefecture|region|province|state|county/.test(hint) || (Number.isFinite(admin) && admin >= 3 && admin < 6)) return 'region';
+  return null;
+}
+
+function administrativeFeatureName(properties) {
+  if (!properties) return null;
+  const candidates = [
+    properties['name:ko'], properties.name_ko,
+    properties.name,
+    properties['name:ja'], properties.name_ja,
+    properties['name:en'], properties.name_en
+  ];
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text && text.length <= 80) return text;
+  }
+  return null;
+}
+
+function representativeFeatureCoordinate(geometry) {
+  if (!geometry) return null;
+  if (geometry.type === 'Point' && Array.isArray(geometry.coordinates)) return geometry.coordinates;
+  if (geometry.type === 'MultiPoint' && Array.isArray(geometry.coordinates?.[0])) return geometry.coordinates[0];
+  return null;
+}
+
+function sameAdministrativeName(a, b) {
+  const normalize = value => String(value || '')
+    .toLowerCase()
+    .replace(/[\s·・,._-]+/g, '')
+    .replace(/(?:시|구|군|도|부|현|市|区|郡|都|府|県)$/u, '');
+  return normalize(a) === normalize(b);
 }
 
 function createJourneyMediaNode(item, videoMode, objectUrls) {
