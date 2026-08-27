@@ -6,6 +6,7 @@ const importCount = document.querySelector('#photoImportCount');
 const status = document.querySelector('#status');
 
 const MEDIA_NAME = /\.(?:jpe?g|png|webp|gif|avif|heic|heif|mp4|m4v|mov|webm)$/i;
+const TRANSFER_BATCH_SIZE = 25;
 
 if (galleryInput && journeyMode && photoFolderInput) {
   const syncDeviceGalleryCopy = () => {
@@ -26,7 +27,7 @@ if (galleryInput && journeyMode && photoFolderInput) {
     if (importHint) observer.observe(importHint, { childList: true, characterData: true, subtree: true });
   }
 
-  galleryInput.addEventListener('change', () => {
+  galleryInput.addEventListener('change', async () => {
     const files = Array.from(galleryInput.files || []).filter(file => {
       const type = String(file.type || '');
       return /^(?:image|video)\//i.test(type) || MEDIA_NAME.test(String(file.name || ''));
@@ -47,7 +48,18 @@ if (galleryInput && journeyMode && photoFolderInput) {
     }
 
     const transfer = new DataTransfer();
-    for (const file of files) transfer.items.add(file);
+    if (importHint) importHint.textContent = '기기 갤러리 선택 항목을 준비하는 중입니다.';
+
+    for (let index = 0; index < files.length; index += 1) {
+      transfer.items.add(files[index]);
+      const prepared = index + 1;
+      if (prepared % TRANSFER_BATCH_SIZE === 0 || prepared === files.length) {
+        if (importCount) importCount.textContent = `${prepared.toLocaleString()} / ${files.length.toLocaleString()}개 준비`;
+        if (status) status.textContent = `기기 갤러리 준비 중 · ${prepared.toLocaleString()} / ${files.length.toLocaleString()}`;
+        await yieldToBrowser();
+      }
+    }
+
     photoFolderInput.dataset.importSource = 'device-gallery';
     delete photoFolderInput.dataset.googleVideoMode;
     if (importCount) importCount.textContent = `${files.length.toLocaleString()}개 선택`;
@@ -57,4 +69,8 @@ if (galleryInput && journeyMode && photoFolderInput) {
     photoFolderInput.dispatchEvent(new Event('change', { bubbles: true }));
     queueMicrotask(syncDeviceGalleryCopy);
   });
+}
+
+function yieldToBrowser() {
+  return new Promise(resolve => setTimeout(resolve, 0));
 }
