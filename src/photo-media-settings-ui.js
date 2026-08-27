@@ -13,6 +13,31 @@ const photoImages = document.querySelector('#photoImages');
 const photoFolderInput = document.querySelector('#photoFolderInput');
 const importHint = document.querySelector('#photoImportHint');
 const status = document.querySelector('#status');
+const loadButton = document.querySelector('#loadButton');
+const videoDuration = document.querySelector('#videoDuration');
+
+if (loadButton && videoDuration) {
+  let preservedVideoDuration = null;
+
+  loadButton.addEventListener('click', () => {
+    const value = Number(videoDuration.value);
+    preservedVideoDuration = Number.isFinite(value) ? value : null;
+  }, { capture: true });
+
+  loadButton.addEventListener('click', () => {
+    queueMicrotask(() => {
+      if (!Number.isFinite(preservedVideoDuration)) return;
+      const min = Number(videoDuration.min);
+      const max = Number(videoDuration.max);
+      const lower = Number.isFinite(min) ? min : preservedVideoDuration;
+      const upper = Number.isFinite(max) ? max : preservedVideoDuration;
+      const restored = Math.min(upper, Math.max(lower, preservedVideoDuration));
+      videoDuration.value = String(restored);
+      videoDuration.dispatchEvent(new Event('input', { bubbles: true }));
+      preservedVideoDuration = null;
+    });
+  });
+}
 
 if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds) {
   const updateLabels = () => {
