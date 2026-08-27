@@ -95,11 +95,103 @@
   background: #2b374b;
 }
 
+/* Desktop settings workspace: favor width over an internal scroll column. */
+@media (min-width: 900px) {
+  .settings-shell {
+    width: min(1040px, calc(100vw - 28px));
+  }
+
+  .settings-card {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px 12px;
+    max-height: none;
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .settings-card > .mode-hint,
+  .settings-card > .photo-import-block,
+  .settings-card > .advanced-settings,
+  .settings-card > .route-legend,
+  .settings-card > .summary {
+    grid-column: 1 / -1;
+  }
+
+  .settings-card > .setting-block:not(.photo-import-block) {
+    min-width: 0;
+    margin-top: 0;
+    padding: 10px;
+    border: 1px solid #263247;
+    border-radius: 10px;
+    background: rgba(17, 24, 39, .5);
+  }
+
+  .setting-block + .setting-block {
+    margin-top: 0;
+    padding-top: 10px;
+    border-top: 1px solid #263247;
+  }
+
+  .photo-import-block {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr);
+    gap: 8px 14px;
+    align-items: start;
+  }
+
+  .photo-import-block > .setting-head,
+  .photo-import-block > .hint:first-of-type,
+  .photo-import-block > .photo-import-divider,
+  .photo-import-block > .photo-folder-picker,
+  .photo-import-block > #photoImportHint {
+    grid-column: 1;
+  }
+
+  .photo-import-block > .photo-playback-settings {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+    margin-top: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .advanced-settings {
+    margin-top: 0;
+    padding: 10px;
+    border: 1px solid #263247;
+    border-radius: 10px;
+  }
+
+  .advanced-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .advanced-grid .wide {
+    grid-column: span 2;
+  }
+
+  .advanced-grid .date-grid.wide,
+  .advanced-grid button.wide {
+    grid-column: span 2;
+  }
+
+  .route-legend {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    margin-top: 0;
+  }
+}
+
 @media (max-width: 1050px) {
   .journey-mode-switch > span { display: none; }
   .journey-mode-switch { padding-left: 5px; }
   .source-chip { max-width: 180px; }
   .gallery-photo-picker { padding: 0 10px; font-size: 10px; }
+}
+
+@media (max-width: 899px) {
+  .settings-shell { width: min(430px, calc(100vw - 28px)); }
+  .settings-card { max-height: calc(100vh - 112px); overflow-y: auto; }
 }
 
 @media (max-width: 760px) {
