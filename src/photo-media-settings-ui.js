@@ -19,11 +19,66 @@ const videoDurationLabel = document.querySelector('#videoDurationLabel');
 const durationHint = document.querySelector('#durationHint');
 const videoDurationTitle = document.querySelector('label[for="videoDuration"]');
 
-// Keep the user-facing term simple. In photo journey mode, media stop time is
-// still added to the route playback internally, but this control remains the
-// primary video-length control from the user's point of view.
+// Keep the user-facing term simple. The configured value is the route playback
+// length; photo/video holds extend the actual player duration shown in the dock.
 if (videoDurationTitle) videoDurationTitle.textContent = '영상 길이';
 if (videoDuration) videoDuration.setAttribute('aria-label', '영상 길이');
+
+setupPlaybackClock();
+
+function setupPlaybackClock() {
+  if (!seek) return;
+  const dock = seek.closest('.player-dock');
+  if (!dock) return;
+
+  let clock = dock.querySelector('#playbackTime');
+  if (!clock) {
+    clock = document.createElement('span');
+    clock.id = 'playbackTime';
+    clock.className = 'playback-time';
+    clock.setAttribute('aria-label', '진행 시간과 전체 재생 시간');
+    clock.textContent = '0:00 / 0:00';
+    const fpsBadge = dock.querySelector('.fps-badge');
+    if (fpsBadge) dock.insertBefore(clock, fpsBadge);
+    else dock.append(clock);
+  }
+
+  let lastText = '';
+  const render = () => {
+    const current = Math.max(0, Number(seek.value) || 0);
+    const total = Math.max(0, Number(seek.max) || 0);
+    const text = `${formatPlaybackClock(current, false)} / ${formatPlaybackClock(total, true)}`;
+    if (text !== lastText) {
+      clock.textContent = text;
+      lastText = text;
+    }
+  };
+
+  seek.addEventListener('input', render);
+  seek.addEventListener('change', render);
+  playButton?.addEventListener('click', () => requestAnimationFrame(render));
+  resetButton?.addEventListener('click', () => requestAnimationFrame(render));
+
+  if (globalThis.MutationObserver) {
+    new MutationObserver(render).observe(seek, { attributes: true, attributeFilter: ['max', 'value', 'disabled'] });
+  }
+
+  const tick = () => {
+    render();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function formatPlaybackClock(seconds, total = false) {
+  const raw = Math.max(0, Number(seconds) || 0);
+  const value = total ? Math.ceil(raw) : Math.floor(raw);
+  const h = Math.floor(value / 3600);
+  const m = Math.floor((value % 3600) / 60);
+  const s = value % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 // main.js recalculates duration limits when "설정 적용" is pressed and writes
 // the minimum value back into this range. Guard that one programmatic reset at
@@ -61,8 +116,6 @@ if (loadButton && videoDuration) {
       preservedVideoDuration = Number.isFinite(current) ? current : null;
       preservingApply = Number.isFinite(preservedVideoDuration);
 
-      // main.js schedules its actual playback plan in requestAnimationFrame.
-      // Keep the guard through that frame, then release it.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           preservingApply = false;
@@ -107,6 +160,9 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
       journeyModeHint.textContent = '촬영 위치에 도착하면 경로를 멈추고 왼쪽 지도·경로와 오른쪽 사진·동영상을 분할 화면으로 함께 보여준 뒤 다음 이동을 이어갑니다.';
     }
     if (durationHint && journeyMode.value === 'PHOTOS') {
+      const base = String(durationHint.textContent || '')
+        .replace(/ · 설정한 영상 길이는 경로 이동 부분 기준이며 실제 전체 시간은 재생바에서 확인합니다\.?$/, '');
+      durationHint.textContent = `${base} · 설정한 영상 길이는 경로 이동 부분 기준이며 실제 전체 시간은 재생바에서 확인합니다.`;
       durationHint.dataset.photoJourneyCopy = 'true';
     }
   };
