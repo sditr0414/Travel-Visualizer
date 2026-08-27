@@ -28,7 +28,7 @@
 
     <label class="gallery-photo-picker" title="기기 또는 컴퓨터의 사진·동영상 라이브러리에서 여행 미디어 선택">
       <span>기기 갤러리</span>
-      <input id="photoGalleryInput" type="file" accept="image/*,video/*" multiple />
+      <input id="photoGalleryInput" type="file" accept="image/*,video/*,.heic,.heif" multiple />
     </label>
 
     <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos에서 여행 사진 선택</button>
@@ -124,9 +124,9 @@
             <div class="photo-import-divider"><span>정밀 GPS · Takeout</span></div>
             <label class="photo-folder-picker">
               <span>Takeout 폴더 선택</span>
-              <input id="photoFolderInput" type="file" accept="image/*,video/*,.json,application/json" webkitdirectory directory multiple />
+              <input id="photoFolderInput" type="file" accept="image/*,video/*,.heic,.heif,.json,application/json" webkitdirectory directory multiple />
             </label>
-            <p id="photoImportHint" class="hint">기기 갤러리/Picker 미디어는 촬영 시각을 Timeline과 매칭해 위치를 계산합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
+            <p id="photoImportHint" class="hint">기기 갤러리는 가능한 경우 사진의 EXIF 촬영시각·GPS를 직접 읽고 Timeline과 매칭합니다. Takeout은 sidecar GPS가 있으면 그 위치를 우선 사용합니다.</p>
           </div>
 
           <div class="setting-block">
@@ -159,11 +159,11 @@
 
           <div class="setting-block">
             <div class="setting-head">
-              <label for="videoDuration">이동 구간 길이</label>
+              <label for="videoDuration">영상 길이</label>
               <output id="videoDurationLabel">분석 후 설정</output>
             </div>
-            <input id="videoDuration" type="range" min="60" max="600" step="5" value="300" disabled aria-label="이동 구간 영상 길이" />
-            <p id="durationHint" class="hint">사진 여정에서는 여기에 사진·동영상 정지 시간이 추가되어 최종 영상이 더 길어집니다.</p>
+            <input id="videoDuration" type="range" min="60" max="600" step="5" value="300" disabled aria-label="영상 길이" />
+            <p id="durationHint" class="hint">사진 여정에서는 사진·동영상 정지 시간이 추가되어 실제 최종 재생시간이 더 길어질 수 있습니다.</p>
           </div>
 
           <details class="advanced-settings" open>
@@ -220,7 +220,7 @@
   <script src="/vendor/pmtiles.js"></script>
   <script src="/vendor/basemaps.js"></script>
   <script type="importmap">
-    {"imports":{"/src/photo-journey.js":"/src/photo-journey-v2.js","/src/camera-modes.js":"/src/camera-modes-auto.js","/src/route-player.js":"/src/route-player-split.js"}}
+    {"imports":{"/src/photo-journey.js":"/src/photo-journey-v3.js","/src/camera-modes.js":"/src/camera-modes-auto.js","/src/route-player.js":"/src/route-player-split.js"}}
   </script>
   <script type="module" src="./src/main.js"></script>
   <script type="module" src="./src/photo-media-settings-ui.js"></script>
