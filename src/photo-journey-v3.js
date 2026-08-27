@@ -208,18 +208,26 @@ function createMediaNode(item, videoMode, objectUrls) {
 function updateMatchDiagnostics(media, beats) {
   const count = globalThis.document?.querySelector?.('#photoImportCount');
   const hint = globalThis.document?.querySelector?.('#photoImportHint');
-  const total = Array.isArray(media) ? media.length : 0;
-  const matchedItems = (beats || []).reduce((sum, beat) => sum + Math.max(1, Number(beat?.photos?.length) || 0), 0);
-  if (count && total) count.textContent = `${total.toLocaleString()}장 · 장면 ${(beats || []).length.toLocaleString()}`;
+  const items = Array.isArray(media) ? media : [];
+  const total = items.length;
+  const videoCount = items.filter(item => item?.mediaType === 'video').length;
+  const photoCount = total - videoCount;
+  const matchedItems = (beats || []).flatMap(beat => Array.isArray(beat?.photos) ? beat.photos : []);
+  const matchedVideoCount = matchedItems.filter(item => item?.mediaType === 'video').length;
+  const matchedPhotoCount = matchedItems.length - matchedVideoCount;
+
+  if (count && total) {
+    count.textContent = `사진 ${photoCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개 · 장면 ${(beats || []).length.toLocaleString()}`;
+  }
 
   if (hint && total && !(beats || []).length) {
-    const times = media.map(item => Number(item?.takenMs)).filter(Number.isFinite).sort((a, b) => a - b);
+    const times = items.map(item => Number(item?.takenMs)).filter(Number.isFinite).sort((a, b) => a - b);
     const range = times.length
       ? `${formatDateOnly(times[0])} ~ ${formatDateOnly(times.at(-1))}`
       : '촬영시각 없음';
-    hint.textContent = `미디어 ${total.toLocaleString()}개는 읽었지만 현재 Timeline 기간에 매칭된 장면이 없습니다. 읽은 촬영시각 범위: ${range}`;
+    hint.textContent = `사진 ${photoCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개를 읽었지만 현재 Timeline 기간에 매칭된 장면이 없습니다. 읽은 촬영시각 범위: ${range}`;
   } else if (hint && total && (beats || []).length) {
-    hint.textContent = `미디어 ${total.toLocaleString()}개를 읽었고 Timeline에 ${(beats || []).length.toLocaleString()}개 촬영 지점을 매칭했습니다. 실제 표시 미디어 ${matchedItems.toLocaleString()}개.`;
+    hint.textContent = `사진 ${photoCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개를 읽었고 Timeline에 ${(beats || []).length.toLocaleString()}개 촬영 지점을 매칭했습니다. 실제 표시: 사진 ${matchedPhotoCount.toLocaleString()}장 · 영상 ${matchedVideoCount.toLocaleString()}개.`;
   }
 }
 
