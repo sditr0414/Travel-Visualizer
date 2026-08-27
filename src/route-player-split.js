@@ -2,7 +2,6 @@ export * from './route-player.js?core=1';
 
 import {
   RoutePlayer as CoreRoutePlayer,
-  fullRouteFeatureCollection,
   routeHeadFeatureForFrame,
   tailFeatureCollectionForFrame,
   transportColor
@@ -11,29 +10,68 @@ import { mercatorProject, mercatorUnproject } from './geo.js';
 
 const TILE_SIZE = 512;
 const SPLIT_BREAKPOINT = 820;
+const MEDIA_ENTER_MS = 560;
+const MEDIA_EXIT_MS = 440;
 
 /**
  * RoutePlayer variant used by the browser UI. During a photo/video hold it keeps
  * the approach route visible instead of letting the rolling trail collapse into
  * repeated stationary points. It also shifts the stopped location into the map
- * half of the split view.
+ * half of the split view with a short cinematic camera transition.
  */
 export class RoutePlayer extends CoreRoutePlayer {
-  renderFrame(index, force = false) {
-    super.renderFrame(index, force);
+  constructor(options) {
+    super(options);
+    this.mediaCameraActive = false;
+    this.mediaCameraKey = null;
+  }
 
+  reset() {
+    this.mediaCameraActive = false;
+    this.mediaCameraKey = null;
+    super.reset();
+  }
+
+  renderFrame(index, force = false) {
     const frames = this.plan?.frames || [];
     const clampedIndex = Math.max(0, Math.min(Number(index) || 0, Math.max(0, frames.length - 1)));
     const frame = frames[clampedIndex];
-    if (!frame?.mediaHold || !frame.position || frame.kind !== 'TRAVEL') return;
+    const isMediaHold = !!(frame?.mediaHold && frame.position && frame.kind === 'TRAVEL');
 
+    if (!isMediaHold) {
+      if (!this.mediaCameraActive) {
+        super.renderFrame(index, force);
+        return;
+      }
+
+      const requestedCamera = captureCoreCameraRequest(this, () => super.renderFrame(index, force));
+      this.mediaCameraActive = false;
+      this.mediaCameraKey = null;
+      if (requestedCamera) animateCamera(this.map, requestedCamera, MEDIA_EXIT_MS);
+      return;
+    }
+
+    const requestedCamera = captureCoreCameraRequest(this, () => super.renderFrame(index, force));
+    const splitCamera = requestedCamera ? this.splitCameraForFrame(frame, requestedCamera) : null;
+    if (!splitCamera) return;
+
+    const mediaKey = String(frame.mediaBeatId || `${frame.mediaTakenMs || ''}`);
+    const entering = !this.mediaCameraActive || this.mediaCameraKey !== mediaKey;
+    this.mediaCameraActive = true;
+    this.mediaCameraKey = mediaKey;
+    this.trackedCenter = { lng: splitCamera.center[0], lat: splitCamera.center[1] };
+
+    if (entering) animateCamera(this.map, splitCamera, MEDIA_ENTER_MS);
+  }
+
+  splitCameraForFrame(frame, requestedCamera) {
     const canvas = this.map?.getCanvas?.();
     const width = Number(canvas?.clientWidth) || 0;
     const height = Number(canvas?.clientHeight) || 0;
-    if (!(width > 0) || !(height > 0)) return;
+    if (!(width > 0) || !(height > 0)) return null;
 
-    const zoom = Number(this.map?.getZoom?.());
-    if (!Number.isFinite(zoom)) return;
+    const zoom = Number(requestedCamera.zoom);
+    if (!Number.isFinite(zoom)) return null;
 
     const point = mercatorProject(frame.position);
     const scale = TILE_SIZE * 2 ** zoom;
@@ -44,8 +82,12 @@ export class RoutePlayer extends CoreRoutePlayer {
       x: point.x + (0.50 - targetX) * width / scale,
       y: point.y + (0.50 - targetY) * height / scale
     });
-    this.map.jumpTo({ center: [center.lng, center.lat], zoom });
-    this.trackedCenter = { ...center };
+
+    return {
+      ...requestedCamera,
+      center: [center.lng, center.lat],
+      zoom
+    };
   }
 
   paintRoute(frameIndex, isOutro) {
@@ -83,8 +125,6 @@ export function stationaryTrailFeatureCollection(plan, frameIndex, trailSeconds 
     };
   }
 
-  // Use a slightly longer stable approach trail while stopped so the left map
-  // keeps meaningful route context even for a 5–15 second media hold.
   const approach = tailFeatureCollectionForFrame(plan, previousIndex, Math.max(7.5, Number(trailSeconds) || 4.8));
   const previous = frames[previousIndex];
   const connector = lineFeature([previous.position, current.position], current.mobilityClass || previous.mobilityClass);
@@ -92,6 +132,50 @@ export function stationaryTrailFeatureCollection(plan, frameIndex, trailSeconds 
     type: 'FeatureCollection',
     features: [...(approach.features || []), connector].filter(Boolean)
   };
+}
+
+function captureCoreCameraRequest(player, render) {
+  const map = player.map;
+  if (!map || typeof map.jumpTo !== 'function') {
+    render();
+    return null;
+  }
+
+  const originalJumpTo = map.jumpTo;
+  let requested = null;
+  map.jumpTo = options => {
+    requested = options ? { ...options } : null;
+    return map;
+  };
+
+  try {
+    render();
+  } finally {
+    map.jumpTo = originalJumpTo;
+  }
+  return requested;
+}
+
+function animateCamera(map, options, duration) {
+  if (!map || !options) return;
+  const target = {
+    ...options,
+    duration,
+    easing: smootherStep,
+    essential: true
+  };
+  if (typeof map.easeTo === 'function') {
+    try {
+      map.easeTo(target);
+      return;
+    } catch {}
+  }
+  try { map.jumpTo(options); } catch {}
+}
+
+function smootherStep(value) {
+  const t = Math.max(0, Math.min(1, Number(value) || 0));
+  return t * t * t * (t * (t * 6 - 15) + 10);
 }
 
 function lineFeature(points, mobilityClass) {
