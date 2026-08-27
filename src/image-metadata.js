@@ -1,4 +1,5 @@
 const JPEG_NAME = /\.jpe?g$/i;
+const JPEG_METADATA_SCAN_BYTES = 128 * 1024;
 
 export async function readLocalMediaMetadata(file) {
   if (!file) return null;
@@ -7,7 +8,7 @@ export async function readLocalMediaMetadata(file) {
 
   if (type === 'image/jpeg' || JPEG_NAME.test(name)) {
     try {
-      const maxBytes = Math.min(Number(file.size) || 0, 1024 * 1024);
+      const maxBytes = Math.min(Number(file.size) || 0, JPEG_METADATA_SCAN_BYTES);
       const buffer = await file.slice(0, maxBytes || undefined).arrayBuffer();
       const exif = parseJpegExifMetadata(buffer);
       if (exif?.takenMs) return { ...exif, source: 'embedded-exif' };
