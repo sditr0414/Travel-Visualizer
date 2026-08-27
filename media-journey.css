@@ -114,47 +114,68 @@
 }
 
 /*
- * Photo journey keeps the route visible instead of turning the map into a dim
- * full-screen backdrop. Entering a media stop now feels like a deliberate camera
- * transition instead of an instantaneous layout swap.
+ * In photo journey mode the map/media composition stays stable for the whole
+ * travel section. Media appearing no longer changes the viewport from full map
+ * to split-screen; only the content inside the reserved media rail changes.
  */
-.photo-journey-layer.media-stop-active::before {
-  content: '';
+.stage.photo-journey-layout-active::after {
+  content: '사진 여정';
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   top: 0;
   right: 0;
   bottom: 0;
-  left: 56%;
-  border-left: 1px solid rgba(148, 163, 184, .34);
-  background: rgba(3, 7, 18, .97);
-  box-shadow: -22px 0 54px rgba(2, 6, 23, .24);
-  animation: media-split-enter .52s cubic-bezier(.22, .75, .2, 1) both;
+  left: 60%;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid rgba(148, 163, 184, .30);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(30, 41, 59, .42), transparent 46%),
+    rgba(3, 7, 18, .97);
+  box-shadow: -18px 0 48px rgba(2, 6, 23, .20);
+  color: rgba(148, 163, 184, .42);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  pointer-events: none;
+  transition: opacity .35s ease;
 }
 
+.stage.photo-journey-layout-active .player-dock {
+  left: 30%;
+  width: min(680px, calc(60% - 32px));
+  grid-template-columns: 72px 54px minmax(100px, 1fr) auto;
+}
+.stage.photo-journey-layout-active .fps-badge { display: none; }
+.stage.photo-journey-layout-active .video-hud { max-width: calc(60% - 32px); }
+
+/* The split background is now supplied by the persistent stage rail. */
+.photo-journey-layer.media-stop-active::before { display: none; }
 .photo-journey-layer.media-stop-active .photo-leader-layer { display: none; }
 
 .photo-card.media-stop-card {
   z-index: 2;
   left: auto !important;
-  right: 18px;
-  top: 18px !important;
-  width: calc(44% - 36px) !important;
-  height: calc(100% - 106px) !important;
+  right: 12px;
+  top: 12px !important;
+  width: calc(40% - 24px) !important;
+  height: calc(100% - 24px) !important;
   min-width: 0;
   min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   border-radius: 16px;
-  border-color: rgba(255,255,255,.72);
+  border-color: rgba(255,255,255,.56);
   background: rgba(3, 7, 18, .99);
-  box-shadow: 0 18px 54px rgba(2, 6, 23, .38);
+  box-shadow: 0 18px 54px rgba(2, 6, 23, .32);
   backdrop-filter: none;
-  transition: none;
   transform-origin: right center;
-  animation: media-card-enter .58s cubic-bezier(.16, .82, .2, 1) both;
+  animation: media-card-enter .42s cubic-bezier(.16, .82, .2, 1) both;
 }
 
 .media-stop-card .photo-images {
-  grid-row: 1 / -1;
+  grid-row: 1;
+  min-height: 0;
   background: #020617;
   gap: 0;
 }
@@ -163,7 +184,7 @@
   display: grid;
   place-items: center;
   background: #020617;
-  animation: media-content-enter .42s ease-out both;
+  animation: media-content-enter .32s ease-out both;
 }
 
 .media-stop-card .photo-frame img,
@@ -173,60 +194,53 @@
   object-fit: contain;
 }
 
-/* Place and capture time remain readable over bright or dark media. */
+/* Location/time live below the image, never on top of it. */
 .media-stop-card .photo-caption {
-  position: absolute;
-  z-index: 4;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  min-height: 0;
+  position: static;
+  z-index: auto;
+  min-height: 76px;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, .16);
-  border-radius: 13px;
-  background: linear-gradient(135deg, rgba(2, 6, 23, .90), rgba(15, 23, 42, .78));
-  box-shadow: 0 10px 32px rgba(2, 6, 23, .32);
-  backdrop-filter: blur(10px);
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 0;
+  background: rgba(10, 15, 28, .99);
+  box-shadow: none;
+  backdrop-filter: none;
   pointer-events: none;
 }
 
 .media-stop-card .photo-caption-primary { gap: 5px; }
 .media-stop-card .photo-caption-primary strong {
-  max-width: min(32vw, 520px);
+  max-width: 100%;
   color: #fff;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.15;
   letter-spacing: -.015em;
   white-space: normal;
 }
 .media-stop-card .photo-caption-primary span {
   color: #e2e8f0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 750;
 }
 .media-stop-card .photo-meta {
   align-self: flex-end;
-  color: #cbd5e1;
-  font-size: 10px;
-}
-
-@keyframes media-split-enter {
-  from { opacity: 0; transform: translateX(32px); }
-  to { opacity: 1; transform: translateX(0); }
+  color: #94a3b8;
+  font-size: 9px;
 }
 
 @keyframes media-card-enter {
-  from { opacity: 0; transform: translateX(34px) scale(.985); }
+  from { opacity: 0; transform: translateX(18px) scale(.992); }
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 @keyframes media-content-enter {
-  from { opacity: 0; transform: scale(.992); }
+  from { opacity: 0; transform: scale(.995); }
   to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes media-card-enter-mobile {
-  from { opacity: 0; transform: translateY(26px) scale(.99); }
+  from { opacity: 0; transform: translateY(16px) scale(.995); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
@@ -242,42 +256,47 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* On narrow screens a vertical split preserves useful width for both map and media. */
-  .photo-journey-layer.media-stop-active::before {
-    top: 48%;
+  .stage.photo-journey-layout-active::after {
+    top: 52%;
     left: 0;
-    border-top: 1px solid rgba(148, 163, 184, .34);
+    border-top: 1px solid rgba(148, 163, 184, .30);
     border-left: 0;
-    box-shadow: 0 -18px 44px rgba(2, 6, 23, .22);
-    animation-name: media-card-enter-mobile;
+    box-shadow: 0 -16px 40px rgba(2, 6, 23, .18);
   }
 
+  .stage.photo-journey-layout-active .player-dock {
+    left: 50%;
+    top: calc(52% - 58px);
+    bottom: auto;
+    width: calc(100% - 24px);
+    grid-template-columns: 64px 48px minmax(70px, 1fr) auto;
+  }
+  .stage.photo-journey-layout-active .video-hud { max-width: calc(100% - 24px); }
+
   .photo-card.media-stop-card {
-    left: 12px !important;
-    right: 12px;
-    top: calc(48% + 10px) !important;
+    left: 10px !important;
+    right: 10px;
+    top: calc(52% + 10px) !important;
+    bottom: 10px;
     width: auto !important;
-    height: calc(52% - 84px) !important;
+    height: auto !important;
     border-radius: 14px;
     transform-origin: center bottom;
     animation-name: media-card-enter-mobile;
   }
 
   .media-stop-card .photo-caption {
-    left: 9px;
-    right: 9px;
-    bottom: 9px;
+    min-height: 66px;
     padding: 9px 10px;
     gap: 8px;
-    border-radius: 10px;
   }
   .media-stop-card .photo-caption-primary { gap: 3px; }
   .media-stop-card .photo-caption-primary strong {
-    max-width: 68vw;
+    max-width: 100%;
     font-size: 14px;
   }
-  .media-stop-card .photo-caption-primary span { font-size: 11px; }
-  .media-stop-card .photo-meta { font-size: 9px; }
+  .media-stop-card .photo-caption-primary span { font-size: 10px; }
+  .media-stop-card .photo-meta { font-size: 8px; }
 }
 
 @media (max-width: 650px) {
@@ -291,9 +310,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .photo-journey-layer.media-stop-active::before,
+  .stage.photo-journey-layout-active::after,
   .photo-card.media-stop-card,
   .media-stop-card .photo-frame {
     animation: none;
+    transition: none;
   }
 }
