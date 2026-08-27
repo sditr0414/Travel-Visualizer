@@ -1,6 +1,6 @@
 import {
   JourneyMode,
-  PhotoJourneyController,
+  PhotoJourneyController as PhotoJourneyControllerV2,
   VideoPlaybackMode,
   activePhotoBeatAtTime,
   buildPhotoJourneyBeats as buildPhotoJourneyBeatsV2,
@@ -13,7 +13,6 @@ import { readLocalMediaMetadata } from './image-metadata.js';
 
 export {
   JourneyMode,
-  PhotoJourneyController,
   VideoPlaybackMode,
   activePhotoBeatAtTime,
   choosePhotoPlacement,
@@ -27,6 +26,55 @@ const VIDEO_EXTENSIONS = /\.(?:mp4|m4v|mov|webm)$/i;
 const SIDECAR_SUFFIX = /(?:\.supplemental-metadata)?\.json$/i;
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
 const sessionPreviewUrls = new Set();
+
+export class PhotoJourneyController extends PhotoJourneyControllerV2 {
+  renderBeat(beat) {
+    this.revokeUrls();
+    this.images.replaceChildren();
+    this.images.dataset.count = '1';
+
+    const item = beat.photos[0];
+    if (item) {
+      const figure = document.createElement('figure');
+      figure.className = `photo-frame${item.mediaType === 'video' ? ' video-frame' : ''}`;
+      const node = createMediaNode(item, beat.videoMode, this.objectUrls);
+      if (node) {
+        node.addEventListener('error', () => {
+          figure.classList.add('photo-load-error');
+          node.remove();
+          const fallback = document.createElement('span');
+          fallback.textContent = '미리보기 불가';
+          figure.append(fallback);
+        }, { once: true });
+        figure.append(node);
+      } else {
+        figure.classList.add('photo-load-error');
+        const fallback = document.createElement('span');
+        fallback.textContent = '미리보기 불가';
+        figure.append(fallback);
+      }
+
+      if (item.mediaType === 'video') {
+        const badge = document.createElement('span');
+        badge.className = 'video-media-badge';
+        badge.textContent = beat.videoMode === VideoPlaybackMode.PLAY ? '▶ 영상 재생' : '▶ 영상 썸네일';
+        figure.append(badge);
+      }
+      this.images.append(figure);
+    }
+
+    this.place.textContent = beat.placeName || '장소 확인 중…';
+    this.time.textContent = formatPhotoTimestamp(beat.takenMs);
+    const sourceLabel = beat.positionSource === 'gps' ? '사진 GPS' : 'Timeline 위치 추정';
+    const ordinal = beat.sourceCount > 1 ? ` · ${Number(beat.mediaItemIndex || 0) + 1}/${Math.min(beat.sourceCount, 3)}` : '';
+    const mediaLabel = item?.mediaType === 'video' ? ' · 영상' : ' · 사진';
+    this.meta.textContent = `${sourceLabel}${mediaLabel}${ordinal}`;
+    this.card.hidden = false;
+    this.card.classList.add('media-stop-card');
+    this.layer.classList.add('media-stop-active');
+    this.setPhotoAnchor(beat.anchor);
+  }
+}
 
 export async function loadGooglePhotosTakeout(fileList, { onProgress } = {}) {
   releaseSessionPreviewUrls();
@@ -107,6 +155,54 @@ export function buildPhotoJourneyBeats(media, plan, options = {}) {
   const beats = buildPhotoJourneyBeatsV2(media, plan, options);
   updateMatchDiagnostics(media, beats);
   return beats;
+}
+
+function createMediaNode(item, videoMode, objectUrls) {
+  const stableUrl = String(item?.previewUrl || '');
+  let url = stableUrl;
+  if (!url && item?.file) {
+    try {
+      url = URL.createObjectURL(item.file);
+      objectUrls.push(url);
+    } catch {
+      url = '';
+    }
+  }
+  if (!url) return null;
+
+  if (item.mediaType !== 'video') {
+    const img = document.createElement('img');
+    img.alt = item.title || '여행 사진';
+    img.decoding = 'async';
+    img.src = url;
+    return img;
+  }
+
+  if (!String(item.file?.type || '').startsWith('video/')) {
+    const img = document.createElement('img');
+    img.alt = `${item.title || '여행 영상'} 썸네일`;
+    img.decoding = 'async';
+    img.src = url;
+    return img;
+  }
+
+  const video = document.createElement('video');
+  video.setAttribute('aria-label', item.title || '여행 영상');
+  video.src = url;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'metadata';
+  video.controls = false;
+  video.loop = false;
+
+  if (videoMode === VideoPlaybackMode.THUMBNAIL) {
+    video.addEventListener('loadedmetadata', () => {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return;
+      try { video.currentTime = Math.min(0.12, duration / 2); } catch {}
+    }, { once: true });
+  }
+  return video;
 }
 
 function updateMatchDiagnostics(media, beats) {
