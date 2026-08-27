@@ -1,3 +1,37 @@
+const host = document.querySelector('#photoImportBlock');
+
+if (host && !document.querySelector('#photoImportProgress')) {
+  const progress = document.createElement('section');
+  progress.id = 'photoImportProgress';
+  progress.className = 'photo-import-progress';
+  progress.hidden = true;
+  progress.setAttribute('role', 'progressbar');
+  progress.setAttribute('aria-label', '사진 여정 가져오기 진행률');
+  progress.setAttribute('aria-valuemin', '0');
+  progress.setAttribute('aria-valuemax', '100');
+  progress.setAttribute('aria-valuenow', '0');
+  progress.innerHTML = `
+    <div class="photo-progress-head">
+      <strong id="photoProgressStage">파일 준비</strong>
+      <span id="photoProgressPercent">0%</span>
+    </div>
+    <div class="photo-progress-track" aria-hidden="true"><i id="photoProgressBar"></i></div>
+    <div class="photo-progress-meta">
+      <span id="photoProgressDetail">대기 중</span>
+      <span id="photoProgressMedia">사진 0장 · 영상 0개</span>
+    </div>
+    <ol class="photo-progress-steps" aria-label="가져오기 단계">
+      <li data-photo-progress-step="PREPARE">파일 준비</li>
+      <li data-photo-progress-step="METADATA">메타데이터</li>
+      <li data-photo-progress-step="MATCH">Timeline 매칭</li>
+      <li data-photo-progress-step="BUILD">여정 구성</li>
+    </ol>`;
+
+  const head = host.querySelector('.setting-head');
+  if (head?.nextSibling) host.insertBefore(progress, head.nextSibling);
+  else host.prepend(progress);
+}
+
 const root = document.querySelector('#photoImportProgress');
 const stageLabel = document.querySelector('#photoProgressStage');
 const percentLabel = document.querySelector('#photoProgressPercent');
@@ -25,15 +59,22 @@ const state = {
 
 if (root) {
   window.addEventListener('travel-camera:photo-progress', event => {
-    const next = event?.detail || {};
-    renderProgress(next);
+    renderProgress(event?.detail || {});
   });
 }
 
 function renderProgress(next) {
   const phase = PHASES[next.phase] ? next.phase : state.phase;
   const config = PHASES[phase];
+  const phaseChangedBackToStart = phase === 'PREPARE' && state.phase !== 'PREPARE';
+  if (phaseChangedBackToStart || next.reset) {
+    state.photos = 0;
+    state.videos = 0;
+    state.scenes = null;
+    state.percent = 0;
+  }
   state.phase = phase;
+
   if (Number.isFinite(Number(next.photos))) state.photos = Math.max(0, Number(next.photos));
   if (Number.isFinite(Number(next.videos))) state.videos = Math.max(0, Number(next.videos));
   if (Number.isFinite(Number(next.scenes))) state.scenes = Math.max(0, Number(next.scenes));
@@ -45,7 +86,7 @@ function renderProgress(next) {
   const percent = phase === 'ERROR'
     ? state.percent
     : Math.round(config.start + (config.end - config.start) * ratio);
-  state.percent = Math.max(state.percent, percent);
+  state.percent = phase === 'PREPARE' ? percent : Math.max(state.percent, percent);
 
   root.hidden = false;
   root.dataset.phase = phase;
@@ -54,13 +95,9 @@ function renderProgress(next) {
   bar.style.width = `${phase === 'COMPLETE' ? 100 : state.percent}%`;
   root.setAttribute('aria-valuenow', String(phase === 'COMPLETE' ? 100 : state.percent));
 
-  if (next.message) {
-    detail.textContent = next.message;
-  } else if (total > 0) {
-    detail.textContent = `${processed.toLocaleString()} / ${total.toLocaleString()} 처리`;
-  } else {
-    detail.textContent = config.label;
-  }
+  if (next.message) detail.textContent = next.message;
+  else if (total > 0) detail.textContent = `${processed.toLocaleString()} / ${total.toLocaleString()} 처리`;
+  else detail.textContent = config.label;
 
   const parts = [`사진 ${state.photos.toLocaleString()}장`, `영상 ${state.videos.toLocaleString()}개`];
   if (state.scenes !== null) parts.push(`장면 ${state.scenes.toLocaleString()}개`);
@@ -75,9 +112,5 @@ function renderProgress(next) {
     step.classList.toggle('is-done', phase === 'COMPLETE' || (activeIndex >= 0 && stepIndex >= 0 && stepIndex < activeIndex));
   }
 
-  if (phase === 'ERROR') {
-    root.classList.add('is-error');
-  } else {
-    root.classList.remove('is-error');
-  }
+  root.classList.toggle('is-error', phase === 'ERROR');
 }
