@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { administrativePlaceLabel } from '../src/photo-journey-v4.js';
+import { administrativePlaceLabel, movementVisualForMobility } from '../src/photo-journey-v4.js';
 
 const project = coordinate => ({ x: coordinate[0], y: coordinate[1] });
 
@@ -26,6 +26,31 @@ test('GPS place label prefers city and district over nearby POI', () => {
   assert.equal(
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
     '오사카시 · 주오구'
+  );
+});
+
+test('GPS place label includes all available units below city level', () => {
+  const features = [
+    {
+      layer: { id: 'place-city' },
+      properties: { 'name:ko': '오사카시', kind: 'city' },
+      geometry: { type: 'Point', coordinates: [160, 100] }
+    },
+    {
+      layer: { id: 'place-ward' },
+      properties: { 'name:ko': '주오구', kind: 'ward' },
+      geometry: { type: 'Point', coordinates: [118, 100] }
+    },
+    {
+      layer: { id: 'place-neighbourhood' },
+      properties: { 'name:ko': '신사이바시', kind: 'neighbourhood' },
+      geometry: { type: 'Point', coordinates: [104, 101] }
+    }
+  ];
+
+  assert.equal(
+    administrativePlaceLabel(features, { x: 100, y: 100 }, project),
+    '오사카시 · 주오구 · 신사이바시'
   );
 });
 
@@ -74,4 +99,11 @@ test('GPS place label ranks polygon administrative areas by representative posit
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
     '오사카시 · 주오구'
   );
+});
+
+test('movement pictogram maps route mobility classes to media-rail labels', () => {
+  assert.deepEqual(movementVisualForMobility('WALK'), { icon: '🚶', label: '도보 이동' });
+  assert.deepEqual(movementVisualForMobility('FAST_GROUND'), { icon: '🚆', label: '철도 이동' });
+  assert.deepEqual(movementVisualForMobility('FLIGHT'), { icon: '✈', label: '항공 이동' });
+  assert.deepEqual(movementVisualForMobility('not-known'), { icon: '●', label: '이동 중' });
 });
