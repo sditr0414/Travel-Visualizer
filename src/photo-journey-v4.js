@@ -5,21 +5,12 @@ import {
   PhotoJourneyController as PhotoJourneyControllerV3,
   VideoPlaybackMode,
   buildPhotoJourneyBeats as buildPhotoJourneyBeatsV3,
-  formatPhotoTimestamp,
-  loadGooglePhotosTakeout as loadGooglePhotosTakeoutV3
+  formatPhotoTimestamp
 } from './photo-journey-v3.js';
+import { getActiveMediaLibrary, MediaLibrarySource } from './media-library-state.js';
 
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
 const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|prefecture|region|province|state|county/i;
-let localGalleryMedia = [];
-let preferLocalGallery = false;
-
-if (typeof globalThis.window?.addEventListener === 'function') {
-  globalThis.window.addEventListener('travel-camera:local-media-ready', event => {
-    localGalleryMedia = Array.isArray(event?.detail?.photos) ? event.detail.photos : [];
-    preferLocalGallery = true;
-  });
-}
 
 export class PhotoJourneyController extends PhotoJourneyControllerV3 {
   renderBeat(beat) {
@@ -77,31 +68,15 @@ export class PhotoJourneyController extends PhotoJourneyControllerV3 {
 }
 
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
-  const activeMedia = preferLocalGallery ? localGalleryMedia : media;
-  const beats = buildPhotoJourneyBeatsV3(activeMedia, plan, options);
+  const beats = buildPhotoJourneyBeatsV3(media, plan, options);
+  const activeLibrary = getActiveMediaLibrary();
 
-  if (preferLocalGallery) {
-    const photos = localGalleryMedia.filter(item => item?.mediaType !== 'video').length;
-    const videos = localGalleryMedia.length - photos;
+  if (activeLibrary.source === MediaLibrarySource.LOCAL_GALLERY && activeLibrary.media === media) {
+    const photos = media.filter(item => item?.mediaType !== 'video').length;
+    const videos = media.length - photos;
     scheduleLocalReadyStatus(photos, videos, beats.length);
   }
   return beats;
-}
-
-export async function loadGooglePhotosTakeout(fileList, options = {}) {
-  preferLocalGallery = false;
-  localGalleryMedia = [];
-  return loadGooglePhotosTakeoutV3(fileList, options);
-}
-
-export function useLocalGalleryMedia(media) {
-  localGalleryMedia = Array.isArray(media) ? media : [];
-  preferLocalGallery = true;
-}
-
-export function clearLocalGalleryMedia() {
-  localGalleryMedia = [];
-  preferLocalGallery = false;
 }
 
 /**
@@ -339,7 +314,8 @@ function scheduleLocalReadyStatus(photos, videos, scenes) {
   if (typeof setTimeout !== 'function') return;
   setTimeout(() => {
     const status = globalThis.document?.querySelector?.('#status');
-    if (status && preferLocalGallery) {
+    const activeLibrary = getActiveMediaLibrary();
+    if (status && activeLibrary.source === MediaLibrarySource.LOCAL_GALLERY) {
       status.textContent = `기기 갤러리 · 준비 완료 · 사진 ${photos.toLocaleString()}장 · 영상 ${videos.toLocaleString()}개 · 장면 ${scenes.toLocaleString()}개`;
     }
   }, 0);
