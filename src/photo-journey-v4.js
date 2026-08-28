@@ -10,6 +10,7 @@ import {
 } from './photo-journey-v3.js';
 import { getActiveMediaLibrary, MediaLibrarySource } from './media-library-state.js';
 import { PHOTO_SPLIT_BREAKPOINT } from './photo-split-layout.js';
+import { koreanJapanesePlaceName } from './japanese-place-ko.js';
 
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
 const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|quarter|hamlet|prefecture|region|province|state|county/i;
@@ -243,8 +244,16 @@ function administrativeFeatureLevel(feature) {
 
 function administrativeFeatureName(properties) {
   if (!properties) return null;
+  const korean = [properties['name:ko'], properties.name_ko];
+  for (const value of korean) {
+    const text = String(value || '').trim();
+    if (text && text.length <= 80) return text;
+  }
+
+  const localizedJapanese = koreanJapanesePlaceName(properties);
+  if (localizedJapanese) return localizedJapanese;
+
   const candidates = [
-    properties['name:ko'], properties.name_ko,
     properties.name,
     properties['name:ja'], properties.name_ja,
     properties['name:en'], properties.name_en
