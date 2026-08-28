@@ -99,10 +99,10 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
 
   const updateJourneyCopy = () => {
     if (journeyMode.value === 'PHOTOS' && journeyModeHint) {
-      journeyModeHint.textContent = '촬영한 장소에 도착하면 사진과 영상을 보여주며 여행을 이어가요.';
+      journeyModeHint.textContent = '촬영한 장소에서 사진과 영상을 함께 보여줍니다.';
     }
     if (durationHint && journeyMode.value === 'PHOTOS') {
-      durationHint.textContent = '경로가 재생되는 기본 시간이에요. 사진과 영상 시간은 자동으로 더해집니다.';
+      durationHint.textContent = '경로가 재생되는 기본 시간이에요. 사진과 영상 시간은 여기에 추가됩니다.';
       durationHint.dataset.photoJourneyCopy = 'true';
     }
   };
@@ -123,7 +123,7 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
       photoVideoMode.value === 'PLAY' && importedMode !== 'PLAY';
     rebuildJourney();
     if (needsGoogleReload) {
-      const message = '현재는 영상의 대표 장면만 준비되어 있어요. 영상을 재생하려면 상단에서 사진과 영상을 다시 선택해 주세요.';
+      const message = '현재는 영상의 대표 화면만 준비되어 있습니다. 영상을 재생하려면 상단에서 사진과 영상을 다시 선택하세요.';
       if (importHint) importHint.textContent = message;
       if (status) status.textContent = message;
     }

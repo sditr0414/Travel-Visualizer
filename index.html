@@ -16,14 +16,14 @@
   <header class="appbar">
     <div class="brand">
       <h1>Travel Camera</h1>
-      <span>여행을 한 편의 스토리로</span>
+      <span>사진과 경로로 다시 보는 여행</span>
     </div>
 
     <label class="journey-mode-switch" for="journeyMode">
-      <span>스타일</span>
+      <span>보기</span>
       <select id="journeyMode" aria-label="영상 모드">
-        <option value="ROUTE" selected>경로 스토리</option>
-        <option value="PHOTOS">사진 스토리</option>
+        <option value="ROUTE" selected>경로만 보기</option>
+        <option value="PHOTOS">사진과 함께</option>
       </select>
     </label>
 
@@ -38,16 +38,16 @@
       <span class="source-dot"></span>
       <div>
         <small id="currentDataSourceType">현재 여행</small>
-        <strong id="currentDataSourceName">여행 기록 준비 중</strong>
+        <strong id="currentDataSourceName">이동 기록 준비 중</strong>
       </div>
     </div>
 
     <label class="file-picker">
-      <span>여행 기록 변경</span>
+      <span>이동 기록 불러오기</span>
       <input id="timelineFile" type="file" accept="application/json,.json" />
     </label>
 
-    <p id="status" class="status">여행을 준비하고 있어요…</p>
+    <p id="status" class="status">이동 기록을 준비하고 있어요…</p>
   </header>
 
   <main class="app-main">
@@ -80,14 +80,13 @@
       </div>
 
       <details class="settings-shell">
-        <summary>영상 꾸미기</summary>
+        <summary>설정</summary>
         <div class="settings-card">
           <header class="settings-intro">
-            <span>STORY EDITOR</span>
-            <h2>내 여행 꾸미기</h2>
-            <p>보여주는 방식과 속도만 고르면 나머지는 자동으로 완성됩니다.</p>
+            <h2>재생 설정</h2>
+            <p>원하는 보기 방식과 재생 시간을 선택하세요.</p>
           </header>
-          <p id="journeyModeHint" class="mode-hint hint">여행 경로를 따라 자연스럽게 이동하는 스토리를 만들어요.</p>
+          <p id="journeyModeHint" class="mode-hint hint">지도에서 이동 경로를 순서대로 보여줍니다.</p>
 
           <div id="photoImportBlock" class="setting-block photo-import-block" hidden>
             <div class="setting-head">
@@ -99,11 +98,11 @@
             <div class="photo-playback-settings">
               <div>
                 <div class="setting-head">
-                  <label for="photoDisplaySeconds">사진 한 장 시간</label>
+                  <label for="photoDisplaySeconds">사진 표시 시간</label>
                   <output id="photoDisplaySecondsLabel">3.0초</output>
                 </div>
                 <input id="photoDisplaySeconds" type="range" min="1.5" max="8" step="0.5" value="3" aria-label="사진 한 장 표시 시간" />
-                <p class="hint">사진을 얼마나 오래 보여줄지 정해요.</p>
+                <p class="hint">사진 한 장을 보여주는 시간을 정합니다.</p>
               </div>
 
               <div>
@@ -116,11 +115,11 @@
 
               <div id="videoMaxPlaySetting">
                 <div class="setting-head">
-                  <label for="videoMaxPlaySeconds">영상 한 장 최대 시간</label>
+                  <label for="videoMaxPlaySeconds">영상 최대 재생 시간</label>
                   <output id="videoMaxPlaySecondsLabel">5.0초</output>
                 </div>
                 <input id="videoMaxPlaySeconds" type="range" min="2" max="15" step="0.5" value="5" disabled aria-label="동영상 최대 재생 시간" />
-                <p class="hint">긴 영상은 이 시간까지만 보여줘요.</p>
+                <p class="hint">긴 영상은 설정한 시간까지만 재생합니다.</p>
               </div>
             </div>
 
@@ -136,31 +135,31 @@
           </div>
 
           <div class="setting-block">
-            <label for="cameraMode">화면 움직임</label>
+            <label for="cameraMode">지도 화면</label>
             <select id="cameraMode">
-              <option value="AUTO" selected>자동으로 예쁘게 · 추천</option>
-              <option value="DAY">하루 일정 중심</option>
-              <option value="SEGMENT">이동 장면 중심</option>
+              <option value="AUTO" selected>자동 · 추천</option>
+              <option value="DAY">날짜별로 보기</option>
+              <option value="SEGMENT">이동 구간별로 보기</option>
             </select>
             <p id="cameraModeHint" class="hint"></p>
           </div>
 
           <div class="setting-block">
             <div class="setting-head">
-              <label for="cameraZoomOffset">지도 거리감</label>
+              <label for="cameraZoomOffset">지도 확대</label>
               <output id="cameraZoomOffsetLabel">+0.3</output>
             </div>
             <input id="cameraZoomOffset" type="range" min="-1.5" max="1.5" step="0.1" value="0.3" aria-label="현지 카메라 줌 레벨 보정" />
-            <p class="hint">오른쪽으로 갈수록 장소를 더 가까이 보여줘요.</p>
+            <p class="hint">오른쪽으로 조절하면 지도를 더 가까이 보여줍니다.</p>
           </div>
 
           <div class="setting-block">
-            <label for="playbackPacing">장면 속도</label>
+            <label for="playbackPacing">구간별 재생 시간</label>
             <select id="playbackPacing">
-              <option value="LOCAL_DAYS" selected>날짜별로 고르게 · 추천</option>
-              <option value="GLOBAL">이동 거리대로</option>
+              <option value="LOCAL_DAYS" selected>날짜마다 비슷하게 · 추천</option>
+              <option value="GLOBAL">이동 거리에 맞게</option>
             </select>
-            <p id="playbackPacingHint" class="hint">여행 날짜마다 충분히 볼 수 있도록 장면 시간을 고르게 나눠요.</p>
+            <p id="playbackPacingHint" class="hint">각 여행 날짜가 비슷한 시간 동안 보이도록 조절합니다.</p>
           </div>
 
           <div class="setting-block">
@@ -193,7 +192,7 @@
                 <p class="hint">자동 따라가기를 끈 경우에만 조절할 수 있어요.</p>
               </div>
 
-              <button id="loadButton" class="secondary wide" disabled>이 설정으로 다시 만들기</button>
+              <button id="loadButton" class="secondary wide" disabled>설정 적용</button>
             </div>
           </details>
 
