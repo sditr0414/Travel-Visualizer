@@ -27,9 +27,14 @@
       </select>
     </label>
 
-    <label class="gallery-photo-picker" title="기기 또는 컴퓨터의 사진·동영상 라이브러리에서 여행 미디어 선택">
+    <label class="gallery-photo-picker" title="사진이나 영상을 개별 선택">
       <span>사진·영상 추가</span>
       <input id="photoGalleryInput" type="file" accept="image/*,video/*,.heic,.heif" multiple />
+    </label>
+
+    <label class="gallery-folder-picker" title="폴더 안의 사진과 영상을 한 번에 선택">
+      <span>폴더 추가</span>
+      <input id="photoGalleryFolderInput" type="file" accept="image/*,video/*,.heic,.heif" webkitdirectory directory multiple />
     </label>
 
     <button id="googlePhotosConnect" class="google-photos-connect" type="button" hidden>Google Photos 연결</button>
