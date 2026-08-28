@@ -244,12 +244,12 @@ function administrativeFeatureLevel(feature) {
 function administrativeFeatureName(properties) {
   if (!properties) return null;
   const candidates = [
+    properties['name:ko'], properties.name_ko,
     properties['name:en'], properties.name_en,
     properties['name:latin'], properties.name_latin,
     properties.int_name, properties.name_int,
     properties.name,
-    properties['name:ja'], properties.name_ja,
-    properties['name:ko'], properties.name_ko
+    properties['name:ja'], properties.name_ja
   ];
   for (const value of candidates) {
     const text = String(value || '').trim();
