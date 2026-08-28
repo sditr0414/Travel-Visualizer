@@ -87,7 +87,7 @@ const JOURNEY_MODE_LABELS = {
 
 const JOURNEY_MODE_HINTS = {
   [JourneyMode.ROUTE]: '전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.',
-  [JourneyMode.PHOTOS]: '발자취를 따라가며 촬영 시각과 위치가 맞는 사진을 함께 보여줍니다. 사진 카드는 경로와 주요 UI를 피해서 자동 배치됩니다.'
+  [JourneyMode.PHOTOS]: '지도·경로와 미디어 영역을 같은 구도로 유지하면서 촬영 시각과 위치가 맞는 사진·동영상을 순서대로 보여줍니다.'
 };
 
 const PACING_LABELS = {
@@ -273,22 +273,24 @@ photoFolderInput.addEventListener('change', async () => {
   player?.pause();
   playButton.textContent = '재생';
   photoImportCount.textContent = '읽는 중…';
-  photoImportHint.textContent = 'Google Photos Takeout의 사진 메타데이터와 sidecar JSON을 분석하는 중입니다.';
+  photoImportHint.textContent = 'Google Photos Takeout의 미디어 메타데이터와 sidecar JSON을 분석하는 중입니다.';
   status.textContent = `Google Photos 데이터 읽는 중 · ${files.length.toLocaleString()}개 파일`;
 
   try {
     const result = await loadGooglePhotosTakeout(files, {
       onProgress: progress => {
-        if (progress.total) photoImportCount.textContent = `${progress.found.toLocaleString()}장 찾음`;
+        if (progress.total) photoImportCount.textContent = `${progress.found.toLocaleString()}개 찾음`;
       }
     });
     photoLibrary = result.photos;
     const stats = result.stats;
-    photoImportCount.textContent = `${stats.photos.toLocaleString()}장 · GPS ${stats.gpsPhotos.toLocaleString()}`;
+    const imageCount = Number(stats.images) || 0;
+    const videoCount = Number(stats.videos) || 0;
+    photoImportCount.textContent = `사진 ${imageCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개 · GPS ${stats.gpsPhotos.toLocaleString()}개`;
     photoImportHint.textContent = stats.photos
-      ? `사진 ${stats.photos.toLocaleString()}장 중 GPS ${stats.gpsPhotos.toLocaleString()}장을 직접 사용합니다. 나머지는 촬영 시각에 맞는 Timeline 위치로 보완합니다.`
-      : '사용 가능한 사진을 찾지 못했습니다. Takeout 폴더에서 사진 파일과 JSON sidecar가 함께 선택됐는지 확인하세요.';
-    status.textContent = `Google Photos 데이터 준비 완료 · 사진 ${stats.photos.toLocaleString()}장`;
+      ? `미디어 ${stats.photos.toLocaleString()}개 중 GPS ${stats.gpsPhotos.toLocaleString()}개를 직접 사용합니다. 나머지는 촬영 시각에 맞는 Timeline 위치로 보완합니다.`
+      : '사용 가능한 사진·동영상을 찾지 못했습니다. Takeout 폴더에서 미디어 파일과 JSON sidecar가 함께 선택됐는지 확인하세요.';
+    status.textContent = `Google Photos 데이터 준비 완료 · 사진 ${imageCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개`;
     if (currentData && journeyMode.value === JourneyMode.PHOTOS) rebuildPlan('사진 데이터 변경');
   } catch (error) {
     photoLibrary = [];
@@ -301,15 +303,16 @@ photoFolderInput.addEventListener('change', async () => {
 });
 
 loadButton.addEventListener('click', () => {
-  if (parsedJson) analyzeParsedTimeline(currentSourceLabel);
+  if (parsedJson) analyzeParsedTimeline(currentSourceLabel, { preserveVideoDuration: true });
 });
 
-function analyzeParsedTimeline(sourceLabel) {
+function analyzeParsedTimeline(sourceLabel, { preserveVideoDuration = false } = {}) {
   player?.pause();
   playButton.textContent = '재생';
   photoController?.clearActive();
   videoDate.hidden = true;
   status.textContent = `${sourceLabel} 분석 중…`;
+  const previousDuration = Number(videoDuration.value);
 
   try {
     currentData = parseTimeline(parsedJson, {
@@ -322,10 +325,13 @@ function analyzeParsedTimeline(sourceLabel) {
     const limits = durationLimitsForMovements(currentData.movements);
     videoDuration.min = String(limits.minSeconds);
     videoDuration.max = String(limits.maxSeconds);
-    videoDuration.value = String(limits.minSeconds);
+    const nextDuration = preserveVideoDuration && Number.isFinite(previousDuration)
+      ? Math.min(limits.maxSeconds, Math.max(limits.minSeconds, previousDuration))
+      : limits.minSeconds;
+    videoDuration.value = String(nextDuration);
     videoDuration.disabled = false;
-    updateDurationLabel(limits.minSeconds);
-    durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} · 권장 ${formatDuration(limits.recommendedSeconds)}`;
+    updateDurationLabel(nextDuration);
+    durationHint.textContent = `${limits.days}일 · 약 ${Math.round(limits.distanceKm).toLocaleString()}km · 경로 ${formatDuration(limits.minSeconds)} ~ ${formatDuration(limits.maxSeconds)} · 권장 ${formatDuration(limits.recommendedSeconds)}`;
 
     rebuildPlan(sourceLabel);
   } catch (error) {
@@ -334,6 +340,7 @@ function analyzeParsedTimeline(sourceLabel) {
     plan = null;
     photoBeats = [];
     photoController?.clear();
+    stage?.classList.remove('photo-journey-layout-active');
     videoDuration.disabled = true;
     playButton.disabled = true;
     resetButton.disabled = true;
@@ -486,11 +493,12 @@ function rebuildPlan(sourceLabel = 'Timeline') {
         ...Object.entries(classes).map(([key, value]) => `${mobilityLabel(key)} ${value}`)
       ].filter(Boolean).join('<span>·</span>');
 
-      status.textContent = photoMode && !photoLibrary.length
-        ? `${currentSourceLabel} · 사진 여정 준비 · Google Photos Takeout 폴더를 선택하세요`
+      status.textContent = photoMode && !photoBeats.length
+        ? `${currentSourceLabel} · 사진 여정 준비 · 현재 Timeline에 매칭된 미디어 장면이 없습니다`
         : `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작`;
     } catch (error) {
       photoController?.clear();
+      stage?.classList.remove('photo-journey-layout-active');
       videoDate.hidden = true;
       status.textContent = `카메라 계산 실패: ${error.message}`;
     }
