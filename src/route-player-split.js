@@ -1,5 +1,6 @@
 export * from './route-player.js?core=1';
 
+import './photo-split-resizer.js';
 import {
   RoutePlayer as CoreRoutePlayer,
   routeHeadFeatureForFrame,
@@ -7,11 +8,24 @@ import {
   transportColor
 } from './route-player.js?core=1';
 import { mercatorProject, mercatorUnproject } from './geo.js';
+import {
+  PHOTO_SPLIT_BREAKPOINT,
+  photoMapShareForStage,
+  photoPaneTarget
+} from './photo-split-layout.js';
 
 const TILE_SIZE = 512;
-const SPLIT_BREAKPOINT = 820;
 const LAYOUT_ENTER_MS = 520;
 const LAYOUT_EXIT_MS = 440;
+let activePhotoRoutePlayer = null;
+
+if (typeof globalThis.window?.addEventListener === 'function') {
+  globalThis.window.addEventListener('travel-camera:photo-split-change', () => {
+    const player = activePhotoRoutePlayer;
+    if (!player?.photoLayoutActive || player.lastRenderedFrame < 0) return;
+    player.renderFrame(player.lastRenderedFrame, true);
+  });
+}
 
 /**
  * Photo journey keeps a stable map/media composition for the whole TRAVEL
@@ -23,6 +37,7 @@ export class RoutePlayer extends CoreRoutePlayer {
     super(options);
     this.photoLayoutActive = false;
     this.mediaCameraKey = null;
+    activePhotoRoutePlayer = this;
   }
 
   reset() {
@@ -78,14 +93,15 @@ export class RoutePlayer extends CoreRoutePlayer {
     const zoom = Number(requestedCamera.zoom);
     if (!Number.isFinite(zoom)) return null;
 
+    const narrow = width <= PHOTO_SPLIT_BREAKPOINT;
+    const stage = globalThis.document?.querySelector?.('.stage');
+    const share = photoMapShareForStage(stage, narrow);
+    const target = photoPaneTarget(share, narrow);
     const point = mercatorProject(frame.position);
     const scale = TILE_SIZE * 2 ** zoom;
-    const narrow = width <= SPLIT_BREAKPOINT;
-    const targetX = narrow ? 0.50 : 0.30;
-    const targetY = narrow ? 0.26 : 0.50;
     const center = mercatorUnproject({
-      x: point.x + (0.50 - targetX) * width / scale,
-      y: point.y + (0.50 - targetY) * height / scale
+      x: point.x + (0.50 - target.x) * width / scale,
+      y: point.y + (0.50 - target.y) * height / scale
     });
 
     return {
