@@ -4,28 +4,28 @@ import { administrativePlaceLabel, movementVisualForMobility } from '../src/phot
 
 const project = coordinate => ({ x: coordinate[0], y: coordinate[1] });
 
-test('GPS place label prefers city and district over nearby POI', () => {
+test('GPS place label prefers English administrative names over Korean labels and nearby POIs', () => {
   const features = [
     {
       layer: { id: 'poi-label' },
-      properties: { 'name:ko': '오사카역', kind: 'station' },
+      properties: { 'name:ko': '오사카역', 'name:en': 'Osaka Station', kind: 'station' },
       geometry: { type: 'Point', coordinates: [101, 100] }
     },
     {
       layer: { id: 'place-city' },
-      properties: { 'name:ko': '오사카시', kind: 'city' },
+      properties: { 'name:ko': '오사카시', 'name:en': 'Osaka', kind: 'city' },
       geometry: { type: 'Point', coordinates: [180, 105] }
     },
     {
       layer: { id: 'place-district' },
-      properties: { 'name:ko': '주오구', kind: 'district' },
+      properties: { 'name:ko': '주오구', 'name:en': 'Chuo', kind: 'district' },
       geometry: { type: 'Point', coordinates: [112, 103] }
     }
   ];
 
   assert.equal(
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
-    '오사카시 · 주오구'
+    'Osaka · Chuo'
   );
 });
 
@@ -33,37 +33,37 @@ test('GPS place label includes all available units below city level', () => {
   const features = [
     {
       layer: { id: 'place-city' },
-      properties: { 'name:ko': '오사카시', kind: 'city' },
+      properties: { 'name:ko': '오사카시', 'name:en': 'Osaka', kind: 'city' },
       geometry: { type: 'Point', coordinates: [160, 100] }
     },
     {
       layer: { id: 'place-ward' },
-      properties: { 'name:ko': '주오구', kind: 'ward' },
+      properties: { 'name:ko': '주오구', 'name:en': 'Chuo', kind: 'ward' },
       geometry: { type: 'Point', coordinates: [118, 100] }
     },
     {
       layer: { id: 'place-neighbourhood' },
-      properties: { 'name:ko': '신사이바시', kind: 'neighbourhood' },
+      properties: { 'name:ko': '신사이바시', 'name:en': 'Shinsaibashi', kind: 'neighbourhood' },
       geometry: { type: 'Point', coordinates: [104, 101] }
     }
   ];
 
   assert.equal(
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
-    '오사카시 · 주오구 · 신사이바시'
+    'Osaka · Chuo · Shinsaibashi'
   );
 });
 
 test('GPS place label falls back to the available administrative level', () => {
   const features = [{
     layer: { id: 'place-region' },
-    properties: { 'name:ko': '후쿠오카현', kind: 'prefecture' },
+    properties: { 'name:ko': '후쿠오카현', 'name:en': 'Fukuoka', kind: 'prefecture' },
     geometry: { type: 'Point', coordinates: [130, 120] }
   }];
 
   assert.equal(
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
-    '후쿠오카현'
+    'Fukuoka'
   );
 });
 
@@ -71,7 +71,7 @@ test('GPS place label ranks polygon administrative areas by representative posit
   const features = [
     {
       layer: { id: 'boundary-city' },
-      properties: { 'name:ko': '오사카시', kind: 'city' },
+      properties: { 'name:ko': '오사카시', 'name:en': 'Osaka', kind: 'city' },
       geometry: {
         type: 'Polygon',
         coordinates: [[[40, 40], [180, 40], [180, 180], [40, 180], [40, 40]]]
@@ -79,7 +79,7 @@ test('GPS place label ranks polygon administrative areas by representative posit
     },
     {
       layer: { id: 'boundary-district' },
-      properties: { 'name:ko': '주오구', kind: 'district' },
+      properties: { 'name:ko': '주오구', 'name:en': 'Chuo', kind: 'district' },
       geometry: {
         type: 'Polygon',
         coordinates: [[[80, 82], [126, 82], [126, 126], [80, 126], [80, 82]]]
@@ -87,7 +87,7 @@ test('GPS place label ranks polygon administrative areas by representative posit
     },
     {
       layer: { id: 'boundary-district' },
-      properties: { 'name:ko': '멀리있는구', kind: 'district' },
+      properties: { 'name:ko': '멀리있는구', 'name:en': 'Far District', kind: 'district' },
       geometry: {
         type: 'Polygon',
         coordinates: [[[900, 900], [980, 900], [980, 980], [900, 980], [900, 900]]]
@@ -97,7 +97,20 @@ test('GPS place label ranks polygon administrative areas by representative posit
 
   assert.equal(
     administrativePlaceLabel(features, { x: 100, y: 100 }, project),
-    '오사카시 · 주오구'
+    'Osaka · Chuo'
+  );
+});
+
+test('GPS place label falls back to the native source name without Korean transliteration', () => {
+  const features = [{
+    layer: { id: 'place-city' },
+    properties: { name: '大阪市', 'name:ko': '오사카시', kind: 'city' },
+    geometry: { type: 'Point', coordinates: [130, 120] }
+  }];
+
+  assert.equal(
+    administrativePlaceLabel(features, { x: 100, y: 100 }, project),
+    '大阪市'
   );
 });
 
