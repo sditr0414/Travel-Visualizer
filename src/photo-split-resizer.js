@@ -1,3 +1,4 @@
+import './photo-media-transition.js';
 import {
   PHOTO_SPLIT_BREAKPOINT,
   applyPhotoMapShare,
