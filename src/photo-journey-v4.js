@@ -9,6 +9,7 @@ import {
   formatPhotoTimestamp
 } from './photo-journey-v3.js';
 import { getActiveMediaLibrary, MediaLibrarySource } from './media-library-state.js';
+import { PHOTO_SPLIT_BREAKPOINT } from './photo-split-layout.js';
 
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
 const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|quarter|hamlet|prefecture|region|province|state|county/i;
@@ -58,6 +59,7 @@ export class PhotoJourneyController extends PhotoJourneyControllerV3 {
     const label = this.movementIndicator.querySelector('.journey-movement-label');
     if (icon) icon.textContent = visual.icon;
     if (label) label.textContent = visual.label;
+    positionMovementIndicator(this.movementIndicator);
     this.movementIndicator.hidden = false;
   }
 
@@ -312,8 +314,51 @@ function ensureMovementIndicator(layer) {
   indicator.hidden = true;
   indicator.setAttribute('aria-live', 'polite');
   indicator.innerHTML = '<span class="journey-movement-icon" aria-hidden="true"></span><strong class="journey-movement-label"></strong>';
+  Object.assign(indicator.style, {
+    position: 'absolute',
+    zIndex: '4',
+    placeItems: 'center',
+    alignContent: 'center',
+    gap: '10px',
+    pointerEvents: 'none',
+    color: '#cbd5e1',
+    textAlign: 'center'
+  });
+  const icon = indicator.querySelector('.journey-movement-icon');
+  const label = indicator.querySelector('.journey-movement-label');
+  if (icon) Object.assign(icon.style, {
+    display: 'block',
+    fontSize: 'clamp(44px, 6vw, 78px)',
+    lineHeight: '1',
+    filter: 'grayscale(.15)',
+    opacity: '.92'
+  });
+  if (label) Object.assign(label.style, {
+    display: 'block',
+    fontSize: '12px',
+    fontWeight: '800',
+    letterSpacing: '.04em',
+    color: '#94a3b8'
+  });
   layer.append(indicator);
   return indicator;
+}
+
+function positionMovementIndicator(indicator) {
+  if (!indicator) return;
+  const narrow = Number(globalThis.window?.innerWidth) <= PHOTO_SPLIT_BREAKPOINT;
+  indicator.style.display = 'grid';
+  if (narrow) {
+    indicator.style.left = '0';
+    indicator.style.right = '0';
+    indicator.style.top = 'var(--photo-map-share)';
+    indicator.style.bottom = '0';
+  } else {
+    indicator.style.left = 'var(--photo-map-share)';
+    indicator.style.right = '0';
+    indicator.style.top = '0';
+    indicator.style.bottom = '0';
+  }
 }
 
 function createJourneyMediaNode(item, videoMode, objectUrls) {
