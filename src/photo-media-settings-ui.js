@@ -13,14 +13,12 @@ const photoImages = document.querySelector('#photoImages');
 const photoFolderInput = document.querySelector('#photoFolderInput');
 const importHint = document.querySelector('#photoImportHint');
 const status = document.querySelector('#status');
-const loadButton = document.querySelector('#loadButton');
 const videoDuration = document.querySelector('#videoDuration');
-const videoDurationLabel = document.querySelector('#videoDurationLabel');
 const durationHint = document.querySelector('#durationHint');
 const videoDurationTitle = document.querySelector('label[for="videoDuration"]');
 
-// Keep the user-facing term simple. The configured value is the route playback
-// length; photo/video holds extend the actual player duration shown in the dock.
+// The configured value is the route playback length. Photo/video holds extend
+// the actual player duration shown in the dock. main.js owns duration state.
 if (videoDurationTitle) videoDurationTitle.textContent = '영상 길이';
 if (videoDuration) videoDuration.setAttribute('aria-label', '영상 길이');
 
@@ -80,62 +78,6 @@ function formatPlaybackClock(seconds, total = false) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// main.js recalculates duration limits when "설정 적용" is pressed and writes
-// the minimum value back into this range. Guard that one programmatic reset at
-// the input-property level so the recalculation itself reads the preserved value.
-// If a changed date range makes the old value invalid, clamp it to the new range.
-if (loadButton && videoDuration) {
-  const valueDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-  let preservingApply = false;
-  let preservedVideoDuration = null;
-
-  if (valueDescriptor?.get && valueDescriptor?.set) {
-    Object.defineProperty(videoDuration, 'value', {
-      configurable: true,
-      enumerable: valueDescriptor.enumerable,
-      get() {
-        return valueDescriptor.get.call(this);
-      },
-      set(nextValue) {
-        if (!preservingApply || !Number.isFinite(preservedVideoDuration)) {
-          valueDescriptor.set.call(this, nextValue);
-          return;
-        }
-
-        const min = Number(this.min);
-        const max = Number(this.max);
-        const lower = Number.isFinite(min) ? min : preservedVideoDuration;
-        const upper = Number.isFinite(max) ? max : preservedVideoDuration;
-        const restored = Math.min(upper, Math.max(lower, preservedVideoDuration));
-        valueDescriptor.set.call(this, String(restored));
-      }
-    });
-
-    loadButton.addEventListener('click', () => {
-      const current = Number(valueDescriptor.get.call(videoDuration));
-      preservedVideoDuration = Number.isFinite(current) ? current : null;
-      preservingApply = Number.isFinite(preservedVideoDuration);
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          preservingApply = false;
-          preservedVideoDuration = null;
-          const displayed = Number(valueDescriptor.get.call(videoDuration));
-          if (videoDurationLabel && Number.isFinite(displayed)) {
-            const value = Math.max(0, Math.round(displayed));
-            const h = Math.floor(value / 3600);
-            const m = Math.floor((value % 3600) / 60);
-            const s = value % 60;
-            videoDurationLabel.textContent = h > 0
-              ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-              : `${m}:${String(s).padStart(2, '0')}`;
-          }
-        });
-      });
-    }, { capture: true });
-  }
-}
-
 if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds) {
   const updateLabels = () => {
     if (photoDisplaySecondsLabel) photoDisplaySecondsLabel.textContent = `${Number(photoDisplaySeconds.value).toFixed(1)}초`;
@@ -157,7 +99,7 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
 
   const updateJourneyCopy = () => {
     if (journeyMode.value === 'PHOTOS' && journeyModeHint) {
-      journeyModeHint.textContent = '촬영 위치에 도착하면 경로를 멈추고 왼쪽 지도·경로와 오른쪽 사진·동영상을 분할 화면으로 함께 보여준 뒤 다음 이동을 이어갑니다.';
+      journeyModeHint.textContent = '지도·경로와 미디어 영역을 같은 구도로 유지하면서 촬영 위치에 도착하면 경로를 멈추고 사진·동영상을 보여준 뒤 다음 이동을 이어갑니다.';
     }
     if (durationHint && journeyMode.value === 'PHOTOS') {
       const base = String(durationHint.textContent || '')
