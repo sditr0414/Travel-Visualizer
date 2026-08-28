@@ -83,16 +83,19 @@ Desktop layout during the travel portion:
 │                              ├────────────────────┤
 │ playback controls            │ place + taken time │
 └──────────────────────────────┴────────────────────┘
-           ~60%                           ~40%
+      user-resizable split (default ~60% / ~40%)
 ```
 
-Mobile uses a vertical split with the map above and media below.
+Mobile uses a vertical split with the map above and media below, also user-resizable (default ~52% / ~48%).
 
 Important invariants:
 
 - The media rail remains present throughout the travel section in photo mode.
 - A photo appearing should not trigger a large full-map → split-map layout jump.
-- Map camera framing is biased toward the map pane for the entire photo-mode travel section.
+- Map camera framing is biased toward the current map pane for the entire photo-mode travel section.
+- The user can drag the split separator to resize map/media space; desktop resizes horizontally and mobile vertically.
+- Resize ratios are clamped so both panes remain usable, and the separator supports keyboard adjustment.
+- The camera target updates with the resized map pane rather than staying fixed to the old 60/40 or 52/48 center.
 - The final `OUTRO` returns to a full-map overview.
 - Player controls and the general travel HUD stay in the map pane, not over the photo.
 - Photo place/capture time are shown in a dedicated information area below the media, not as a large overlay covering the image.
@@ -100,6 +103,8 @@ Important invariants:
 Main implementation files:
 
 - `src/route-player-split.js`
+- `src/photo-split-layout.js`
+- `src/photo-split-resizer.js`
 - `media-journey.css`
 
 ---
@@ -218,6 +223,8 @@ Important behavior:
 - Flights preserve wide/overview behavior.
 - The final route overview is preserved.
 - In photo journey mode, `src/route-player-split.js` keeps travel camera framing inside the map pane instead of changing framing only when a photo appears.
+- `src/photo-split-layout.js` provides the active split ratio and map-pane target used by both layout and camera framing.
+- `src/photo-split-resizer.js` updates the split ratio and requests an immediate camera reframe while paused or playing.
 - Media holds keep a stable approach trail visible instead of collapsing the trail to repeated stationary points.
 
 Do not change photo-mode travel back to full-screen framing between every media stop unless the user explicitly requests that UX.
@@ -498,7 +505,7 @@ Do not aggressively collapse the entire chain during an unrelated UX fix; it tou
 - `index.html` — DOM structure, controls, import map, script order
 - `styles.css` — base application/map/player styles
 - `mode-ui.css` — mode controls and responsive/scroll-safe settings workspace
-- `media-journey.css` — media rail, photo/video layout, player placement in photo mode, animations
+- `media-journey.css` — media rail, draggable split separator, photo/video layout, player placement in photo mode, animations
 
 ### Main orchestration
 
@@ -514,6 +521,8 @@ Do not aggressively collapse the entire chain during an unrelated UX fix; it tou
 - `src/camera-modes-auto.js`
 - `src/route-player.js`
 - `src/route-player-split.js`
+- `src/photo-split-layout.js` — split defaults/limits, CSS variables, map-pane camera target
+- `src/photo-split-resizer.js` — pointer/keyboard separator interaction and resize notifications
 
 ### Media
 
@@ -676,6 +685,10 @@ The photo journey already has v2/v3/v4 layers. Extend deliberately or consolidat
 
 Do not restore a second `localGalleryMedia`/preference state inside `photo-journey-v4.js` or a `travel-camera:local-media-ready` bridge. Media source selection belongs in `src/media-library-state.js`.
 
+### 20.9 Fixed photo split assumptions
+
+Do not hard-code camera targets or media-card dimensions back to only `60/40` desktop or `52/48` mobile values. The active split comes from `src/photo-split-layout.js` and must remain synchronized with camera framing.
+
 ---
 
 ## 21. Known technical debt / limitations
@@ -752,6 +765,7 @@ Relevant regression tests include:
 - `tests/photo-administrative-place.test.js`
 - `tests/photo-journey.test.js`
 - `tests/photo-media-journey.test.js`
+- `tests/photo-split-layout.test.js`
 - `tests/playback-pacing.test.js`
 - `tests/route-player-split.test.js`
 - `tests/route-player.test.js`
@@ -836,14 +850,16 @@ Check:
 5. video is muted/playsInline for autoplay
 6. play/pause synchronization with route player
 
-### Photo-mode layout feels abrupt
+### Photo-mode layout feels abrupt or split resize is wrong
 
 Check:
 
 1. `stage.photo-journey-layout-active` remains active for the whole TRAVEL section
 2. `route-player-split.js` is the import-map target
 3. media rail persists between media holds
-4. map camera is pane-biased throughout photo-mode travel, not just at media holds
+4. `src/photo-split-layout.js` holds the active clamped ratio
+5. `src/photo-split-resizer.js` updates CSS variables and emits `travel-camera:photo-split-change`
+6. map camera is biased to the current resized map pane, not a fixed default split
 
 ### Settings panel is clipped
 
@@ -863,7 +879,7 @@ A new AI session should follow this sequence:
 6. Prefer a minimal structural fix over an additional workaround layer.
 7. Preserve route-only vs actual-playback duration semantics.
 8. Preserve the dedicated local-gallery pipeline and shared `media-library-state.js` source state.
-9. Preserve persistent photo-mode map/media layout unless explicitly asked otherwise.
+9. Preserve persistent photo-mode map/media layout and resizable split behavior unless explicitly asked otherwise.
 10. Add/update regression tests where practical.
 11. Verify GitHub Actions before claiming success.
 12. If the architecture, active wrappers, media pipeline, commands, invariants or technical debt changed, update this document in the same task.
