@@ -245,7 +245,7 @@ Google Photos logical videos can use still-thumbnail sentinel files; those remai
 
 ---
 
-## 10. GPS place-name resolution and English labels
+## 10. GPS place-name resolution with Korean labels and English fallback
 
 Active resolver: `src/photo-journey-v4.js`.
 
@@ -260,23 +260,23 @@ city/town/municipality
 Example target:
 
 ```text
-Osaka · Chuo · Shinsaibashi
+오사카시 · 주오구 · 신사이바시
 ```
 
 If city-level data is unavailable, region/prefecture may be fallback, followed by usable lower levels.
 
 Name-selection invariant:
 
-1. use explicit English map property (`name:en` / `name_en`) when present
-2. otherwise use Latin/international properties (`name:latin`, `int_name`, and aliases)
-3. otherwise use the source/native `name`
-4. language-specific Japanese or Korean properties are last-resort fallbacks
+1. preserve explicit Korean map properties (`name:ko` / `name_ko`) when present
+2. otherwise use English properties (`name:en` / `name_en`)
+3. otherwise use Latin/international properties (`name:latin`, `int_name`, and aliases)
+4. otherwise use the source/native `name`, then language-specific native properties
 
 Do not generate Korean phonetic translations for GPS place captions.
 
 The resolver checks rendered features and relevant source layers. Polygon/MultiPolygon administrative features use a bounded representative position for distance ranking.
 
-Limitation: this is not a true reverse-geocoder. Only map levels and multilingual properties actually present in the active source can be used. English labels may be unavailable for some features; in that case the resolver falls back to source/native names. Do not fabricate missing administrative levels.
+Limitation: this is not a true reverse-geocoder. Only map levels and multilingual properties actually present in the active source can be used. Korean labels are preserved only when the map provides them; otherwise English or source/native names are used. Do not fabricate missing administrative levels.
 
 ---
 
@@ -294,7 +294,7 @@ Responsibilities:
 - core `photo-journey.js`: matching/grouping/placement/base controller
 - v2: media/video support, hold insertion, per-item duration
 - v3: richer import/progress/diagnostics, embedded local metadata fallback
-- v4: robust local video rendering, detailed English-first administrative GPS labels, movement pictograms, local-ready state integration
+- v4: robust local video rendering, detailed Korean-preserving administrative GPS labels with English fallback, movement pictograms, local-ready state integration
 
 `?core=1` avoids import-map recursion.
 Technical debt: wrapper stack is deep. Do not casually add v5/v6; consolidate only in a dedicated refactor with regression tests.
@@ -342,7 +342,7 @@ zoom 0 ~ 5  -> maps/world-z5.pmtiles
 zoom 6 ~ 14 -> maps/korea-japan-z14.pmtiles
 ```
 
-`src/local-map.js` requests Korean basemap labels with `{ lang: 'ko' }`. Photo GPS captions are resolved independently and prefer English/Latin properties.
+`src/local-map.js` requests Korean basemap labels with `{ lang: 'ko' }`. Photo GPS captions are resolved independently: explicit Korean properties are preserved, then English/Latin names are preferred.
 
 Fallback online basemap is supported. Local map files are not committed due size. Server supports PMTiles HTTP Range requests.
 
@@ -368,7 +368,7 @@ Privacy:
 7. Adding another photo wrapper for each small feature.
 8. Wrapper-local media source override state.
 9. Hard-coding split camera/layout to only 60/40 or 52/48.
-10. Korean or generated Hangul GPS captions before available English/Latin names.
+10. Generated Hangul transliteration, or forcing English when an explicit Korean map label is available.
 
 ---
 
@@ -378,7 +378,7 @@ Privacy:
 v2/v3/v4 is functional but costly to reason about.
 
 ### P2 — Browser reverse geocoding is approximate
-Administrative levels and English availability still depend on map features.
+Administrative levels and Korean/English availability still depend on map features.
 
 ### P2 — HEIC metadata/rendering
 Selection is supported but browser decoding varies and embedded parsing is JPEG-centric.
@@ -413,7 +413,7 @@ Local: `npm test`.
 
 GitHub Actions performs npm install, JavaScript syntax checks, bundled Timeline/local-server startup checks, static/API endpoint checks, and full Node tests.
 
-Relevant regression tests include camera, route player, mobility, media-source, metadata, photo journey, photo split, English-first administrative-place, consumer UI/copy, media-transition timing, and playback pacing tests.
+Relevant regression tests include camera, route player, mobility, media-source, metadata, photo journey, photo split, Korean-preserving administrative-place with English fallback, consumer UI/copy, media-transition timing, and playback pacing tests.
 
 Add focused tests for testable regressions. Never claim CI passed until final job conclusion is success.
 
@@ -443,7 +443,7 @@ Photo split issues: persistent layout class → import-map target → split stat
 
 GPS label too coarse: inspect exposed city/district/locality features → classification → representative distance → missing map levels cannot be synthesized.
 
-GPS caption is not English: inspect `name:en`/`name_en` → Latin/international properties → source/native `name` fallback. Missing English properties cannot be synthesized safely.
+GPS caption unexpectedly changed from Korean: inspect `name:ko`/`name_ko` first, then English/Latin and source/native fallbacks. Missing Korean properties must not be synthesized phonetically.
 
 Media transition feels abrupt: verify `src/photo-media-transition.js` loaded through `photo-split-resizer.js`, `--photo-media-transition` follows `#videoDuration`, both card and pictogram retain DOM during opacity transition, and reduced-motion is not active.
 
@@ -461,7 +461,7 @@ Media transition feels abrupt: verify `src/photo-media-transition.js` loaded thr
 8. Preserve dedicated local-gallery pipeline/shared media source state.
 9. Preserve persistent/resizable photo split unless explicitly changed.
 10. Preserve duration-aware photo/video ↔ movement-pictogram transitions unless explicitly changed.
-11. Preserve city-and-below GPS labels and English-first place naming when map data supports it.
+11. Preserve city-and-below GPS labels, explicit Korean map names, and English fallback when Korean is unavailable.
 12. Add/update focused tests.
 13. Verify final `main` GitHub Actions before claiming success.
 14. Update this file in the same task when maintained architecture/invariants change.
