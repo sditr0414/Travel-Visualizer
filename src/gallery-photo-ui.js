@@ -4,6 +4,7 @@ import {
   loadLocalGalleryFiles,
   mediaTypeForLocalFile
 } from './local-media-loader.js';
+import { MediaLibrarySource, setActiveMediaLibrary } from './media-library-state.js';
 
 const galleryInput = document.querySelector('#photoGalleryInput');
 const journeyMode = document.querySelector('#journeyMode');
@@ -74,13 +75,11 @@ if (galleryInput && journeyMode) {
         status.textContent = `기기 갤러리 촬영 정보 준비 완료 · 사진 ${stats.images.toLocaleString()}장 · 영상 ${stats.videos.toLocaleString()}개`;
       }
 
-      window.dispatchEvent(new CustomEvent('travel-camera:local-media-ready', {
-        detail: result
-      }));
+      setActiveMediaLibrary(MediaLibrarySource.LOCAL_GALLERY, result.photos);
 
-      // Rebuild through the existing main.js change handler. The photo-journey
-      // adapter now owns the active local library, so no hidden input/DataTransfer
-      // bridge is required.
+      // Rebuild through the existing main.js change handler. Both modules read
+      // the same explicit active media library, so no hidden input or window
+      // event bridge is required.
       journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
     } catch (error) {
       if (generation !== importGeneration) return;

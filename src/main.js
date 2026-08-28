@@ -11,6 +11,13 @@ import {
   loadGooglePhotosTakeout,
   PhotoJourneyController
 } from './photo-journey.js';
+import {
+  clearActiveMediaLibrary,
+  getActiveMediaItems,
+  getActiveMediaLibrary,
+  MediaLibrarySource,
+  setActiveMediaLibrary
+} from './media-library-state.js';
 
 const $ = sel => document.querySelector(sel);
 const fileInput = $('#timelineFile');
@@ -65,7 +72,6 @@ let currentSourceLabel = '타임라인.json';
 let player = null;
 let plan = null;
 let photoController = null;
-let photoLibrary = [];
 let photoBeats = [];
 
 const CAMERA_MODE_LABELS = {
@@ -270,6 +276,12 @@ fileInput.addEventListener('change', async () => {
 photoFolderInput.addEventListener('change', async () => {
   const files = photoFolderInput.files;
   if (!files?.length) return;
+  const mediaSource = photoFolderInput.dataset.importSource === 'google-photos-picker'
+    ? MediaLibrarySource.GOOGLE_PHOTOS_PICKER
+    : MediaLibrarySource.GOOGLE_PHOTOS_TAKEOUT;
+  delete photoFolderInput.dataset.importSource;
+  const pendingMediaLibrary = setActiveMediaLibrary(mediaSource, []);
+
   player?.pause();
   playButton.textContent = '재생';
   photoImportCount.textContent = '읽는 중…';
@@ -279,10 +291,12 @@ photoFolderInput.addEventListener('change', async () => {
   try {
     const result = await loadGooglePhotosTakeout(files, {
       onProgress: progress => {
+        if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
         if (progress.total) photoImportCount.textContent = `${progress.found.toLocaleString()}개 찾음`;
       }
     });
-    photoLibrary = result.photos;
+    if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
+    setActiveMediaLibrary(mediaSource, result.photos);
     const stats = result.stats;
     const imageCount = Number(stats.images) || 0;
     const videoCount = Number(stats.videos) || 0;
@@ -293,7 +307,8 @@ photoFolderInput.addEventListener('change', async () => {
     status.textContent = `Google Photos 데이터 준비 완료 · 사진 ${imageCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개`;
     if (currentData && journeyMode.value === JourneyMode.PHOTOS) rebuildPlan('사진 데이터 변경');
   } catch (error) {
-    photoLibrary = [];
+    if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
+    clearActiveMediaLibrary(mediaSource);
     photoBeats = [];
     photoImportCount.textContent = '가져오기 실패';
     photoImportHint.textContent = error.message;
@@ -449,7 +464,7 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       });
 
       const photoMode = journeyMode.value === JourneyMode.PHOTOS;
-      photoBeats = photoMode ? buildPhotoJourneyBeats(photoLibrary, plan) : [];
+      photoBeats = photoMode ? buildPhotoJourneyBeats(getActiveMediaItems(), plan) : [];
       photoController?.setEnabled(photoMode);
       photoController?.setJourney(plan, photoBeats);
 
