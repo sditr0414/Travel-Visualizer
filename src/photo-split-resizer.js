@@ -6,11 +6,13 @@ import {
   photoMapShareLimits
 } from './photo-split-layout.js';
 
-const stage = document.querySelector('.stage');
+const documentRef = globalThis.document;
+const windowRef = globalThis.window;
+const stage = documentRef?.querySelector?.('.stage') || null;
 const handle = stage ? ensureHandle(stage) : null;
 let dragging = false;
 
-if (stage && handle) {
+if (stage && handle && windowRef) {
   syncForViewport();
 
   handle.addEventListener('pointerdown', event => {
@@ -55,13 +57,13 @@ if (stage && handle) {
     const narrow = isNarrow();
     setShare(defaultPhotoMapShare(narrow), narrow);
   });
-  window.addEventListener('resize', syncForViewport, { passive: true });
+  windowRef.addEventListener('resize', syncForViewport, { passive: true });
 }
 
 function ensureHandle(targetStage) {
   const existing = targetStage.querySelector('#photoSplitHandle');
   if (existing) return existing;
-  const node = document.createElement('div');
+  const node = documentRef.createElement('div');
   node.id = 'photoSplitHandle';
   node.className = 'photo-split-handle';
   node.tabIndex = 0;
@@ -100,13 +102,13 @@ function setShare(value, narrow, announce = true) {
   handle.setAttribute('aria-valuetext', `경로 ${mapPercent}%, 사진 ${mediaPercent}%`);
   handle.title = `경로 ${mapPercent}% · 사진 ${mediaPercent}% · 드래그하여 조절`;
 
-  if (announce) {
-    window.dispatchEvent(new CustomEvent('travel-camera:photo-split-change', {
+  if (announce && typeof globalThis.CustomEvent === 'function') {
+    windowRef.dispatchEvent(new CustomEvent('travel-camera:photo-split-change', {
       detail: { share, narrow }
     }));
   }
 }
 
 function isNarrow() {
-  return window.innerWidth <= PHOTO_SPLIT_BREAKPOINT;
+  return Number(windowRef?.innerWidth) <= PHOTO_SPLIT_BREAKPOINT;
 }
