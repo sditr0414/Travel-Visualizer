@@ -34,6 +34,7 @@ export function applyPhotoMapShare(stage, value, narrow) {
   if (stage?.style?.setProperty) {
     stage.style.setProperty('--photo-map-share', `${(share * 100).toFixed(2)}%`);
     stage.style.setProperty('--photo-media-share', `${((1 - share) * 100).toFixed(2)}%`);
+    stage.style.setProperty('--photo-map-center', `${(share * 50).toFixed(2)}%`);
   }
   return share;
 }
