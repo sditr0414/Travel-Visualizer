@@ -241,12 +241,16 @@ src/local-media-worker.js   (when Worker is available)
     ↓
 src/image-metadata.js
     ↓
-travel-camera:local-media-ready
+src/media-library-state.js  (MediaLibrarySource.LOCAL_GALLERY)
     ↓
-src/photo-journey-v4.js local media source
+src/main.js rebuildPlan()
+    ↓
+src/photo-journey-v4.js
     ↓
 Timeline/media beat matching
 ```
+
+The active media collection is represented by one shared state object in `src/media-library-state.js`. `src/main.js` reads that state when rebuilding a photo journey. The local gallery no longer sends a separate `travel-camera:local-media-ready` event to make `photo-journey-v4.js` override `main.js` state.
 
 ### Important historical failure
 
@@ -322,6 +326,7 @@ There are separate concepts:
 - Picker media URLs are temporary.
 - Google Photos preview media must not be persisted to IndexedDB or uploaded to this project server.
 - Picker does not provide reliable photo GPS for this use case, so Timeline-time positioning is used.
+- Downloaded Picker previews still enter the existing Takeout-compatible metadata loader, but the active state is explicitly recorded as `MediaLibrarySource.GOOGLE_PHOTOS_PICKER`.
 
 ### Google Photos Takeout
 
@@ -329,8 +334,9 @@ There are separate concepts:
 - Sidecar capture time and GPS are preferred when available.
 - Files without sidecar metadata fall back to embedded metadata / file timing according to the active loader.
 - Import UI distinguishes photo and video counts.
+- The active state is explicitly recorded as `MediaLibrarySource.GOOGLE_PHOTOS_TAKEOUT`.
 
-Switching to Takeout should clear the local-gallery source preference in the active photo-journey wrapper.
+Selecting a new media source replaces the previous active media library through `src/media-library-state.js`; source preference must not be reimplemented as hidden wrapper-local state.
 
 ---
 
@@ -473,7 +479,7 @@ Approximate responsibility split:
 - `photo-journey.js`: core photo-to-Timeline matching, grouping, placement primitives, base controller
 - `photo-journey-v2.js`: video/media support, media hold insertion, per-item duration behavior
 - `photo-journey-v3.js`: richer import/progress/diagnostic behavior and embedded local metadata fallback
-- `photo-journey-v4.js`: local-gallery source preference, robust local video rendering, administrative GPS place labels
+- `photo-journey-v4.js`: robust local video rendering, administrative GPS place labels, and local-ready status reporting against the shared media-library state
 
 The `?core=1` pattern is intentional: exact import-map mappings should not remap the core import and recurse.
 
@@ -511,6 +517,7 @@ Do not aggressively collapse the entire chain during an unrelated UX fix; it tou
 
 ### Media
 
+- `src/media-library-state.js` — single active media source + media collection state
 - `src/photo-journey.js`
 - `src/photo-journey-v2.js`
 - `src/photo-journey-v3.js`
@@ -665,6 +672,10 @@ Local MOV/MP4 can have blank MIME types. Use normalized `mediaType` / extension 
 
 The photo journey already has v2/v3/v4 layers. Extend deliberately or consolidate with tests.
 
+### 20.8 Wrapper-local media source override
+
+Do not restore a second `localGalleryMedia`/preference state inside `photo-journey-v4.js` or a `travel-camera:local-media-ready` bridge. Media source selection belongs in `src/media-library-state.js`.
+
 ---
 
 ## 21. Known technical debt / limitations
@@ -672,12 +683,6 @@ The photo journey already has v2/v3/v4 layers. Extend deliberately or consolidat
 ### P1 — Photo wrapper consolidation
 
 The v2/v3/v4 chain is functional but costly to reason about. A future focused refactor should merge responsibilities into a smaller number of modules while preserving all existing tests and import-map behavior.
-
-### P1 — Media source state is split
-
-`main.js` owns `photoLibrary` for Takeout/Picker-related flow, while `photo-journey-v4.js` can override the active library with `localGalleryMedia` via a window event.
-
-This works, but the active media source is not represented by one explicit state object. Future consolidation should create a clear `MediaLibrary`/source controller instead of adding more implicit overrides.
 
 ### P2 — Browser reverse geocoding is approximate
 
@@ -708,7 +713,6 @@ Do not perform all of these at once. Recommended order:
 ```text
 P1. Keep current route/photo/video UX stable
 P1. Consolidate photo-journey v2/v3/v4 wrappers in a dedicated refactor
-P1. Centralize active media-source state
 P2. Add performance instrumentation for local media imports
 P2. Improve HEIC metadata/decoding strategy if required by real user files
 P2. Evaluate a deterministic reverse-geocoder only if map-feature labels are insufficient
@@ -743,6 +747,7 @@ Relevant regression tests include:
 - `tests/core.test.js`
 - `tests/google-photos-picker.test.js`
 - `tests/image-metadata.test.js`
+- `tests/media-library-state.test.js`
 - `tests/mobility-identity.test.js`
 - `tests/photo-administrative-place.test.js`
 - `tests/photo-journey.test.js`
@@ -807,7 +812,7 @@ Check in this order:
 2. matched media beat count
 3. parsed `takenMs` range vs selected Timeline range
 4. `positionSource` / GPS plausibility
-5. active media source preference (local vs Takeout/Picker)
+5. `src/media-library-state.js` active source (`LOCAL_GALLERY`, `GOOGLE_PHOTOS_PICKER`, or `GOOGLE_PHOTOS_TAKEOUT`)
 6. renderer/object URL errors
 
 ### Local gallery hangs or is extremely slow
@@ -857,7 +862,7 @@ A new AI session should follow this sequence:
 5. Identify which existing invariant the requested change affects.
 6. Prefer a minimal structural fix over an additional workaround layer.
 7. Preserve route-only vs actual-playback duration semantics.
-8. Preserve the dedicated local-gallery pipeline.
+8. Preserve the dedicated local-gallery pipeline and shared `media-library-state.js` source state.
 9. Preserve persistent photo-mode map/media layout unless explicitly asked otherwise.
 10. Add/update regression tests where practical.
 11. Verify GitHub Actions before claiming success.
