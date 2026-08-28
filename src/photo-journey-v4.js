@@ -216,9 +216,38 @@ function administrativeFeatureName(properties) {
 
 function representativeFeatureCoordinate(geometry) {
   if (!geometry) return null;
-  if (geometry.type === 'Point' && Array.isArray(geometry.coordinates)) return geometry.coordinates;
-  if (geometry.type === 'MultiPoint' && Array.isArray(geometry.coordinates?.[0])) return geometry.coordinates[0];
-  return null;
+  if (isCoordinatePair(geometry.coordinates)) return geometry.coordinates;
+
+  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity, count: 0 };
+  collectCoordinateBounds(geometry.coordinates, bounds, 1024);
+  if (!bounds.count) return null;
+  return [
+    (bounds.minX + bounds.maxX) / 2,
+    (bounds.minY + bounds.maxY) / 2
+  ];
+}
+
+function collectCoordinateBounds(value, bounds, limit) {
+  if (!Array.isArray(value) || bounds.count >= limit) return;
+  if (isCoordinatePair(value)) {
+    const x = Number(value[0]);
+    const y = Number(value[1]);
+    bounds.minX = Math.min(bounds.minX, x);
+    bounds.minY = Math.min(bounds.minY, y);
+    bounds.maxX = Math.max(bounds.maxX, x);
+    bounds.maxY = Math.max(bounds.maxY, y);
+    bounds.count += 1;
+    return;
+  }
+  for (const child of value) {
+    collectCoordinateBounds(child, bounds, limit);
+    if (bounds.count >= limit) break;
+  }
+}
+
+function isCoordinatePair(value) {
+  return Array.isArray(value) && value.length >= 2 &&
+    Number.isFinite(Number(value[0])) && Number.isFinite(Number(value[1]));
 }
 
 function sameAdministrativeName(a, b) {
