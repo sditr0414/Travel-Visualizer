@@ -9,14 +9,16 @@ import {
 const documentRef = globalThis.document;
 const windowRef = globalThis.window;
 const stage = documentRef?.querySelector?.('.stage') || null;
+const settingsShell = stage?.querySelector?.('.settings-shell') || null;
 const handle = stage ? ensureHandle(stage) : null;
 let dragging = false;
 
 if (stage && handle && windowRef) {
   syncForViewport();
+  syncSettingsVisibility();
 
   handle.addEventListener('pointerdown', event => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || settingsShell?.open) return;
     dragging = true;
     handle.setPointerCapture?.(event.pointerId);
     stage.classList.add('photo-split-resizing');
@@ -31,7 +33,7 @@ if (stage && handle && windowRef) {
     if (!dragging) return;
     dragging = false;
     stage.classList.remove('photo-split-resizing');
-    try { handle.releasePointerCapture?.(event.pointerId); } catch {}
+    try { handle.releasePointerCapture?.(event?.pointerId); } catch {}
   };
   handle.addEventListener('pointerup', stopDragging);
   handle.addEventListener('pointercancel', stopDragging);
@@ -58,18 +60,27 @@ if (stage && handle && windowRef) {
     setShare(defaultPhotoMapShare(narrow), narrow);
   });
   windowRef.addEventListener('resize', syncForViewport, { passive: true });
+  settingsShell?.addEventListener('toggle', () => {
+    if (settingsShell.open) {
+      dragging = false;
+      stage.classList.remove('photo-split-resizing');
+    }
+    syncSettingsVisibility();
+  });
 }
 
 function ensureHandle(targetStage) {
   const existing = targetStage.querySelector('#photoSplitHandle');
-  if (existing) return existing;
+  if (existing) {
+    existing.replaceChildren();
+    return existing;
+  }
   const node = documentRef.createElement('div');
   node.id = 'photoSplitHandle';
   node.className = 'photo-split-handle';
   node.tabIndex = 0;
   node.setAttribute('role', 'separator');
   node.setAttribute('aria-label', '경로와 사진 영역 크기 조절');
-  node.innerHTML = '<span aria-hidden="true"></span>';
   targetStage.append(node);
   return node;
 }
@@ -87,6 +98,11 @@ function updateFromPointer(event) {
 function syncForViewport() {
   const narrow = isNarrow();
   setShare(photoMapShareForStage(stage, narrow), narrow, false);
+}
+
+function syncSettingsVisibility() {
+  if (!handle) return;
+  handle.style.display = settingsShell?.open ? 'none' : '';
 }
 
 function setShare(value, narrow, announce = true) {
