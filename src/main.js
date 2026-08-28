@@ -75,35 +75,35 @@ let photoController = null;
 let photoBeats = [];
 
 const CAMERA_MODE_LABELS = {
-  [CameraMode.AUTO]: '자동 · 하루 지역 + 장거리 예외',
-  [CameraMode.DAY]: '하루 지역 중심',
-  [CameraMode.SEGMENT]: '이동수단별'
+  [CameraMode.AUTO]: '자동으로 예쁘게',
+  [CameraMode.DAY]: '하루 일정 중심',
+  [CameraMode.SEGMENT]: '이동 장면 중심'
 };
 
 const CAMERA_MODE_HINTS = {
-  [CameraMode.AUTO]: '하루 지역을 안정적으로 유지하고 장거리 이동에서만 자연스럽게 넓게 봅니다.',
-  [CameraMode.DAY]: '같은 날은 거의 같은 지도 범위를 유지합니다.',
-  [CameraMode.SEGMENT]: '이동수단과 거리 변화에 맞춰 줌을 더 적극적으로 바꿉니다.'
+  [CameraMode.AUTO]: '장소와 이동 거리에 맞춰 화면을 자연스럽게 조절해요.',
+  [CameraMode.DAY]: '같은 날의 장소를 비슷한 거리감으로 편안하게 보여줘요.',
+  [CameraMode.SEGMENT]: '이동 장면이 바뀔 때마다 화면을 더 적극적으로 전환해요.'
 };
 
 const JOURNEY_MODE_LABELS = {
-  [JourneyMode.ROUTE]: '발자취',
-  [JourneyMode.PHOTOS]: '사진 여정'
+  [JourneyMode.ROUTE]: '경로 스토리',
+  [JourneyMode.PHOTOS]: '사진 스토리'
 };
 
 const JOURNEY_MODE_HINTS = {
-  [JourneyMode.ROUTE]: '전체 이동 경로를 중심으로 여행의 흐름을 보여줍니다.',
-  [JourneyMode.PHOTOS]: '지도·경로와 미디어 영역을 같은 구도로 유지하면서 촬영 시각과 위치가 맞는 사진·동영상을 순서대로 보여줍니다.'
+  [JourneyMode.ROUTE]: '여행 경로를 따라 자연스럽게 이동하는 스토리를 만들어요.',
+  [JourneyMode.PHOTOS]: '촬영한 장소에 도착하면 사진과 영상을 보여주며 여행을 이어가요.'
 };
 
 const PACING_LABELS = {
-  [PlaybackPacing.LOCAL_DAYS]: '현지 여행일 균형',
-  [PlaybackPacing.GLOBAL]: '전체 이동 균형'
+  [PlaybackPacing.LOCAL_DAYS]: '날짜별로 고르게',
+  [PlaybackPacing.GLOBAL]: '이동 거리대로'
 };
 
 const PACING_HINTS = {
-  [PlaybackPacing.LOCAL_DAYS]: '항공편의 비중은 유지하고 현지 이동을 날짜별로 나눕니다. 장거리 당일치기와 왕복 이동에는 추가 시간을 확보합니다.',
-  [PlaybackPacing.GLOBAL]: '모든 이동구간이 전체 영상 시간을 직접 나눕니다. 긴 여행에서는 특정 현지 날짜가 매우 빠르게 지나갈 수 있습니다.'
+  [PlaybackPacing.LOCAL_DAYS]: '각 여행 날짜를 충분히 볼 수 있도록 장면 시간을 고르게 나눠요.',
+  [PlaybackPacing.GLOBAL]: '이동 거리가 긴 구간에 더 많은 시간을 사용해요.'
 };
 
 const MOBILITY_LABELS = {
@@ -388,12 +388,12 @@ cameraMode.addEventListener('change', () => {
 
 cameraZoomOffset.addEventListener('input', updateZoomOffsetLabel);
 cameraZoomOffset.addEventListener('change', () => {
-  if (currentData) rebuildPlan('현지 줌 변경');
+  if (currentData) rebuildPlan('지도 거리감 변경');
 });
 
 playbackPacing.addEventListener('change', () => {
   updatePlaybackPacingHint();
-  if (currentData) rebuildPlan('시간 배분 변경');
+  if (currentData) rebuildPlan('장면 속도 변경');
 });
 
 lockCameraToPosition.addEventListener('change', () => {
@@ -493,24 +493,17 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       seek.step = String(1 / plan.fps);
       seek.value = '0';
 
-      const classes = countBy(plan.segments, segment => segment.inference.mobilityClass);
-      const inferredCount = currentData.movements.filter(segment => segment.inferred).length;
       summary.innerHTML = [
         `<strong>${JOURNEY_MODE_LABELS[journeyMode.value]}</strong>`,
         photoMode ? `<strong>사진 장면 ${photoBeats.length}</strong>` : '',
-        '<strong>60 FPS</strong>',
-        `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`,
-        `<strong>현지 줌 ${formatZoomOffset(plan.zoomOffset)}</strong>`,
-        `<strong>${basemap.label}</strong>`,
-        `<strong>${formatDuration(plan.durationSec)}</strong>`,
-        `<strong>${plan.segments.length}</strong> 구간`,
-        inferredCount ? `<strong>${inferredCount}</strong> 추정 연결` : '',
-        ...Object.entries(classes).map(([key, value]) => `${mobilityLabel(key)} ${value}`)
+        `<strong>${formatDuration(plan.durationSec)}</strong> 스토리`,
+        `<strong>${plan.segments.length}</strong>개 이동 장면`,
+        `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`
       ].filter(Boolean).join('<span>·</span>');
 
       status.textContent = photoMode && !photoBeats.length
-        ? `${currentSourceLabel} · 사진 여정 준비 · 현재 Timeline에 매칭된 미디어 장면이 없습니다`
-        : `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작`;
+        ? `${currentSourceLabel} · 이 여행에서 보여줄 사진이나 영상을 찾지 못했어요`
+        : `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작하세요`;
     } catch (error) {
       photoController?.clear();
       stage?.classList.remove('photo-journey-layout-active');
