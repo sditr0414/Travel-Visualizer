@@ -41,3 +41,37 @@ test('GPS place label falls back to the available administrative level', () => {
     '후쿠오카현'
   );
 });
+
+test('GPS place label ranks polygon administrative areas by representative position', () => {
+  const features = [
+    {
+      layer: { id: 'boundary-city' },
+      properties: { 'name:ko': '오사카시', kind: 'city' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[40, 40], [180, 40], [180, 180], [40, 180], [40, 40]]]
+      }
+    },
+    {
+      layer: { id: 'boundary-district' },
+      properties: { 'name:ko': '주오구', kind: 'district' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[80, 82], [126, 82], [126, 126], [80, 126], [80, 82]]]
+      }
+    },
+    {
+      layer: { id: 'boundary-district' },
+      properties: { 'name:ko': '멀리있는구', kind: 'district' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[[900, 900], [980, 900], [980, 980], [900, 980], [900, 900]]]
+      }
+    }
+  ];
+
+  assert.equal(
+    administrativePlaceLabel(features, { x: 100, y: 100 }, project),
+    '오사카시 · 주오구'
+  );
+});
