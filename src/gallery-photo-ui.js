@@ -7,6 +7,8 @@ import {
 import { MediaLibrarySource, setActiveMediaLibrary } from './media-library-state.js';
 
 const galleryInput = document.querySelector('#photoGalleryInput');
+const galleryFolderInput = document.querySelector('#photoGalleryFolderInput');
+const galleryInputs = [galleryInput, galleryFolderInput].filter(Boolean);
 const journeyMode = document.querySelector('#journeyMode');
 const importHint = document.querySelector('#photoImportHint');
 const importCount = document.querySelector('#photoImportCount');
@@ -14,89 +16,109 @@ const status = document.querySelector('#status');
 
 let importGeneration = 0;
 
-if (galleryInput && journeyMode) {
-  galleryInput.addEventListener('change', async () => {
-    const generation = ++importGeneration;
-    const files = Array.from(galleryInput.files || []).filter(isLocalMediaFile);
+if (galleryInputs.length && journeyMode) {
+  for (const input of galleryInputs) {
+    input.addEventListener('change', () => importLocalSelection(input));
+  }
+}
 
-    if (!files.length) {
-      const message = '선택한 항목에서 지원되는 사진·동영상 파일을 찾지 못했습니다.';
-      if (importHint) importHint.textContent = message;
-      reportPhotoProgress({ phase: 'ERROR', reset: true, message });
-      return;
-    }
+async function importLocalSelection(input) {
+  const generation = ++importGeneration;
+  const files = Array.from(input?.files || []).filter(isLocalMediaFile);
+  const selectionLabel = selectedSourceLabel(input, files);
 
-    const counts = countSelectedMedia(files);
-    if (journeyMode.value !== 'PHOTOS') {
-      journeyMode.value = 'PHOTOS';
-      journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
-    }
+  if (!files.length) {
+    const message = `${selectionLabel}에서 지원되는 사진이나 영상을 찾지 못했습니다.`;
+    if (importHint) importHint.textContent = message;
+    reportPhotoProgress({ phase: 'ERROR', reset: true, message });
+    input.value = '';
+    return;
+  }
 
-    galleryInput.disabled = true;
-    if (importCount) {
-      importCount.textContent = `사진 ${counts.photos.toLocaleString()}장 · 영상 ${counts.videos.toLocaleString()}개`;
-    }
-    if (importHint) {
-      importHint.textContent = '기기 갤러리 파일을 직접 분석합니다. Takeout 입력으로 복사하지 않습니다.';
-    }
-    if (status) {
-      status.textContent = `기기 갤러리 분석 시작 · ${files.length.toLocaleString()}개 파일`;
-    }
+  const counts = countSelectedMedia(files);
+  if (journeyMode.value !== 'PHOTOS') {
+    journeyMode.value = 'PHOTOS';
+    journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
+  }
 
-    try {
-      const result = await loadLocalGalleryFiles(files, {
-        onProgress: progress => {
-          if (generation !== importGeneration) return;
-          reportPhotoProgress(progress);
-          const processed = Math.max(0, Number(progress.processed) || 0);
-          const total = Math.max(0, Number(progress.total) || files.length);
-          if (progress.phase === 'METADATA') {
-            if (importCount) {
-              importCount.textContent = `사진 ${counts.photos.toLocaleString()}장 · 영상 ${counts.videos.toLocaleString()}개 · ${processed.toLocaleString()}/${total.toLocaleString()} 분석`;
-            }
-            if (status) {
-              status.textContent = `기기 갤러리 촬영 정보 분석 · ${processed.toLocaleString()} / ${total.toLocaleString()}`;
-            }
+  setGalleryInputsDisabled(true);
+  if (importCount) {
+    importCount.textContent = `사진 ${counts.photos.toLocaleString()}장 · 영상 ${counts.videos.toLocaleString()}개`;
+  }
+  if (importHint) {
+    importHint.textContent = `${selectionLabel}의 사진과 영상을 확인하고 있습니다.`;
+  }
+  if (status) {
+    status.textContent = `${selectionLabel} 분석 시작 · ${files.length.toLocaleString()}개 파일`;
+  }
+
+  try {
+    const result = await loadLocalGalleryFiles(files, {
+      onProgress: progress => {
+        if (generation !== importGeneration) return;
+        reportPhotoProgress(progress);
+        const processed = Math.max(0, Number(progress.processed) || 0);
+        const total = Math.max(0, Number(progress.total) || files.length);
+        if (progress.phase === 'METADATA') {
+          if (importCount) {
+            importCount.textContent = `사진 ${counts.photos.toLocaleString()}장 · 영상 ${counts.videos.toLocaleString()}개 · ${processed.toLocaleString()}/${total.toLocaleString()} 분석`;
+          }
+          if (status) {
+            status.textContent = `${selectionLabel} 촬영 정보 분석 · ${processed.toLocaleString()} / ${total.toLocaleString()}`;
           }
         }
-      });
-
-      if (generation !== importGeneration) return;
-      const stats = result.stats;
-      if (importCount) {
-        importCount.textContent = `사진 ${stats.images.toLocaleString()}장 · 영상 ${stats.videos.toLocaleString()}개`;
       }
-      if (importHint) {
-        importHint.textContent = stats.photos
-          ? `기기 갤러리 ${stats.photos.toLocaleString()}개를 읽었습니다. GPS ${stats.gpsPhotos.toLocaleString()}개는 직접 사용하고, 나머지는 촬영시각으로 Timeline 위치를 보완합니다.`
-          : '사용 가능한 촬영 정보를 찾지 못했습니다.';
-      }
-      if (status) {
-        status.textContent = `기기 갤러리 촬영 정보 준비 완료 · 사진 ${stats.images.toLocaleString()}장 · 영상 ${stats.videos.toLocaleString()}개`;
-      }
+    });
 
-      setActiveMediaLibrary(MediaLibrarySource.LOCAL_GALLERY, result.photos);
-
-      // Rebuild through the existing main.js change handler. Both modules read
-      // the same explicit active media library, so no hidden input or window
-      // event bridge is required.
-      journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
-    } catch (error) {
-      if (generation !== importGeneration) return;
-      const message = error?.message || '기기 갤러리 분석에 실패했습니다.';
-      if (importCount) importCount.textContent = '가져오기 실패';
-      if (importHint) importHint.textContent = message;
-      if (status) status.textContent = `기기 갤러리 처리 실패: ${message}`;
-      reportPhotoProgress({
-        phase: 'ERROR',
-        photos: counts.photos,
-        videos: counts.videos,
-        message
-      });
-    } finally {
-      if (generation === importGeneration) galleryInput.disabled = false;
+    if (generation !== importGeneration) return;
+    const stats = result.stats;
+    if (importCount) {
+      importCount.textContent = `사진 ${stats.images.toLocaleString()}장 · 영상 ${stats.videos.toLocaleString()}개`;
     }
-  });
+    if (importHint) {
+      importHint.textContent = stats.photos
+        ? `${selectionLabel}에서 ${stats.photos.toLocaleString()}개를 불러왔습니다. 위치 정보가 없는 항목은 촬영 시간으로 이동 기록과 맞춥니다.`
+        : '사용 가능한 촬영 정보를 찾지 못했습니다.';
+    }
+    if (status) {
+      status.textContent = `${selectionLabel} 준비 완료 · 사진 ${stats.images.toLocaleString()}장 · 영상 ${stats.videos.toLocaleString()}개`;
+    }
+
+    setActiveMediaLibrary(MediaLibrarySource.LOCAL_GALLERY, result.photos);
+
+    // Rebuild through the existing main.js change handler. Both modules read
+    // the same explicit active media library, so no hidden input or window
+    // event bridge is required.
+    journeyMode.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (error) {
+    if (generation !== importGeneration) return;
+    const message = error?.message || `${selectionLabel} 분석에 실패했습니다.`;
+    if (importCount) importCount.textContent = '가져오기 실패';
+    if (importHint) importHint.textContent = message;
+    if (status) status.textContent = `${selectionLabel} 처리 실패: ${message}`;
+    reportPhotoProgress({
+      phase: 'ERROR',
+      photos: counts.photos,
+      videos: counts.videos,
+      message
+    });
+  } finally {
+    if (generation === importGeneration) {
+      setGalleryInputsDisabled(false);
+      input.value = '';
+    }
+  }
+}
+
+function selectedSourceLabel(input, files) {
+  if (input !== galleryFolderInput) return '선택한 파일';
+  const relativePath = String(files[0]?.webkitRelativePath || '');
+  const folderName = relativePath.split('/').filter(Boolean)[0];
+  return folderName ? `${folderName} 폴더` : '선택한 폴더';
+}
+
+function setGalleryInputsDisabled(disabled) {
+  for (const input of galleryInputs) input.disabled = disabled;
 }
 
 function countSelectedMedia(files) {

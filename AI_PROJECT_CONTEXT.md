@@ -157,7 +157,8 @@ Do not revert photo-mode travel to full-screen framing between media stops.
 Dedicated pipeline:
 
 ```text
-#photoGalleryInput
+#photoGalleryInput (individual files)
+#photoGalleryFolderInput (folder tree via directory selection)
   -> src/gallery-photo-ui.js
   -> src/local-media-loader.js
   -> src/local-media-worker.js (when available)
@@ -174,6 +175,8 @@ Active media source is centralized in `src/media-library-state.js`:
 - `LOCAL_GALLERY`
 - `GOOGLE_PHOTOS_PICKER`
 - `GOOGLE_PHOTOS_TAKEOUT`
+
+`src/gallery-photo-ui.js` routes individual-file and folder selection through the same loader. Folder entries are recursively supplied by the browser and filtered by `isLocalMediaFile`; unsupported files are ignored. Both inputs are disabled during an active import and reset afterward so the same selection can be chosen again.
 
 Do not restore wrapper-local local-gallery preference state or `travel-camera:local-media-ready` source override behavior.
 Never reintroduce device gallery → `DataTransfer` → hidden Takeout input.

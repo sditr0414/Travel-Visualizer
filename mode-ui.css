@@ -26,6 +26,7 @@
   font-weight: 800;
 }
 .gallery-photo-picker,
+.gallery-folder-picker,
 .google-photos-connect {
   flex: 0 0 auto;
   min-height: 34px;
@@ -45,6 +46,17 @@
   cursor: pointer;
 }
 .gallery-photo-picker:hover { background: #059669; }
+.gallery-folder-picker {
+  display: inline-flex;
+  padding: 0 11px;
+  border: 1px solid #64748b;
+  background: #334155;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.gallery-folder-picker:hover { background: #475569; }
 .google-photos-connect {
   border-color: #3b82f6;
   background: #1d4ed8;
@@ -268,7 +280,8 @@
   .journey-mode-switch > span { display: none; }
   .journey-mode-switch { padding-left: 5px; }
   .source-chip { max-width: 180px; }
-  .gallery-photo-picker { padding: 0 10px; font-size: 10px; }
+  .gallery-photo-picker,
+  .gallery-folder-picker { padding: 0 10px; font-size: 10px; }
 }
 
 @media (max-width: 899px) {
@@ -290,7 +303,9 @@
   .status { display: none; }
   .journey-mode-switch { margin-left: auto; }
   .gallery-photo-picker,
+  .gallery-folder-picker,
   .google-photos-connect { padding: 0 8px; font-size: 9px; }
+  .gallery-folder-picker { max-width: 58px; }
   .google-photos-connect { max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
 
   .settings-shell[open] > summary {
@@ -319,5 +334,6 @@
   .file-picker { display: none; }
   .journey-mode-switch select { min-width: 82px; padding-right: 19px; }
   .gallery-photo-picker { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+  .gallery-folder-picker { max-width: 50px; padding-inline: 6px; overflow: hidden; text-overflow: ellipsis; }
   .google-photos-connect { max-width: 92px; }
 }

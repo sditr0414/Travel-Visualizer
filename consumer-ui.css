@@ -88,6 +88,7 @@ button, select, input { letter-spacing: inherit; }
 }
 
 .gallery-photo-picker,
+.gallery-folder-picker,
 .google-photos-connect,
 .file-picker {
   min-height: 40px;
@@ -103,6 +104,22 @@ button, select, input { letter-spacing: inherit; }
 }
 .gallery-photo-picker::before { content: '＋'; margin-right: 5px; font-size: 15px; }
 .gallery-photo-picker:hover { background: var(--ui-accent-strong); }
+
+.gallery-folder-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 13px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gallery-folder-picker::before { content: '📁'; margin-right: 5px; color: var(--ui-muted); }
+.gallery-folder-picker:hover { background: #3a363e; }
 
 .google-photos-connect {
   border: 1px solid var(--ui-line);
@@ -440,6 +457,11 @@ button.secondary:hover:not(:disabled) { background: var(--ui-accent-strong); }
     max-width: 112px;
     padding: 0 11px;
   }
+  .gallery-folder-picker {
+    min-height: 38px;
+    max-width: 58px;
+    padding: 0 8px;
+  }
   .settings-shell[open] > .settings-card {
     top: 50px;
     bottom: 0;
@@ -484,9 +506,18 @@ button.secondary:hover:not(:disabled) { background: var(--ui-accent-strong); }
   .brand h1 { font-size: 14px; }
   .journey-mode-switch select { min-width: 80px; }
   .gallery-photo-picker {
-    max-width: 92px;
-    padding-inline: 8px;
+    max-width: 84px;
+    padding-inline: 7px;
     font-size: 9px;
+  }
+  .gallery-folder-picker {
+    width: 44px;
+    padding-inline: 5px;
+    font-size: 0;
+  }
+  .gallery-folder-picker::before {
+    margin: 0;
+    font-size: 14px;
   }
 }
 

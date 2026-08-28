@@ -24,6 +24,17 @@ test('primary controls use natural Korean labels', async () => {
   assert.doesNotMatch(main, /<strong>60 FPS<\/strong>/);
 });
 
+test('local media supports both file and folder selection', async () => {
+  const html = await read('index.html');
+  assert.match(html, /id="photoGalleryInput"[^>]*multiple/);
+  assert.match(html, /id="photoGalleryFolderInput"[^>]*webkitdirectory[^>]*directory[^>]*multiple/);
+
+  const gallery = await read('src/gallery-photo-ui.js');
+  assert.match(gallery, /#photoGalleryFolderInput/);
+  assert.match(gallery, /for \(const input of galleryInputs\)/);
+  assert.match(gallery, /webkitRelativePath/);
+});
+
 test('consumer theme preserves viewport-safe responsive settings', async () => {
   const css = await read('consumer-ui.css');
   assert.match(css, /--ui-bg: #242228/);
