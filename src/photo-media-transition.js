@@ -35,6 +35,11 @@ function installTransitionStyles(doc) {
   style.textContent = `
 .stage { --photo-media-transition: 275ms; }
 
+/* Movement pictograms now occupy the idle media rail, so the old text placeholder is redundant. */
+.stage.photo-journey-layout-active::after {
+  content: '';
+}
+
 .journey-movement-indicator {
   display: grid !important;
   opacity: 1;
