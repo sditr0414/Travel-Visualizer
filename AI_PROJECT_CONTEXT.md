@@ -66,6 +66,7 @@ Important invariants:
 - separator is hidden while settings are open; ratio is preserved across settings open/close
 - player controls and travel HUD stay in the map pane
 - photo location/capture time remain below media, never over the image/video
+- the empty media rail and contained-media background use a mid-tone graphite surface rather than near-black, reducing contrast against the map
 - between media beats, media pane shows current mobility pictogram/label
 - while actual photo/video is active, movement pictogram disappears
 - the obsolete background text `사진 여정` must not be shown in the media rail
@@ -316,9 +317,9 @@ Server/map/fixture: `server.mjs`, `src/local-map.js`, `src/bundled-timeline.js`,
 
 ## 13. Settings and progress UX invariants
 
-`consumer-ui.css` is the active consumer-facing design layer loaded after the functional styles. It uses a warm light editor surface, restrained coral accent, compact creator controls, and plain-language story terminology for Instagram-oriented users.
+`consumer-ui.css` is the active consumer-facing design layer loaded after the functional styles. It uses a soft graphite editor surface, restrained coral accent, compact creator controls, and direct Korean labels for Instagram-oriented users. Avoid pure-white panels, overly dark media rails, and translated product jargon.
 
-Settings workspace must remain viewport-safe and scrollable. Desktop uses at most two primary columns for readability; short windows reduce density; mobile behaves like a near-full-width/bottom-sheet workspace. Do not introduce fixed heights that make lower controls unreachable.
+Settings workspace must remain viewport-safe and scrollable. Desktop uses at most two primary columns for readability; short windows reduce density; mobile fills the stage below its close control and reserves bottom safe-area padding. Do not size the panel against the full browser viewport because it lives inside the shorter map stage, and do not make lower controls unreachable.
 
 Large imports need real progress rather than appearing frozen. Conceptual phases: `PREPARE`, `METADATA`, `MATCH`, `BUILD`, `COMPLETE`, `ERROR`.
 

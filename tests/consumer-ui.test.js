@@ -12,13 +12,13 @@ test('consumer UI stylesheet is loaded after functional styles', async () => {
   assert.ok(consumerIndex > mediaIndex);
 });
 
-test('primary controls use consumer-facing story language', async () => {
+test('primary controls use natural Korean labels', async () => {
   const html = await read('index.html');
-  assert.match(html, />경로 스토리</);
-  assert.match(html, />사진 스토리</);
+  assert.match(html, />경로만 보기</);
+  assert.match(html, />사진과 함께</);
   assert.match(html, />사진·영상 추가</);
-  assert.match(html, />영상 꾸미기</);
-  assert.match(html, />이 설정으로 다시 만들기</);
+  assert.match(html, />설정</);
+  assert.match(html, />설정 적용</);
   assert.doesNotMatch(html, />60 FPS</);
   const main = await read('src/main.js');
   assert.doesNotMatch(main, /<strong>60 FPS<\/strong>/);
@@ -26,7 +26,10 @@ test('primary controls use consumer-facing story language', async () => {
 
 test('consumer theme preserves viewport-safe responsive settings', async () => {
   const css = await read('consumer-ui.css');
+  assert.match(css, /--ui-bg: #242228/);
   assert.match(css, /\.settings-shell\[open\] > \.settings-card/);
+  assert.match(css, /max-height: calc\(100% - 68px\)/);
+  assert.match(css, /scroll-padding-bottom: 48px/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /\.photo-split-handle span \{ display: none; \}/);

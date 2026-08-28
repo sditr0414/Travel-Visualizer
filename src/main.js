@@ -75,35 +75,35 @@ let photoController = null;
 let photoBeats = [];
 
 const CAMERA_MODE_LABELS = {
-  [CameraMode.AUTO]: '자동으로 예쁘게',
-  [CameraMode.DAY]: '하루 일정 중심',
-  [CameraMode.SEGMENT]: '이동 장면 중심'
+  [CameraMode.AUTO]: '자동',
+  [CameraMode.DAY]: '날짜별',
+  [CameraMode.SEGMENT]: '이동 구간별'
 };
 
 const CAMERA_MODE_HINTS = {
-  [CameraMode.AUTO]: '장소와 이동 거리에 맞춰 화면을 자연스럽게 조절해요.',
-  [CameraMode.DAY]: '같은 날의 장소를 비슷한 거리감으로 편안하게 보여줘요.',
-  [CameraMode.SEGMENT]: '이동 장면이 바뀔 때마다 화면을 더 적극적으로 전환해요.'
+  [CameraMode.AUTO]: '장소와 이동 거리에 맞춰 지도 화면을 자동으로 조절합니다.',
+  [CameraMode.DAY]: '같은 날짜의 장소를 비슷한 크기로 보여줍니다.',
+  [CameraMode.SEGMENT]: '이동 구간이 바뀔 때마다 지도 화면을 조절합니다.'
 };
 
 const JOURNEY_MODE_LABELS = {
-  [JourneyMode.ROUTE]: '경로 스토리',
-  [JourneyMode.PHOTOS]: '사진 스토리'
+  [JourneyMode.ROUTE]: '경로만 보기',
+  [JourneyMode.PHOTOS]: '사진과 함께'
 };
 
 const JOURNEY_MODE_HINTS = {
-  [JourneyMode.ROUTE]: '여행 경로를 따라 자연스럽게 이동하는 스토리를 만들어요.',
-  [JourneyMode.PHOTOS]: '촬영한 장소에 도착하면 사진과 영상을 보여주며 여행을 이어가요.'
+  [JourneyMode.ROUTE]: '지도에서 이동 경로를 순서대로 보여줍니다.',
+  [JourneyMode.PHOTOS]: '촬영한 장소에서 사진과 영상을 함께 보여줍니다.'
 };
 
 const PACING_LABELS = {
-  [PlaybackPacing.LOCAL_DAYS]: '날짜별로 고르게',
-  [PlaybackPacing.GLOBAL]: '이동 거리대로'
+  [PlaybackPacing.LOCAL_DAYS]: '날짜마다 비슷하게',
+  [PlaybackPacing.GLOBAL]: '이동 거리에 맞게'
 };
 
 const PACING_HINTS = {
-  [PlaybackPacing.LOCAL_DAYS]: '각 여행 날짜를 충분히 볼 수 있도록 장면 시간을 고르게 나눠요.',
-  [PlaybackPacing.GLOBAL]: '이동 거리가 긴 구간에 더 많은 시간을 사용해요.'
+  [PlaybackPacing.LOCAL_DAYS]: '각 여행 날짜가 비슷한 시간 동안 보이도록 조절합니다.',
+  [PlaybackPacing.GLOBAL]: '이동 거리가 긴 구간을 더 오래 보여줍니다.'
 };
 
 const MOBILITY_LABELS = {
@@ -388,12 +388,12 @@ cameraMode.addEventListener('change', () => {
 
 cameraZoomOffset.addEventListener('input', updateZoomOffsetLabel);
 cameraZoomOffset.addEventListener('change', () => {
-  if (currentData) rebuildPlan('지도 거리감 변경');
+  if (currentData) rebuildPlan('지도 확대 변경');
 });
 
 playbackPacing.addEventListener('change', () => {
   updatePlaybackPacingHint();
-  if (currentData) rebuildPlan('장면 속도 변경');
+  if (currentData) rebuildPlan('구간별 재생 시간 변경');
 });
 
 lockCameraToPosition.addEventListener('change', () => {
@@ -496,14 +496,14 @@ function rebuildPlan(sourceLabel = 'Timeline') {
       summary.innerHTML = [
         `<strong>${JOURNEY_MODE_LABELS[journeyMode.value]}</strong>`,
         photoMode ? `<strong>사진 장면 ${photoBeats.length}</strong>` : '',
-        `<strong>${formatDuration(plan.durationSec)}</strong> 스토리`,
-        `<strong>${plan.segments.length}</strong>개 이동 장면`,
+        `<strong>${formatDuration(plan.durationSec)}</strong> 영상`,
+        `<strong>${plan.segments.length}</strong>개 이동 구간`,
         `<strong>${PACING_LABELS[plan.pacingMode]}</strong>`
       ].filter(Boolean).join('<span>·</span>');
 
       status.textContent = photoMode && !photoBeats.length
         ? `${currentSourceLabel} · 이 여행에서 보여줄 사진이나 영상을 찾지 못했어요`
-        : `${currentSourceLabel} · 준비 완료 · 재생을 눌러 시작하세요`;
+        : `${currentSourceLabel} · 준비 완료 · 재생 버튼을 눌러 시작하세요`;
     } catch (error) {
       photoController?.clear();
       stage?.classList.remove('photo-journey-layout-active');
