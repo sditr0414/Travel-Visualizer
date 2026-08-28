@@ -99,12 +99,10 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
 
   const updateJourneyCopy = () => {
     if (journeyMode.value === 'PHOTOS' && journeyModeHint) {
-      journeyModeHint.textContent = '지도·경로와 미디어 영역을 같은 구도로 유지하면서 촬영 위치에 도착하면 경로를 멈추고 사진·동영상을 보여준 뒤 다음 이동을 이어갑니다.';
+      journeyModeHint.textContent = '촬영한 장소에 도착하면 사진과 영상을 보여주며 여행을 이어가요.';
     }
     if (durationHint && journeyMode.value === 'PHOTOS') {
-      const base = String(durationHint.textContent || '')
-        .replace(/ · 설정한 영상 길이는 경로 이동 부분 기준이며 실제 전체 시간은 재생바에서 확인합니다\.?$/, '');
-      durationHint.textContent = `${base} · 설정한 영상 길이는 경로 이동 부분 기준이며 실제 전체 시간은 재생바에서 확인합니다.`;
+      durationHint.textContent = '경로가 재생되는 기본 시간이에요. 사진과 영상 시간은 자동으로 더해집니다.';
       durationHint.dataset.photoJourneyCopy = 'true';
     }
   };
@@ -125,7 +123,7 @@ if (journeyMode && photoDisplaySeconds && photoVideoMode && videoMaxPlaySeconds)
       photoVideoMode.value === 'PLAY' && importedMode !== 'PLAY';
     rebuildJourney();
     if (needsGoogleReload) {
-      const message = 'Google Photos는 썸네일만 내려받은 상태입니다. 동영상을 재생하려면 상단의 미디어 새로 선택을 눌러 다시 가져오세요.';
+      const message = '현재는 영상의 대표 장면만 준비되어 있어요. 영상을 재생하려면 상단에서 사진과 영상을 다시 선택해 주세요.';
       if (importHint) importHint.textContent = message;
       if (status) status.textContent = message;
     }

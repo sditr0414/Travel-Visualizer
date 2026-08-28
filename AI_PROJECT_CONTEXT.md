@@ -302,7 +302,7 @@ Technical debt: wrapper stack is deep. Do not casually add v5/v6; consolidate on
 
 ## 12. Important files
 
-Entry/UI: `index.html`, `styles.css`, `mode-ui.css`, `media-journey.css`.
+Entry/UI: `index.html`, `styles.css`, `mode-ui.css`, `media-journey.css`, `consumer-ui.css`.
 
 Main orchestration: `src/main.js`.
 
@@ -316,7 +316,9 @@ Server/map/fixture: `server.mjs`, `src/local-map.js`, `src/bundled-timeline.js`,
 
 ## 13. Settings and progress UX invariants
 
-Settings workspace must remain viewport-safe and scrollable. Desktop may use columns; short windows reduce density; mobile behaves like a near-full-width/bottom-sheet workspace. Do not introduce fixed heights that make lower controls unreachable.
+`consumer-ui.css` is the active consumer-facing design layer loaded after the functional styles. It uses a warm light editor surface, restrained coral accent, compact creator controls, and plain-language story terminology for Instagram-oriented users.
+
+Settings workspace must remain viewport-safe and scrollable. Desktop uses at most two primary columns for readability; short windows reduce density; mobile behaves like a near-full-width/bottom-sheet workspace. Do not introduce fixed heights that make lower controls unreachable.
 
 Large imports need real progress rather than appearing frozen. Conceptual phases: `PREPARE`, `METADATA`, `MATCH`, `BUILD`, `COMPLETE`, `ERROR`.
 
@@ -387,7 +389,7 @@ Workers help, but browser I/O/decode/memory limits remain.
 `#playbackTime` is created by `src/photo-media-settings-ui.js` rather than static HTML.
 
 ### P3 — Some user-facing copy is duplicated
-Photo journey help strings exist in more than one UI module.
+Photo journey help strings exist in more than one UI module. Keep `index.html`, `src/main.js`, and `src/photo-media-settings-ui.js` aligned when changing story terminology.
 
 ---
 
@@ -410,7 +412,7 @@ Local: `npm test`.
 
 GitHub Actions performs npm install, JavaScript syntax checks, bundled Timeline/local-server startup checks, static/API endpoint checks, and full Node tests.
 
-Relevant regression tests include camera, route player, mobility, media-source, metadata, photo journey, photo split, English-first administrative-place, media-transition timing, and playback pacing tests.
+Relevant regression tests include camera, route player, mobility, media-source, metadata, photo journey, photo split, English-first administrative-place, consumer UI/copy, media-transition timing, and playback pacing tests.
 
 Add focused tests for testable regressions. Never claim CI passed until final job conclusion is success.
 
