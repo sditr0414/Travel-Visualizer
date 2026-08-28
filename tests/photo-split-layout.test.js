@@ -39,4 +39,5 @@ test('applying a split updates stage variables used by layout CSS', () => {
   assert.equal(stage.dataset.photoMapShare, '0.67');
   assert.equal(properties.get('--photo-map-share'), '67.00%');
   assert.equal(properties.get('--photo-media-share'), '33.00%');
+  assert.equal(properties.get('--photo-map-center'), '33.50%');
 });
