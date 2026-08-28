@@ -7,7 +7,7 @@ import {
 } from './photo-split-layout.js';
 
 const stage = document.querySelector('.stage');
-const handle = document.querySelector('#photoSplitHandle');
+const handle = stage ? ensureHandle(stage) : null;
 let dragging = false;
 
 if (stage && handle) {
@@ -22,8 +22,7 @@ if (stage && handle) {
   });
 
   handle.addEventListener('pointermove', event => {
-    if (!dragging) return;
-    updateFromPointer(event);
+    if (dragging) updateFromPointer(event);
   });
 
   const stopDragging = event => {
@@ -52,8 +51,25 @@ if (stage && handle) {
     setShare(next, narrow);
   });
 
-  handle.addEventListener('dblclick', () => setShare(defaultPhotoMapShare(isNarrow()), isNarrow()));
+  handle.addEventListener('dblclick', () => {
+    const narrow = isNarrow();
+    setShare(defaultPhotoMapShare(narrow), narrow);
+  });
   window.addEventListener('resize', syncForViewport, { passive: true });
+}
+
+function ensureHandle(targetStage) {
+  const existing = targetStage.querySelector('#photoSplitHandle');
+  if (existing) return existing;
+  const node = document.createElement('div');
+  node.id = 'photoSplitHandle';
+  node.className = 'photo-split-handle';
+  node.tabIndex = 0;
+  node.setAttribute('role', 'separator');
+  node.setAttribute('aria-label', '경로와 사진 영역 크기 조절');
+  node.innerHTML = '<span aria-hidden="true"></span>';
+  targetStage.append(node);
+  return node;
 }
 
 function updateFromPointer(event) {
