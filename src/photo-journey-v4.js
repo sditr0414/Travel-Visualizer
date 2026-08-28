@@ -4,15 +4,67 @@ import {
   JourneyMode,
   PhotoJourneyController as PhotoJourneyControllerV3,
   VideoPlaybackMode,
+  activePhotoBeatAtTime,
   buildPhotoJourneyBeats as buildPhotoJourneyBeatsV3,
   formatPhotoTimestamp
 } from './photo-journey-v3.js';
 import { getActiveMediaLibrary, MediaLibrarySource } from './media-library-state.js';
 
 const VIDEO_THUMB_PREFIX = '__tc_video_thumb__';
-const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|prefecture|region|province|state|county/i;
+const ADMIN_LAYER_HINT = /place|city|town|village|locality|municip|district|ward|borough|neigh|suburb|quarter|hamlet|prefecture|region|province|state|county/i;
+
+const MOVEMENT_VISUALS = Object.freeze({
+  WALK: { icon: '🚶', label: '도보 이동' },
+  BIKE: { icon: '🚲', label: '자전거 이동' },
+  URBAN_TRANSIT: { icon: '🚇', label: '도시교통 이동' },
+  ROAD: { icon: '🚗', label: '도로 이동' },
+  FAST_GROUND: { icon: '🚆', label: '철도 이동' },
+  FERRY: { icon: '⛴', label: '페리 이동' },
+  FLIGHT: { icon: '✈', label: '항공 이동' },
+  UNKNOWN: { icon: '●', label: '이동 중' }
+});
 
 export class PhotoJourneyController extends PhotoJourneyControllerV3 {
+  constructor(options) {
+    super(options);
+    this.movementIndicator = ensureMovementIndicator(this.layer);
+  }
+
+  render(frame, frameIndex) {
+    if (!this.enabled || !this.plan || frame?.kind !== 'TRAVEL') {
+      this.hideMovementIndicator();
+      super.render(frame, frameIndex);
+      return;
+    }
+
+    const beat = activePhotoBeatAtTime(this.beats, frame.timeSec);
+    if (beat) {
+      this.hideMovementIndicator();
+      super.render(frame, frameIndex);
+      return;
+    }
+
+    super.clearActive();
+    this.showMovementIndicator(frame);
+  }
+
+  showMovementIndicator(frame) {
+    if (!this.movementIndicator || frame?.mediaHold) {
+      this.hideMovementIndicator();
+      return;
+    }
+    const visual = movementVisualForMobility(frame?.mobilityClass);
+    const icon = this.movementIndicator.querySelector('.journey-movement-icon');
+    const label = this.movementIndicator.querySelector('.journey-movement-label');
+    if (icon) icon.textContent = visual.icon;
+    if (label) label.textContent = visual.label;
+    this.movementIndicator.hidden = false;
+  }
+
+  hideMovementIndicator() {
+    if (this.movementIndicator) this.movementIndicator.hidden = true;
+  }
+
   renderBeat(beat) {
     this.revokeUrls();
     this.images.replaceChildren();
@@ -67,6 +119,10 @@ export class PhotoJourneyController extends PhotoJourneyControllerV3 {
   }
 }
 
+export function movementVisualForMobility(mobilityClass) {
+  return MOVEMENT_VISUALS[String(mobilityClass || '').toUpperCase()] || MOVEMENT_VISUALS.UNKNOWN;
+}
+
 export function buildPhotoJourneyBeats(media, plan, options = {}) {
   const beats = buildPhotoJourneyBeatsV3(media, plan, options);
   const activeLibrary = getActiveMediaLibrary();
@@ -81,9 +137,9 @@ export function buildPhotoJourneyBeats(media, plan, options = {}) {
 
 /**
  * Resolve a photo GPS point to administrative labels rather than a nearby POI.
- * The preferred result is "city · district/ward". If only one level is present,
- * that level is returned. This function is exported so the ranking can be tested
- * without MapLibre.
+ * When city-level data is available, all usable lower administrative levels are
+ * appended in hierarchy order (city -> district/ward -> neighborhood/locality).
+ * Region/prefecture is only used as a fallback when city-level data is absent.
  */
 export function administrativePlaceLabel(features, anchorPx, projectCoordinate = null) {
   const candidates = [];
@@ -104,7 +160,7 @@ export function administrativePlaceLabel(features, anchorPx, projectCoordinate =
       } catch {}
     }
 
-    const maxDistance = level === 'district' ? 320 : level === 'city' ? 560 : 760;
+    const maxDistance = level === 'locality' ? 220 : level === 'district' ? 320 : level === 'city' ? 560 : 760;
     if (distance !== 9999 && distance > maxDistance) continue;
     candidates.push({ name, level, distance });
   }
@@ -113,14 +169,22 @@ export function administrativePlaceLabel(features, anchorPx, projectCoordinate =
     .filter(item => item.level === level)
     .sort((a, b) => a.distance - b.distance || a.name.localeCompare(b.name))[0] || null;
 
-  const district = nearest('district');
   const city = nearest('city');
+  const district = nearest('district');
+  const locality = nearest('locality');
   const region = nearest('region');
   const parts = [];
-  if (city?.name) parts.push(city.name);
-  if (district?.name && !parts.some(value => sameAdministrativeName(value, district.name))) parts.push(district.name);
-  if (!parts.length && region?.name) parts.push(region.name);
-  return parts.slice(0, 2).join(' · ') || null;
+
+  if (city?.name) {
+    parts.push(city.name);
+    appendAdministrativePart(parts, district?.name);
+    appendAdministrativePart(parts, locality?.name);
+  } else {
+    appendAdministrativePart(parts, region?.name);
+    appendAdministrativePart(parts, district?.name);
+    appendAdministrativePart(parts, locality?.name);
+  }
+  return parts.join(' · ') || null;
 }
 
 function collectAdministrativeFeatures(map, anchorPx) {
@@ -168,8 +232,9 @@ function administrativeFeatureLevel(feature) {
   ].map(value => String(value || '').toLowerCase()).join(' ');
   const admin = Number(properties.admin_level ?? properties.adminLevel);
 
-  if (/ward|district|borough|neigh|suburb|quarter/.test(hint) || (Number.isFinite(admin) && admin >= 8)) return 'district';
-  if (/city|town|municip|village|locality/.test(hint) || (Number.isFinite(admin) && admin >= 6 && admin < 8)) return 'city';
+  if (/neigh|neighbour|suburb|quarter|hamlet|block|chome|aza|locality/.test(hint) || (Number.isFinite(admin) && admin >= 9)) return 'locality';
+  if (/ward|district|borough/.test(hint) || (Number.isFinite(admin) && admin >= 8 && admin < 9)) return 'district';
+  if (/city|town|municip|village/.test(hint) || (Number.isFinite(admin) && admin >= 6 && admin < 8)) return 'city';
   if (/prefecture|region|province|state|county/.test(hint) || (Number.isFinite(admin) && admin >= 3 && admin < 6)) return 'region';
   return null;
 }
@@ -187,6 +252,11 @@ function administrativeFeatureName(properties) {
     if (text && text.length <= 80) return text;
   }
   return null;
+}
+
+function appendAdministrativePart(parts, name) {
+  if (!name || parts.some(value => sameAdministrativeName(value, name))) return;
+  parts.push(name);
 }
 
 function representativeFeatureCoordinate(geometry) {
@@ -229,8 +299,21 @@ function sameAdministrativeName(a, b) {
   const normalize = value => String(value || '')
     .toLowerCase()
     .replace(/[\s·・,._-]+/g, '')
-    .replace(/(?:시|구|군|도|부|현|市|区|郡|都|府|県)$/u, '');
+    .replace(/(?:시|구|군|동|읍|면|리|도|부|현|市|区|郡|町|村|丁目|都|府|県)$/u, '');
   return normalize(a) === normalize(b);
+}
+
+function ensureMovementIndicator(layer) {
+  if (!layer || !globalThis.document?.createElement) return null;
+  const existing = layer.querySelector?.('.journey-movement-indicator');
+  if (existing) return existing;
+  const indicator = document.createElement('div');
+  indicator.className = 'journey-movement-indicator';
+  indicator.hidden = true;
+  indicator.setAttribute('aria-live', 'polite');
+  indicator.innerHTML = '<span class="journey-movement-icon" aria-hidden="true"></span><strong class="journey-movement-label"></strong>';
+  layer.append(indicator);
+  return indicator;
 }
 
 function createJourneyMediaNode(item, videoMode, objectUrls) {
