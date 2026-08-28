@@ -14,6 +14,7 @@ import {
 import {
   clearActiveMediaLibrary,
   getActiveMediaItems,
+  getActiveMediaLibrary,
   MediaLibrarySource,
   setActiveMediaLibrary
 } from './media-library-state.js';
@@ -279,7 +280,7 @@ photoFolderInput.addEventListener('change', async () => {
     ? MediaLibrarySource.GOOGLE_PHOTOS_PICKER
     : MediaLibrarySource.GOOGLE_PHOTOS_TAKEOUT;
   delete photoFolderInput.dataset.importSource;
-  setActiveMediaLibrary(mediaSource, []);
+  const pendingMediaLibrary = setActiveMediaLibrary(mediaSource, []);
 
   player?.pause();
   playButton.textContent = '재생';
@@ -290,9 +291,11 @@ photoFolderInput.addEventListener('change', async () => {
   try {
     const result = await loadGooglePhotosTakeout(files, {
       onProgress: progress => {
+        if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
         if (progress.total) photoImportCount.textContent = `${progress.found.toLocaleString()}개 찾음`;
       }
     });
+    if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
     setActiveMediaLibrary(mediaSource, result.photos);
     const stats = result.stats;
     const imageCount = Number(stats.images) || 0;
@@ -304,6 +307,7 @@ photoFolderInput.addEventListener('change', async () => {
     status.textContent = `Google Photos 데이터 준비 완료 · 사진 ${imageCount.toLocaleString()}장 · 영상 ${videoCount.toLocaleString()}개`;
     if (currentData && journeyMode.value === JourneyMode.PHOTOS) rebuildPlan('사진 데이터 변경');
   } catch (error) {
+    if (getActiveMediaLibrary() !== pendingMediaLibrary) return;
     clearActiveMediaLibrary(mediaSource);
     photoBeats = [];
     photoImportCount.textContent = '가져오기 실패';
