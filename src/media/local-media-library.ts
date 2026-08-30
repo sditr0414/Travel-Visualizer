@@ -8,8 +8,11 @@ interface CachedMetadataUpdate {
   lat: number | null;
   lng: number | null;
   source: MediaMetadataSource;
+  embeddedScanned: boolean;
 }
 type AnalyzedMetadata = Omit<CachedMetadataUpdate, 'id'>;
+const LOCAL_EXIF_FAST_BYTES = 128 * 1024;
+const LOCAL_EXIF_MAX_BYTES = 256 * 1024;
 
 export async function loadLocalMediaManifest(
   manifest: LocalMediaManifest,
@@ -63,30 +66,40 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
   metadata: AnalyzedMetadata;
   shouldCache: boolean;
 }> {
-  if (item.metadata) return { item, metadata: item.metadata, shouldCache: false };
+  const cached = item.metadata;
+  const shouldReadJpeg = item.kind === 'image' && /\.jpe?g$/i.test(item.name)
+    && (!cached || (!cached.embeddedScanned && cached.lat == null));
+  if (cached && !shouldReadJpeg) {
+    return { item, metadata: { ...cached, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };
+  }
   let embedded = null;
-  if (item.kind === 'image' && /\.jpe?g$/i.test(item.name)) {
-    try {
-      const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: 'bytes=0-262143' } });
-      if (response.ok) {
-        const blob = await response.blob();
-        embedded = await readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }));
-      }
-    } catch {
-      // Filename and file time remain available when an EXIF header cannot be read.
-    }
+  if (shouldReadJpeg) {
+    embedded = await fetchEmbeddedMetadata(item, LOCAL_EXIF_FAST_BYTES);
+    if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchEmbeddedMetadata(item, LOCAL_EXIF_MAX_BYTES);
   }
   const filenameTime = parseFilenameTimestamp(item.name);
   return {
     item,
     metadata: {
-      takenMs: embedded?.takenMs ?? filenameTime ?? item.lastModified,
-      lat: embedded?.lat ?? null,
-      lng: embedded?.lng ?? null,
-      source: embedded ? 'embedded-exif' : filenameTime == null ? 'file-time' : 'filename-time'
+      takenMs: cached?.takenMs ?? embedded?.takenMs ?? filenameTime ?? item.lastModified,
+      lat: cached?.lat ?? embedded?.lat ?? null,
+      lng: cached?.lng ?? embedded?.lng ?? null,
+      source: cached?.source ?? (embedded ? 'embedded-exif' : filenameTime == null ? 'file-time' : 'filename-time'),
+      embeddedScanned: shouldReadJpeg || cached?.embeddedScanned === true
     },
     shouldCache: true
   };
+}
+
+async function fetchEmbeddedMetadata(item: LocalMediaManifestItem, bytes: number) {
+  try {
+    const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` } });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }));
+  } catch {
+    return null;
+  }
 }
 
 async function saveMetadataCache(entries: CachedMetadataUpdate[]): Promise<void> {

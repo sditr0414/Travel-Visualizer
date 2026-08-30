@@ -6,7 +6,11 @@ export function parseLatLng(value) {
   if (!value || typeof value !== 'string') return null;
   const match = value.match(LATLNG_RE);
   if (!match) return null;
-  return { lat: Number(match[1]), lng: Number(match[2]) };
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    ? { lat, lng }
+    : null;
 }
 
 export function parseTimeline(json, { startDate, endDate, includeFlights = true } = {}) {

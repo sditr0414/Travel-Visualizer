@@ -42,10 +42,11 @@ export function scanTimeline(json: TimelineRoot): TimelineScanResult {
 export function buildParsedTrip(
   json: TimelineRoot,
   range: TimelineDateRange,
-  includeFlights: boolean
+  includeFlights: boolean,
+  availableRange: TimelineDateRange = range
 ): ParsedTrip {
   const parsed = parseLegacyTimeline(json, { ...range, includeFlights });
-  return { ...parsed, availableRange: range };
+  return { ...parsed, availableRange };
 }
 
 function toKoreaDate(ms: number): string {

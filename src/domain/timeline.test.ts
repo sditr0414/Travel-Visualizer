@@ -28,6 +28,17 @@ describe('Timeline domain', () => {
     expect(trip.routePoints.length).toBeGreaterThan(1);
   });
 
+  it('keeps the full data range separate from the selected trip range', () => {
+    const json = parseTimelineJson(validTimeline);
+    const trip = buildParsedTrip(
+      json,
+      { startDate: '2026-04-10', endDate: '2026-04-10' },
+      true,
+      { startDate: '2026-03-01', endDate: '2026-05-01' }
+    );
+    expect(trip.availableRange).toEqual({ startDate: '2026-03-01', endDate: '2026-05-01' });
+  });
+
   it.each(['not json', '{}', '{"semanticSegments":[]}'])(
     'rejects invalid or empty Timeline input',
     value => expect(() => parseTimelineJson(value)).toThrow()

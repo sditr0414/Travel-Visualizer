@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Camera, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
 import type { Map } from 'maplibre-gl';
-import { MapStage } from './map/MapStage';
 import { ONLINE_STYLE_URL } from './map/map-style';
 import { PlayerController } from './player/player-controller';
 import { loadJourneyMedia } from './media/media-library';
@@ -29,6 +28,7 @@ const MOBILITY_LABELS: Record<string, string> = {
 
 const DEFAULT_TRIP_START = '2026-03-17';
 const DEFAULT_TRIP_END = '2026-03-31';
+const MapStage = lazy(() => import('./map/MapStage').then(module => ({ default: module.MapStage })));
 
 interface TimelineFileHandle {
   getFile(): Promise<File>;
@@ -43,11 +43,9 @@ type TimelineFilePicker = (options: {
 
 export function App({ workerClient }: AppProps) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
-  const clientRef = useRef<TimelineWorkerPort | null>(null);
-  if (!clientRef.current) clientRef.current = workerClient ?? new TimelineWorkerClient();
+  const [client] = useState<TimelineWorkerPort>(() => workerClient ?? new TimelineWorkerClient());
 
   const [map, setMap] = useState<Map | null>(null);
-  const [playerReady, setPlayerReady] = useState(false);
   const [mapKind, setMapKind] = useState<'online' | 'local-pmtiles'>('online');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -68,7 +66,6 @@ export function App({ workerClient }: AppProps) {
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaProgress, setMediaProgress] = useState<MediaImportProgress | null>(null);
   const [localMediaManifest, setLocalMediaManifest] = useState<LocalMediaManifest | null>(null);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
   const [splitNarrow, setSplitNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 820);
   const [desktopMapShare, setDesktopMapShare] = useState(0.60);
   const [mobileMapShare, setMobileMapShare] = useState(0.52);
@@ -76,6 +73,10 @@ export function App({ workerClient }: AppProps) {
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobility: '여행 준비', speed: '—' });
   const playerRef = useRef<PlayerController | null>(null);
   const autoPlanRef = useRef(false);
+  const scanOperationRef = useRef(0);
+  const mediaOperationRef = useRef(0);
+  const manualTimelineSelectedRef = useRef(false);
+  const manualMediaSelectedRef = useRef(false);
   const selectedMediaFilesRef = useRef<File[]>([]);
   const lastLocalMediaPlanRef = useRef<PlaybackPlan | null>(null);
   const mediaRef = useRef<JourneyMedia[]>([]);
@@ -98,9 +99,11 @@ export function App({ workerClient }: AppProps) {
   }, []);
 
   const scanSource = useCallback(async (source: TimelineSource, text: string) => {
+    const operation = ++scanOperationRef.current;
     dispatch({ type: 'LOAD_START', source });
     try {
-      const scan = await clientRef.current!.scan(source, text, reportProgress);
+      const scan = await client.scan(source, text, reportProgress);
+      if (operation !== scanOperationRef.current) return;
       const preferred = preferredTripRange(scan.startDate, scan.endDate);
       setStartDate(preferred.startDate);
       setEndDate(preferred.endDate);
@@ -108,9 +111,10 @@ export function App({ workerClient }: AppProps) {
       autoPlanRef.current = true;
       dispatch({ type: 'SCAN_SUCCESS', scan });
     } catch (error) {
+      if (operation !== scanOperationRef.current) return;
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : 'Timeline을 읽지 못했습니다.' });
     }
-  }, [reportProgress]);
+  }, [client, reportProgress]);
 
   const createPlan = useCallback(async () => {
     if (!map || !startDate || !endDate) return;
@@ -121,7 +125,7 @@ export function App({ workerClient }: AppProps) {
     dispatch({ type: 'PLAN_START' });
     try {
       const canvas = map.getCanvas();
-      const result = await clientRef.current!.plan({
+      const result = await client.plan({
         startDate,
         endDate,
         includeFlights,
@@ -136,7 +140,7 @@ export function App({ workerClient }: AppProps) {
     } catch (error) {
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '경로를 계산하지 못했습니다.' });
     }
-  }, [cameraMode, endDate, includeFlights, map, pacingMode, reportProgress, startDate, targetDurationSec, zoomOffset]);
+  }, [cameraMode, client, endDate, includeFlights, map, pacingMode, reportProgress, startDate, targetDurationSec, zoomOffset]);
 
   const playbackStops = useMemo<PlaybackStop[]>(() => journeyMode === 'PHOTOS'
     ? media.map(item => ({
@@ -147,38 +151,48 @@ export function App({ workerClient }: AppProps) {
     : [], [journeyMode, media, photoDisplaySec, videoMaxSec, videoMode]);
 
   const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan) => {
+    const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
     setMediaProgress({ phase: 'PREPARE', processed: 0, total: files.length, message: '미디어 파일을 준비하고 있습니다.' });
     playerRef.current?.pause();
     try {
-      const loaded = await loadJourneyMedia(files, plan, setMediaProgress);
+      const loaded = await loadJourneyMedia(files, plan, progress => {
+        if (operation === mediaOperationRef.current) setMediaProgress(progress);
+      });
+      if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
       setJourneyMode('PHOTOS');
       dispatch({ type: 'NOTICE', message: `${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
+      if (operation !== mediaOperationRef.current) return;
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '사진·영상을 읽지 못했습니다.' });
     } finally {
-      setMediaLoading(false);
+      if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
   }, []);
 
   const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan) => {
     if (lastLocalMediaPlanRef.current === plan) return;
     lastLocalMediaPlanRef.current = plan;
+    const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
     setMediaProgress({ phase: 'BUILD', processed: 0, total: manifest.count, message: '기본 사진 폴더를 여행 경로에 연결하고 있습니다.' });
     playerRef.current?.pause();
     try {
-      const loaded = await loadLocalMediaManifest(manifest, plan, setMediaProgress);
+      const loaded = await loadLocalMediaManifest(manifest, plan, progress => {
+        if (operation === mediaOperationRef.current) setMediaProgress(progress);
+      });
+      if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
       setJourneyMode('PHOTOS');
       setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 로컬 사진·영상을 연결했습니다.` });
       dispatch({ type: 'NOTICE', message: `${manifest.rootName}에서 ${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
+      if (operation !== mediaOperationRef.current) return;
       lastLocalMediaPlanRef.current = null;
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '기본 사진 폴더를 읽지 못했습니다.' });
     } finally {
-      setMediaLoading(false);
+      if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
   }, []);
 
@@ -196,9 +210,9 @@ export function App({ workerClient }: AppProps) {
     let cancelled = false;
     fetch('/api/local-timeline', { cache: 'no-store' })
       .then(async response => {
-        if (!response.ok || cancelled) return;
+        if (!response.ok || cancelled || manualTimelineSelectedRef.current) return;
         const contents = await response.text();
-        if (!cancelled) await scanSource({ kind: 'local-file', name: '타임라인.json' }, contents);
+        if (!cancelled && !manualTimelineSelectedRef.current) await scanSource({ kind: 'local-file', name: '타임라인.json' }, contents);
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
@@ -210,7 +224,7 @@ export function App({ workerClient }: AppProps) {
       .then(async response => {
         if (!response.ok || cancelled) return;
         const manifest = await response.json() as LocalMediaManifest;
-        if (!cancelled && manifest.available && Array.isArray(manifest.items)) {
+        if (!cancelled && !manualMediaSelectedRef.current && manifest.available && Array.isArray(manifest.items)) {
           setLocalMediaManifest(manifest);
           setSelectedMediaSummary({ name: manifest.rootName, count: manifest.count });
         }
@@ -219,7 +233,11 @@ export function App({ workerClient }: AppProps) {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => () => clientRef.current?.dispose(), []);
+  useEffect(() => () => {
+    scanOperationRef.current += 1;
+    mediaOperationRef.current += 1;
+    client.dispose();
+  }, [client]);
 
   useEffect(() => {
     mediaRef.current = media;
@@ -237,22 +255,20 @@ export function App({ workerClient }: AppProps) {
     else if (localMediaManifest) void attachLocalMedia(localMediaManifest, state.plan);
   }, [attachLocalMedia, attachMediaFiles, localMediaManifest, state.plan]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     playerRef.current?.dispose();
     playerRef.current = null;
-    activeMediaRef.current = null;
-    setActivePlaceName(null);
-    setPlayerReady(false);
+    activeMediaRef.current = '__controller-reset__';
     if (!map || !state.plan) return;
     const controller = new PlayerController(map, {
       onFrame: (frame, _frameIndex, timeSec, stopId) => {
-        setActiveMediaId(stopId);
         if (stopId !== activeMediaRef.current) {
           activeMediaRef.current = stopId;
+          setActiveMediaId(stopId);
           const item = stopId ? mediaRef.current.find(candidate => candidate.id === stopId) : null;
           setActivePlaceName(item ? resolvePlaceName(map, item) : null);
         }
-        if (timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90 && timeSec < state.plan!.durationSec) return;
+        if (timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
         lastHudUpdateRef.current = performance.now();
         setHud(hudForFrame(frame, state.plan!, timeSec));
       },
@@ -265,11 +281,8 @@ export function App({ workerClient }: AppProps) {
     controller.setTrackingSpeed(trackingSpeed);
     controller.loadPlan(state.plan, playbackStops);
     playerRef.current = controller;
-    setPlaybackDuration(controller.getDuration());
-    setPlayerReady(true);
     return () => {
       controller.dispose();
-      setPlayerReady(false);
     };
   // Plan replacement owns controller lifecycle. Live preferences are applied below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -293,9 +306,7 @@ export function App({ workerClient }: AppProps) {
     const player = playerRef.current;
     if (!player) return;
     player.setStops(playbackStops);
-    setPlaybackDuration(player.getDuration());
-    if (journeyMode === 'ROUTE') setActiveMediaId(null);
-  }, [journeyMode, playbackStops]);
+  }, [playbackStops]);
 
   useEffect(() => {
     const onResize = () => setSplitNarrow(window.innerWidth <= 820);
@@ -325,9 +336,14 @@ export function App({ workerClient }: AppProps) {
       dispatch({ type: 'FAIL', message: 'Google Timeline JSON 파일을 선택해 주세요.' });
       return;
     }
+    manualTimelineSelectedRef.current = true;
     playerRef.current?.pause();
     setActiveMediaId(null);
-    await scanSource({ kind: 'local-file', name: file.name }, await file.text());
+    try {
+      await scanSource({ kind: 'local-file', name: file.name }, await file.text());
+    } catch (error) {
+      dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : 'Timeline 파일을 읽지 못했습니다.' });
+    }
   };
 
   const openTimelinePicker = async () => {
@@ -356,6 +372,7 @@ export function App({ workerClient }: AppProps) {
   const onMediaFiles = async (fileList: FileList) => {
     const files = Array.from(fileList);
     if (!files.length) return;
+    manualMediaSelectedRef.current = true;
     selectedMediaFilesRef.current = files;
     lastLocalMediaPlanRef.current = null;
     const relativePath = files[0].webkitRelativePath;
@@ -386,6 +403,15 @@ export function App({ workerClient }: AppProps) {
     setActivePlaceName(null);
     setPhotoViewMode(mode);
     if (state.phase === 'playing') dispatch({ type: 'PAUSE' });
+  };
+
+  const changeJourneyMode = (mode: 'ROUTE' | 'PHOTOS') => {
+    setJourneyMode(mode);
+    if (mode === 'ROUTE') {
+      activeMediaRef.current = null;
+      setActiveMediaId(null);
+      setActivePlaceName(null);
+    }
   };
 
   const resetPlayback = () => {
@@ -430,12 +456,16 @@ export function App({ workerClient }: AppProps) {
   };
 
   const busy = state.phase === 'loading' || state.phase === 'planning' || mediaLoading;
-  const canPlay = Boolean(state.plan && playerReady && !busy);
-  const duration = playbackDuration || state.plan?.durationSec || targetDurationSec;
+  const canPlay = Boolean(state.plan && map && !busy);
+  const duration = state.plan
+    ? state.plan.durationSec + playbackStops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0)
+    : targetDurationSec;
 
   return (
     <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
-      <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
+      <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
+        <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
+      </Suspense>
       {journeyMode === 'PHOTOS' && <>
         <MediaJourneyPane media={media} activeId={activeMediaId} videoMode={videoMode} placeName={activePlaceName} onFiles={files => void onMediaFiles(files)} />
         <div
@@ -465,8 +495,8 @@ export function App({ workerClient }: AppProps) {
         </div>
         <div className="topbar-actions">
         <div className="mode-switch" role="group" aria-label="여정 보기 방식">
-          <button type="button" className={journeyMode === 'ROUTE' ? 'active' : ''} onClick={() => setJourneyMode('ROUTE')}><Route size={14} /> 발자취</button>
-          <button type="button" className={journeyMode === 'PHOTOS' ? 'active' : ''} onClick={() => setJourneyMode('PHOTOS')}><Images size={14} /> 사진 여정</button>
+          <button type="button" className={journeyMode === 'ROUTE' ? 'active' : ''} onClick={() => changeJourneyMode('ROUTE')}><Route size={14} /> 발자취</button>
+          <button type="button" className={journeyMode === 'PHOTOS' ? 'active' : ''} onClick={() => changeJourneyMode('PHOTOS')}><Images size={14} /> 사진 여정</button>
         </div>
         <label className="import-button media-import-button">
           <FolderOpen size={16} aria-hidden="true" /><span>사진 폴더</span>
@@ -500,7 +530,7 @@ export function App({ workerClient }: AppProps) {
             <label className="local-import-primary"><FileJson size={18} /><span><strong>Timeline JSON 선택</strong><small>문서 폴더에서 시작 · 마지막 위치 기억</small></span><input type="file" aria-label="시작할 Timeline JSON 선택" accept="application/json,.json" onClick={onTimelineInputClick} onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>
             <label className="local-import-secondary"><Images size={18} /><span><strong>사진 폴더 선택</strong><small>{selectedMediaSummary ? `${selectedMediaSummary.name} · ${selectedMediaSummary.count}개` : '선택 사항 · Takeout 정보도 함께 읽습니다'}</small></span><input type="file" aria-label="시작할 사진 폴더 선택" multiple {...{ webkitdirectory: '' }} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
           </div>
-          <p className="local-privacy"><ShieldCheck size={13} /> 서버 전송·저장 없이 이 기기에서만 사용합니다.</p>
+          <p className="local-privacy"><ShieldCheck size={13} /> 외부 전송 없이 이 PC에서만 사용합니다.</p>
         </section>
       )}
 

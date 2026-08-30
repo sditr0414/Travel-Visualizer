@@ -1,26 +1,48 @@
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, relative, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
+const localDataEnabled = !process.argv.includes('--no-local-data');
 const portArg = process.argv.findIndex(value => value === '--port');
-const port = Number(process.env.PORT || (portArg >= 0 ? process.argv[portArg + 1] : 5517)) || 5517;
+const configuredPort = Number(process.env.PORT || (portArg >= 0 ? process.argv[portArg + 1] : 5517));
+const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65_535 ? configuredPort : 5517;
 const mapsDir = join(root, 'maps');
 const distDir = join(root, 'dist');
 const worldMap = join(mapsDir, 'world-z5.pmtiles');
 const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
-const localTimeline = resolve(root, '..', '타임라인.json');
-const localMediaRoot = resolve(root, '..', '여행 사진');
-const mediaMetadataCachePath = join(root, '.cache', 'media-metadata.json');
+const localTimeline = configuredPath('TRAVEL_TIMELINE_PATH', resolve(root, '..', '타임라인.json'));
+const localMediaRoot = configuredPath('TRAVEL_MEDIA_DIR', resolve(root, '..', '여행 사진'));
+const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
+const MEDIA_CACHE_VERSION = 2;
 let localMediaCache = null;
 
 const vite = isProduction
   ? null
   : await (await import('vite')).createServer({ root, server: { middlewareMode: true }, appType: 'spa' });
 
-const server = createServer(async (request, response) => {
+const server = createServer((request, response) => {
+  void handleRequest(request, response).catch(error => {
+    console.error(error);
+    if (!response.headersSent) json(response, 500, { error: 'Local server error' });
+    else response.destroy();
+  });
+});
+
+server.on('error', error => {
+  if (error && typeof error === 'object' && (error.code === 'EADDRINUSE' || error.code === 'EACCES')) {
+    console.error(`127.0.0.1:${port} 포트를 사용할 수 없습니다. npm start -- --port 5520 처럼 다른 포트를 지정하세요.`);
+  } else {
+    console.error(error);
+  }
+  process.exitCode = 1;
+});
+
+async function handleRequest(request, response) {
+  setSecurityHeaders(response);
+  if (!isAllowedHost(request.headers.host)) return text(response, 403, 'Loopback access only');
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
 
   if (url.pathname === '/api/map-status') {
@@ -36,18 +58,22 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/local-timeline') {
+    if (!localDataEnabled) return json(response, 404, { available: false });
     return serveLocalTimeline(request, response);
   }
 
   if (url.pathname === '/api/local-media-manifest') {
+    if (!localDataEnabled) return json(response, 404, { available: false, items: [] });
     return serveLocalMediaManifest(request, response);
   }
 
   if (url.pathname === '/api/local-media-metadata-cache') {
+    if (!localDataEnabled) return json(response, 404, { saved: 0 });
     return serveLocalMediaMetadataCache(request, response);
   }
 
   if (url.pathname.startsWith('/api/local-media/')) {
+    if (!localDataEnabled) return text(response, 404, 'Local media disabled');
     return serveLocalMedia(request, response, url.pathname.slice('/api/local-media/'.length));
   }
 
@@ -72,8 +98,8 @@ const server = createServer(async (request, response) => {
     });
   }
 
-  return serveStatic(response, url.pathname);
-});
+  return serveStatic(request, response, url.pathname);
+}
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`Travel Camera Visualizer: http://127.0.0.1:${port}`);
@@ -86,6 +112,10 @@ function fileStatus(path) {
 }
 
 function serveRangeFile(request, response, path, contentType = 'application/vnd.pmtiles', cacheControl = 'public, max-age=3600') {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
+  }
   if (!existsSync(path)) return text(response, 404, 'Map archive not found');
   const size = statSync(path).size;
   const range = request.headers.range;
@@ -96,6 +126,7 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
 
   if (!range) {
     response.writeHead(200, { 'Content-Length': size });
+    if (request.method === 'HEAD') return response.end();
     return createReadStream(path).pipe(response);
   }
 
@@ -104,8 +135,20 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     response.writeHead(416, { 'Content-Range': `bytes */${size}` });
     return response.end();
   }
-  const start = match[1] ? Number(match[1]) : 0;
-  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  let start;
+  let end;
+  if (!match[1] && match[2]) {
+    const suffixLength = Number(match[2]);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      response.writeHead(416, { 'Content-Range': `bytes */${size}` });
+      return response.end();
+    }
+    start = Math.max(0, size - suffixLength);
+    end = size - 1;
+  } else {
+    start = match[1] ? Number(match[1]) : 0;
+    end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  }
   if (start > end || start >= size) {
     response.writeHead(416, { 'Content-Range': `bytes */${size}` });
     return response.end();
@@ -114,6 +157,7 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     'Content-Range': `bytes ${start}-${end}/${size}`,
     'Content-Length': end - start + 1
   });
+  if (request.method === 'HEAD') return response.end();
   return createReadStream(path, { start, end }).pipe(response);
 }
 
@@ -139,14 +183,14 @@ function serveLocalMediaManifest(request, response) {
     response.setHeader('Allow', 'GET, HEAD');
     return text(response, 405, 'Method not allowed');
   }
-  const cache = buildLocalMediaCache();
+  const cache = buildLocalMediaCache(true);
   if (!cache) return json(response, 404, { available: false, items: [] });
   const manifest = {
     available: true,
-    rootName: '여행 사진',
+    rootName: basename(localMediaRoot),
     count: cache.items.length,
     totalBytes: cache.items.reduce((sum, item) => sum + item.size, 0),
-    items: cache.items.map(({ path: _path, ...item }) => item)
+    items: cache.items.map(publicMediaItem)
   };
   response.setHeader('Cache-Control', 'private, no-store');
   if (request.method === 'HEAD') return response.writeHead(200).end();
@@ -159,7 +203,10 @@ function serveLocalMedia(request, response, rawId) {
     return text(response, 405, 'Method not allowed');
   }
   const cache = buildLocalMediaCache();
-  const item = cache?.byId.get(decodeURIComponent(rawId));
+  let id;
+  try { id = decodeURIComponent(rawId); }
+  catch { return text(response, 400, 'Invalid local media id'); }
+  const item = cache?.byId.get(id);
   if (!item || !existsSync(item.path)) return text(response, 404, 'Local media not found');
   return serveRangeFile(request, response, item.path, mimeType(extname(item.path)), 'private, no-store');
 }
@@ -169,6 +216,7 @@ async function serveLocalMediaMetadataCache(request, response) {
     response.setHeader('Allow', 'POST');
     return text(response, 405, 'Method not allowed');
   }
+  if (!isSameOriginRequest(request)) return text(response, 403, 'Same-origin request required');
   const cache = buildLocalMediaCache();
   if (!cache) return json(response, 404, { saved: 0 });
   try {
@@ -195,8 +243,8 @@ async function serveLocalMediaMetadataCache(request, response) {
   }
 }
 
-function buildLocalMediaCache() {
-  if (localMediaCache) return localMediaCache;
+function buildLocalMediaCache(refresh = false) {
+  if (localMediaCache && !refresh) return localMediaCache;
   if (!existsSync(localMediaRoot) || !statSync(localMediaRoot).isDirectory()) return null;
   const paths = [];
   const sidecarPaths = [];
@@ -230,6 +278,14 @@ function buildLocalMediaCache() {
     };
   });
   const byName = new Map(items.map(item => [item.name.toLowerCase(), item]));
+  const activeNames = new Set(items.map(item => item.name));
+  let metadataChanged = false;
+  for (const cachedName of Object.keys(metadata.entries)) {
+    if (!activeNames.has(cachedName)) {
+      delete metadata.entries[cachedName];
+      metadataChanged = true;
+    }
+  }
   for (const sidecarPath of sidecarPaths) {
     const sidecarName = relative(localMediaRoot, sidecarPath).replaceAll('\\', '/');
     try {
@@ -241,13 +297,19 @@ function buildLocalMediaCache() {
       const stripped = sidecarName.replace(/(?:\.supplemental-metadata)?\.json$/i, '');
       const item = byName.get(stripped.toLowerCase()) ?? byName.get(`${directory}${parsed.title}`.toLowerCase());
       if (!item) continue;
-      item.metadata = parsed.metadata;
-      metadata.entries[item.name] = { size: item.size, lastModified: item.lastModified, ...parsed.metadata };
+      item.metadata = {
+        ...parsed.metadata,
+        lat: parsed.metadata.lat ?? item.metadata?.lat ?? null,
+        lng: parsed.metadata.lng ?? item.metadata?.lng ?? null,
+        embeddedScanned: parsed.metadata.lat != null || item.metadata?.embeddedScanned === true
+      };
+      metadata.entries[item.name] = { size: item.size, lastModified: item.lastModified, ...item.metadata };
+      metadataChanged = true;
     } catch {
       // Invalid or unrelated JSON files are ignored.
     }
   }
-  if (sidecarPaths.length) saveMediaMetadataCache(metadata);
+  if (metadataChanged) saveMediaMetadataCache(metadata);
   localMediaCache = { items, byId: new Map(items.map(item => [item.id, item])), metadata };
   return localMediaCache;
 }
@@ -255,16 +317,16 @@ function buildLocalMediaCache() {
 function loadMediaMetadataCache() {
   try {
     const value = JSON.parse(readFileSync(mediaMetadataCachePath, 'utf8'));
-    if (value?.version === 1 && value.entries && typeof value.entries === 'object') return value;
+    if (value?.version === MEDIA_CACHE_VERSION && value.entries && typeof value.entries === 'object') return value;
   } catch {
     // A missing or invalid cache is rebuilt from local media.
   }
-  return { version: 1, entries: {} };
+  return { version: MEDIA_CACHE_VERSION, entries: {} };
 }
 
 function saveMediaMetadataCache(value) {
-  mkdirSync(resolve(mediaMetadataCachePath, '..'), { recursive: true });
-  const temporary = `${mediaMetadataCachePath}.tmp`;
+  mkdirSync(dirname(mediaMetadataCachePath), { recursive: true });
+  const temporary = `${mediaMetadataCachePath}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(temporary, JSON.stringify(value), 'utf8');
   renameSync(temporary, mediaMetadataCachePath);
 }
@@ -277,7 +339,7 @@ function validMediaMetadata(value) {
   if (!Number.isFinite(takenMs) || takenMs <= Date.UTC(2000, 0, 1) || !sources.has(value?.source)) return null;
   if ((lat == null) !== (lng == null)) return null;
   if (lat != null && (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return null;
-  return { takenMs, lat, lng, source: value.source };
+  return { takenMs, lat, lng, source: value.source, embeddedScanned: value?.embeddedScanned === true };
 }
 
 function parseTakeoutSidecar(value) {
@@ -302,14 +364,14 @@ function readJsonBody(request, maxBytes) {
   return new Promise((resolveBody, rejectBody) => {
     const chunks = [];
     let bytes = 0;
+    let exceeded = false;
     request.on('data', chunk => {
       bytes += chunk.length;
-      if (bytes > maxBytes) {
-        rejectBody(new Error('Metadata cache payload is too large'));
-        request.destroy();
-      } else chunks.push(chunk);
+      if (bytes > maxBytes) exceeded = true;
+      else if (!exceeded) chunks.push(chunk);
     });
     request.on('end', () => {
+      if (exceeded) return rejectBody(new Error('Metadata cache payload is too large'));
       try { resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
       catch { rejectBody(new Error('Metadata cache payload is not valid JSON')); }
     });
@@ -317,11 +379,16 @@ function readJsonBody(request, maxBytes) {
   });
 }
 
-function serveStatic(response, pathname) {
+function serveStatic(request, response, pathname) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
+  }
   const requested = pathname === '/' ? '/index.html' : pathname;
   const safePath = normalize(requested).replace(/^(\.\.[/\\])+/, '');
   let filePath = resolve(distDir, `.${safePath}`);
-  if (!filePath.startsWith(resolve(distDir)) || !existsSync(filePath) || !statSync(filePath).isFile()) {
+  const relativePath = relative(resolve(distDir), filePath);
+  if (isAbsolute(relativePath) || relativePath.startsWith('..') || !existsSync(filePath) || !statSync(filePath).isFile()) {
     filePath = join(distDir, 'index.html');
   }
   if (!existsSync(filePath)) return text(response, 503, 'Run npm run build first');
@@ -329,10 +396,12 @@ function serveStatic(response, pathname) {
     'Content-Type': mimeType(extname(filePath)),
     'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
   });
+  if (request.method === 'HEAD') return response.end();
   createReadStream(filePath).pipe(response);
 }
 
 function mimeType(extension) {
+  extension = extension.toLowerCase();
   return {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
@@ -351,6 +420,48 @@ function mimeType(extension) {
     '.webm': 'video/webm',
     '.ico': 'image/x-icon'
   }[extension] || 'application/octet-stream';
+}
+
+function setSecurityHeaders(response) {
+  response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  response.setHeader('Referrer-Policy', 'no-referrer');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('X-Frame-Options', 'DENY');
+}
+
+function isAllowedHost(host) {
+  try {
+    const hostname = new URL(`http://${host || ''}`).hostname;
+    return hostname === '127.0.0.1' || hostname === 'localhost';
+  } catch {
+    return false;
+  }
+}
+
+function isSameOriginRequest(request) {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.headers.host && isAllowedHost(request.headers.host);
+  } catch {
+    return false;
+  }
+}
+
+function configuredPath(environmentName, fallback) {
+  const value = process.env[environmentName]?.trim();
+  return value ? resolve(value) : fallback;
+}
+
+function publicMediaItem(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    size: item.size,
+    lastModified: item.lastModified,
+    kind: item.kind,
+    metadata: item.metadata
+  };
 }
 
 function json(response, status, value) {

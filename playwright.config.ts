@@ -8,7 +8,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: { baseURL: 'http://127.0.0.1:5518', trace: 'retain-on-failure' },
   webServer: {
-    command: 'npm run build && npm start -- --production --port 5518',
+    command: 'npm run build && npm start -- --production --no-local-data --port 5518',
     url: 'http://127.0.0.1:5518',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000

@@ -196,6 +196,7 @@ export interface LocalMediaManifestItem {
     lat: number | null;
     lng: number | null;
     source: MediaMetadataSource;
+    embeddedScanned?: boolean;
   } | null;
 }
 

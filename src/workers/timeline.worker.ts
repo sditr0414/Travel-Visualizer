@@ -2,9 +2,10 @@
 
 import { buildPlaybackPlan } from '../domain/planner';
 import { buildParsedTrip, parseTimelineJson, scanTimeline } from '../domain/timeline';
-import type { WorkerRequest, WorkerResponse } from '../types';
+import type { TimelineDateRange, WorkerRequest, WorkerResponse } from '../types';
 
 let timelineJson: ReturnType<typeof parseTimelineJson> | null = null;
+let availableRange: TimelineDateRange | null = null;
 const cancelled = new Set<number>();
 
 self.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
@@ -22,13 +23,14 @@ self.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
       if (cancelled.has(request.requestId)) return sendCancelled(request.requestId);
       sendProgress(request.requestId, 0.72, '여행 날짜를 찾고 있어요.');
       const result = scanTimeline(timelineJson);
+      availableRange = { startDate: result.startDate, endDate: result.endDate };
       send({ type: 'SCAN_RESULT', requestId: request.requestId, result });
       return;
     }
 
     if (!timelineJson) throw new Error('먼저 Timeline 파일을 불러와 주세요.');
     sendProgress(request.requestId, 0.18, '선택한 날짜의 이동 구간을 분석하고 있어요.');
-    const trip = buildParsedTrip(timelineJson, request.options, request.options.includeFlights);
+    const trip = buildParsedTrip(timelineJson, request.options, request.options.includeFlights, availableRange ?? request.options);
     if (!trip.movements.length) throw new Error('선택 기간에 재생할 이동 구간이 없습니다.');
     if (cancelled.has(request.requestId)) return sendCancelled(request.requestId);
     sendProgress(request.requestId, 0.55, '이동수단별 재생 시간을 배분하고 있어요.');
