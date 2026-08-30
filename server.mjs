@@ -1,383 +1,368 @@
-import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { access, readFile, readdir, stat } from 'node:fs/promises';
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { basename, extname, join, normalize, resolve, sep } from 'node:path';
+import { extname, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gunzipSync } from 'node:zlib';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
-const rootPrefix = root.endsWith(sep) ? root : `${root}${sep}`;
-const port = Number(process.env.PORT || 5173);
-const googlePhotosClientId = String(process.env.GOOGLE_PHOTOS_CLIENT_ID || '').trim();
-const mime = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.pmtiles': 'application/octet-stream'
-};
+const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
+const portArg = process.argv.findIndex(value => value === '--port');
+const port = Number(process.env.PORT || (portArg >= 0 ? process.argv[portArg + 1] : 5517)) || 5517;
+const mapsDir = join(root, 'maps');
+const distDir = join(root, 'dist');
+const worldMap = join(mapsDir, 'world-z5.pmtiles');
+const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
+const localTimeline = resolve(root, '..', '타임라인.json');
+const localMediaRoot = resolve(root, '..', '여행 사진');
+const mediaMetadataCachePath = join(root, '.cache', 'media-metadata.json');
+let localMediaCache = null;
 
-const timelinePartDir = join(root, 'data', 'timeline-parts');
-const localMapFiles = {
-  world: join(root, 'maps', 'world-z5.pmtiles'),
-  region: join(root, 'maps', 'korea-japan-z14.pmtiles')
-};
-const vendorFiles = new Map([
-  ['/vendor/maplibre-gl.js', join(root, 'node_modules', 'maplibre-gl', 'dist', 'maplibre-gl.js')],
-  ['/vendor/maplibre-gl.css', join(root, 'node_modules', 'maplibre-gl', 'dist', 'maplibre-gl.css')],
-  ['/vendor/pmtiles.js', join(root, 'node_modules', 'pmtiles', 'dist', 'pmtiles.js')],
-  ['/vendor/basemaps.js', join(root, 'node_modules', '@protomaps', 'basemaps', 'dist', 'basemaps.js')]
-]);
+const vite = isProduction
+  ? null
+  : await (await import('vite')).createServer({ root, server: { middlewareMode: true }, appType: 'spa' });
 
-async function buildTimelineModule() {
-  const directSource = await findDirectTimelineSource();
-  if (directSource) {
-    const raw = await readFile(directSource);
-    return buildTimelineFromRaw(raw, {
-      sourceType: 'original-json',
-      sourceName: basename(directSource),
-      partCount: 0
+const server = createServer(async (request, response) => {
+  const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+
+  if (url.pathname === '/api/map-status') {
+    const world = fileStatus(worldMap);
+    const region = fileStatus(regionMap);
+    return json(response, 200, {
+      ready: world.exists && region.exists,
+      world: world.exists,
+      region: region.exists,
+      worldBytes: world.bytes,
+      regionBytes: region.bytes
     });
   }
 
-  const partNames = (await readdir(timelinePartDir))
-    .filter(name => /^part-\d+\.txt$/i.test(name))
-    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
-  if (!partNames.length) throw new Error('Bundled Timeline parts were not found. Run npm run timeline:setup.');
-
-  const chunks = await Promise.all(partNames.map(name =>
-    readFile(join(timelinePartDir, name), 'utf8')
-  ));
-  const base64 = chunks.join('').replace(/\s+/g, '');
-  if (!base64.startsWith('H4sI') || !base64.endsWith('=')) {
-    throw new Error('Bundled Timeline data is incomplete.');
+  if (url.pathname === '/api/local-timeline') {
+    return serveLocalTimeline(request, response);
   }
 
-  let raw;
-  try {
-    raw = gunzipSync(Buffer.from(base64, 'base64'));
-  } catch (error) {
-    throw new Error(`Bundled Timeline decompression failed: ${error.message}`);
+  if (url.pathname === '/api/local-media-manifest') {
+    return serveLocalMediaManifest(request, response);
   }
 
-  const manifest = await readTimelineManifest();
-  if (!manifest) {
-    throw new Error('Bundled Timeline manifest is missing. Run npm run timeline:setup.');
-  }
-  const built = buildTimelineFromRaw(raw, {
-    sourceType: manifest?.fullTimeline ? 'full-fixture' : 'fixture',
-    sourceName: manifest?.sourceName || '타임라인.json',
-    partCount: partNames.length,
-    manifest
-  });
-
-  if (!manifest.sourceSha256 || manifest.sourceSha256 !== built.meta.sourceSha256) {
-    throw new Error('Bundled Timeline manifest SHA-256 does not match the fixture.');
-  }
-  if (!Number.isFinite(manifest.semanticSegments) || manifest.semanticSegments !== built.meta.semanticSegments) {
-    throw new Error('Bundled Timeline manifest segment count does not match the fixture.');
-  }
-  if (!Number.isFinite(manifest.rawSignals) || manifest.rawSignals !== built.meta.rawSignals) {
-    throw new Error('Bundled Timeline manifest rawSignals count does not match the fixture.');
-  }
-  return built;
-}
-
-function buildTimelineFromRaw(raw, { sourceType, sourceName, partCount, manifest = null }) {
-  let json;
-  try {
-    json = JSON.parse(raw.toString('utf8'));
-  } catch (error) {
-    throw new Error(`Bundled Timeline JSON parsing failed: ${error.message}`);
+  if (url.pathname === '/api/local-media-metadata-cache') {
+    return serveLocalMediaMetadataCache(request, response);
   }
 
-  if (!Array.isArray(json?.semanticSegments) || json.semanticSegments.length < 100) {
-    throw new Error('Bundled Timeline data is invalid or incomplete.');
+  if (url.pathname.startsWith('/api/local-media/')) {
+    return serveLocalMedia(request, response, url.pathname.slice('/api/local-media/'.length));
   }
 
-  const semanticSegments = json.semanticSegments.length;
-  const rawSignals = Array.isArray(json.rawSignals) ? json.rawSignals.length : 0;
-  const sourceSha256 = createHash('sha256').update(raw).digest('hex');
-  const fullTimeline = manifest?.fullTimeline ?? semanticSegments >= 8000;
-  const meta = {
-    sourceType,
-    sourceName,
-    fullTimeline,
-    semanticSegments,
-    rawSignals,
-    sourceSha256
-  };
-
-  // rawSignals and userLocationProfile remain preserved in the compressed source,
-  // but the browser player only needs semanticSegments. Sending only the data the
-  // parser consumes keeps the full Timeline usable without a ~49 MB browser payload.
-  const browserJson = { semanticSegments: json.semanticSegments };
-  return {
-    module: [
-      `export const BUNDLED_TIMELINE = ${JSON.stringify(browserJson)};`,
-      `export const BUNDLED_TIMELINE_META = ${JSON.stringify(meta)};`,
-      ''
-    ].join('\n'),
-    meta,
-    partCount
-  };
-}
-
-async function findDirectTimelineSource() {
-  const candidates = [
-    process.env.TIMELINE_JSON,
-    join(root, '타임라인.json'),
-    join(root, 'data', '타임라인.json'),
-    resolve(root, '..', '타임라인.json')
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    const file = resolve(candidate);
-    try {
-      await access(file);
-      return file;
-    } catch {}
+  if (url.pathname.startsWith('/api/')) {
+    return json(response, 404, { error: 'API endpoint not found' });
   }
-  return null;
-}
 
-async function readTimelineManifest() {
-  try {
-    return JSON.parse(await readFile(join(timelinePartDir, 'manifest.json'), 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-let timelineModule;
-let timelineMeta;
-let timelinePartCount = 0;
-try {
-  const builtTimeline = await buildTimelineModule();
-  timelineModule = builtTimeline.module;
-  timelineMeta = builtTimeline.meta;
-  timelinePartCount = builtTimeline.partCount;
-} catch (error) {
-  console.error(`Bundled Timeline fixture error: ${error.message}`);
-  process.exitCode = 1;
-  throw error;
-}
-
-try {
-  await Promise.all([...vendorFiles.values()].map(file => access(file)));
-} catch {
-  throw new Error('Browser map dependencies are missing. Run npm ci before npm start.');
-}
-
-createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-
-    if (url.pathname === '/api/map-status') {
-      const status = await getMapStatus();
-      const body = JSON.stringify(status);
-      res.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-        'cache-control': 'no-store'
-      });
-      if (req.method !== 'HEAD') res.end(body);
-      else res.end();
-      return;
+  if (url.pathname.startsWith('/maps/')) {
+    const fileName = url.pathname.slice('/maps/'.length);
+    if (!['world-z5.pmtiles', 'korea-japan-z14.pmtiles'].includes(fileName)) {
+      return text(response, 404, 'Not found');
     }
+    return serveRangeFile(request, response, join(mapsDir, fileName));
+  }
 
-    if (url.pathname === '/api/timeline-status') {
-      const body = JSON.stringify(timelineMeta);
-      res.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-        'cache-control': 'no-store'
-      });
-      if (req.method !== 'HEAD') res.end(body);
-      else res.end();
-      return;
-    }
-
-    if (url.pathname === '/api/google-photos-config') {
-      const body = JSON.stringify({
-        configured: !!googlePhotosClientId,
-        clientId: googlePhotosClientId || null
-      });
-      res.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(body),
-        'cache-control': 'no-store'
-      });
-      if (req.method !== 'HEAD') res.end(body);
-      else res.end();
-      return;
-    }
-
-    if (url.pathname === '/data/timeline-bundle.js') {
-      res.writeHead(200, {
-        'content-type': 'text/javascript; charset=utf-8',
-        'content-length': Buffer.byteLength(timelineModule),
-        'cache-control': 'no-store'
-      });
-      if (req.method !== 'HEAD') res.end(timelineModule);
-      else res.end();
-      return;
-    }
-
-    if (vendorFiles.has(url.pathname)) {
-      const file = vendorFiles.get(url.pathname);
-      const body = await readFile(file);
-      res.writeHead(200, {
-        'content-type': mime[extname(file)] || 'application/octet-stream',
-        'content-length': body.length,
-        'cache-control': 'public, max-age=31536000, immutable'
-      });
-      if (req.method !== 'HEAD') res.end(body);
-      else res.end();
-      return;
-    }
-
-    const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
-    const relative = normalize(pathname).replace(/^([/\\])+/, '');
-    const file = resolve(root, relative);
-    if (file !== root && !file.startsWith(rootPrefix)) throw new Error('invalid path');
-    const info = await stat(file);
-    if (!info.isFile()) throw new Error('not a file');
-
-    if (extname(file) === '.pmtiles') {
-      serveRangeFile(req, res, file, info);
-      return;
-    }
-
-    const body = await readFile(file);
-    res.writeHead(200, {
-      'content-type': mime[extname(file)] || 'application/octet-stream',
-      'content-length': body.length,
-      'cache-control': 'no-store'
+  if (vite) {
+    return vite.middlewares(request, response, error => {
+      if (error) {
+        console.error(error);
+        text(response, 500, 'Development server error');
+      }
     });
-    if (req.method !== 'HEAD') res.end(body);
-    else res.end();
-  } catch {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('Not found');
   }
-}).listen(port, () => {
-  console.log(`Travel Camera Visualizer: http://localhost:${port}`);
-  if (timelineMeta.sourceType === 'original-json') {
-    console.log(`Timeline: ${timelineMeta.sourceName} · ${timelineMeta.semanticSegments} semantic segments · original JSON`);
-  } else {
-    console.log(`Bundled Timeline: ${timelinePartCount} parts · ${timelineMeta.semanticSegments} semantic segments · ${timelineMeta.fullTimeline ? 'full' : 'reduced fixture'}`);
-  }
-  console.log(`Google Photos: ${googlePhotosClientId ? 'login ready' : 'not configured · set GOOGLE_PHOTOS_CLIENT_ID'}`);
-  printMapStatus();
+
+  return serveStatic(response, url.pathname);
 });
 
-function serveRangeFile(req, res, file, info) {
-  const size = info.size;
-  const etag = `"${size}-${Math.floor(info.mtimeMs)}"`;
-  const common = {
-    'content-type': mime['.pmtiles'],
-    'accept-ranges': 'bytes',
-    'cache-control': 'public, max-age=31536000, immutable',
-    etag
-  };
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Travel Camera Visualizer: http://127.0.0.1:${port}`);
+});
 
-  if (req.method === 'HEAD') {
-    res.writeHead(200, { ...common, 'content-length': size });
-    res.end();
-    return;
-  }
+function fileStatus(path) {
+  if (!existsSync(path)) return { exists: false, bytes: 0 };
+  const stats = statSync(path);
+  return { exists: stats.isFile(), bytes: stats.isFile() ? stats.size : 0 };
+}
 
-  const range = parseRange(req.headers.range, size);
+function serveRangeFile(request, response, path, contentType = 'application/vnd.pmtiles', cacheControl = 'public, max-age=3600') {
+  if (!existsSync(path)) return text(response, 404, 'Map archive not found');
+  const size = statSync(path).size;
+  const range = request.headers.range;
+  response.setHeader('Accept-Ranges', 'bytes');
+  response.setHeader('Content-Type', contentType);
+  response.setHeader('Cache-Control', cacheControl);
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+
   if (!range) {
-    res.writeHead(200, { ...common, 'content-length': size });
-    createReadStream(file).pipe(res);
-    return;
+    response.writeHead(200, { 'Content-Length': size });
+    return createReadStream(path).pipe(response);
   }
 
-  if (range.invalid) {
-    res.writeHead(416, {
-      ...common,
-      'content-range': `bytes */${size}`
-    });
-    res.end();
-    return;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  if (!match) {
+    response.writeHead(416, { 'Content-Range': `bytes */${size}` });
+    return response.end();
   }
-
-  const { start, end } = range;
-  res.writeHead(206, {
-    ...common,
-    'content-range': `bytes ${start}-${end}/${size}`,
-    'content-length': end - start + 1
+  const start = match[1] ? Number(match[1]) : 0;
+  const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  if (start > end || start >= size) {
+    response.writeHead(416, { 'Content-Range': `bytes */${size}` });
+    return response.end();
+  }
+  response.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${size}`,
+    'Content-Length': end - start + 1
   });
-  createReadStream(file, { start, end }).pipe(res);
+  return createReadStream(path, { start, end }).pipe(response);
 }
 
-function parseRange(header, size) {
-  if (!header) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(String(header).trim());
-  if (!match) return { invalid: true };
-
-  let start;
-  let end;
-  if (match[1] === '' && match[2] !== '') {
-    const suffix = Number(match[2]);
-    if (!Number.isFinite(suffix) || suffix <= 0) return { invalid: true };
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] === '' ? size - 1 : Number(match[2]);
+function serveLocalTimeline(request, response) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
   }
-
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= size || end < start) {
-    return { invalid: true };
-  }
-  return { start, end: Math.min(end, size - 1) };
+  const status = fileStatus(localTimeline);
+  if (!status.exists) return json(response, 404, { available: false });
+  response.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': status.bytes,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  if (request.method === 'HEAD') return response.end();
+  return createReadStream(localTimeline).pipe(response);
 }
 
-async function getMapStatus() {
-  const [world, region] = await Promise.all([
-    fileStatus(localMapFiles.world),
-    fileStatus(localMapFiles.region)
-  ]);
-  return {
-    ready: world.exists && region.exists,
-    world: world.exists,
-    region: region.exists,
-    worldBytes: world.size,
-    regionBytes: region.size
+function serveLocalMediaManifest(request, response) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
+  }
+  const cache = buildLocalMediaCache();
+  if (!cache) return json(response, 404, { available: false, items: [] });
+  const manifest = {
+    available: true,
+    rootName: '여행 사진',
+    count: cache.items.length,
+    totalBytes: cache.items.reduce((sum, item) => sum + item.size, 0),
+    items: cache.items.map(({ path: _path, ...item }) => item)
   };
+  response.setHeader('Cache-Control', 'private, no-store');
+  if (request.method === 'HEAD') return response.writeHead(200).end();
+  return json(response, 200, manifest);
 }
 
-async function fileStatus(file) {
+function serveLocalMedia(request, response, rawId) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
+  }
+  const cache = buildLocalMediaCache();
+  const item = cache?.byId.get(decodeURIComponent(rawId));
+  if (!item || !existsSync(item.path)) return text(response, 404, 'Local media not found');
+  return serveRangeFile(request, response, item.path, mimeType(extname(item.path)), 'private, no-store');
+}
+
+async function serveLocalMediaMetadataCache(request, response) {
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST');
+    return text(response, 405, 'Method not allowed');
+  }
+  const cache = buildLocalMediaCache();
+  if (!cache) return json(response, 404, { saved: 0 });
   try {
-    const info = await stat(file);
-    return { exists: info.isFile() && info.size > 0, size: info.size };
+    const payload = await readJsonBody(request, 2_000_000);
+    const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+    let saved = 0;
+    for (const value of entries) {
+      const item = cache.byId.get(String(value?.id ?? ''));
+      if (!item) continue;
+      const metadata = validMediaMetadata(value);
+      if (!metadata) continue;
+      item.metadata = metadata;
+      cache.metadata.entries[item.name] = {
+        size: item.size,
+        lastModified: item.lastModified,
+        ...metadata
+      };
+      saved += 1;
+    }
+    if (saved) saveMediaMetadataCache(cache.metadata);
+    return json(response, 200, { saved });
+  } catch (error) {
+    return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid metadata cache payload' });
+  }
+}
+
+function buildLocalMediaCache() {
+  if (localMediaCache) return localMediaCache;
+  if (!existsSync(localMediaRoot) || !statSync(localMediaRoot).isDirectory()) return null;
+  const paths = [];
+  const sidecarPaths = [];
+  const directories = [localMediaRoot];
+  while (directories.length) {
+    const directory = directories.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) directories.push(path);
+      else if (entry.isFile() && /\.(?:jpe?g|png|webp|heic|heif|mp4|m4v|mov|webm)$/i.test(entry.name)) paths.push(path);
+      else if (entry.isFile() && /(?:\.supplemental-metadata)?\.json$/i.test(entry.name) && statSync(path).size <= 3_000_000) sidecarPaths.push(path);
+    }
+  }
+  paths.sort((a, b) => relative(localMediaRoot, a).localeCompare(relative(localMediaRoot, b), 'ko'));
+  const metadata = loadMediaMetadataCache();
+  const items = paths.map((path, index) => {
+    const stats = statSync(path);
+    const extension = extname(path).toLowerCase();
+    const name = relative(localMediaRoot, path).replaceAll('\\', '/');
+    const cached = metadata.entries[name];
+    return {
+      id: String(index),
+      path,
+      name,
+      size: stats.size,
+      lastModified: stats.mtimeMs,
+      kind: /\.(?:mp4|m4v|mov|webm)$/i.test(extension) ? 'video' : 'image',
+      metadata: cached && cached.size === stats.size && Math.abs(cached.lastModified - stats.mtimeMs) < 1
+        ? validMediaMetadata(cached)
+        : null
+    };
+  });
+  const byName = new Map(items.map(item => [item.name.toLowerCase(), item]));
+  for (const sidecarPath of sidecarPaths) {
+    const sidecarName = relative(localMediaRoot, sidecarPath).replaceAll('\\', '/');
+    try {
+      const value = JSON.parse(readFileSync(sidecarPath, 'utf8'));
+      const parsed = parseTakeoutSidecar(value);
+      if (!parsed) continue;
+      const slash = sidecarName.lastIndexOf('/');
+      const directory = slash >= 0 ? sidecarName.slice(0, slash + 1) : '';
+      const stripped = sidecarName.replace(/(?:\.supplemental-metadata)?\.json$/i, '');
+      const item = byName.get(stripped.toLowerCase()) ?? byName.get(`${directory}${parsed.title}`.toLowerCase());
+      if (!item) continue;
+      item.metadata = parsed.metadata;
+      metadata.entries[item.name] = { size: item.size, lastModified: item.lastModified, ...parsed.metadata };
+    } catch {
+      // Invalid or unrelated JSON files are ignored.
+    }
+  }
+  if (sidecarPaths.length) saveMediaMetadataCache(metadata);
+  localMediaCache = { items, byId: new Map(items.map(item => [item.id, item])), metadata };
+  return localMediaCache;
+}
+
+function loadMediaMetadataCache() {
+  try {
+    const value = JSON.parse(readFileSync(mediaMetadataCachePath, 'utf8'));
+    if (value?.version === 1 && value.entries && typeof value.entries === 'object') return value;
   } catch {
-    return { exists: false, size: 0 };
+    // A missing or invalid cache is rebuilt from local media.
   }
+  return { version: 1, entries: {} };
 }
 
-async function printMapStatus() {
-  const status = await getMapStatus();
-  if (status.ready) {
-    console.log(`Local basemap: ready (${formatBytes(status.worldBytes)} + ${formatBytes(status.regionBytes)})`);
-  } else {
-    console.log('Local basemap: not installed · run npm run map:setup');
-  }
+function saveMediaMetadataCache(value) {
+  mkdirSync(resolve(mediaMetadataCachePath, '..'), { recursive: true });
+  const temporary = `${mediaMetadataCachePath}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value), 'utf8');
+  renameSync(temporary, mediaMetadataCachePath);
 }
 
-function formatBytes(bytes) {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = Number(bytes) || 0;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
+function validMediaMetadata(value) {
+  const takenMs = Number(value?.takenMs);
+  const lat = value?.lat == null ? null : Number(value.lat);
+  const lng = value?.lng == null ? null : Number(value.lng);
+  const sources = new Set(['takeout-sidecar', 'embedded-exif', 'filename-time', 'file-time']);
+  if (!Number.isFinite(takenMs) || takenMs <= Date.UTC(2000, 0, 1) || !sources.has(value?.source)) return null;
+  if ((lat == null) !== (lng == null)) return null;
+  if (lat != null && (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return null;
+  return { takenMs, lat, lng, source: value.source };
+}
+
+function parseTakeoutSidecar(value) {
+  if (!value || typeof value !== 'object') return null;
+  const timestamp = value.photoTakenTime?.timestamp ?? value.creationTime?.timestamp ?? value.creationTime;
+  const numeric = /^\d+(?:\.\d+)?$/.test(String(timestamp ?? '')) ? Number(timestamp) : NaN;
+  const takenMs = Number.isFinite(numeric) ? (numeric > 10_000_000_000 ? numeric : numeric * 1000) : Date.parse(String(timestamp ?? ''));
+  const gps = validSidecarGps(value.geoDataExif) ?? validSidecarGps(value.geoData);
+  const metadata = validMediaMetadata({ takenMs, lat: gps?.lat ?? null, lng: gps?.lng ?? null, source: 'takeout-sidecar' });
+  return metadata ? { title: String(value.title || ''), metadata } : null;
+}
+
+function validSidecarGps(value) {
+  const lat = Number(value?.latitude);
+  const lng = Number(value?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (Math.abs(lat) > 1e-7 || Math.abs(lng) > 1e-7)
+    ? { lat, lng }
+    : null;
+}
+
+function readJsonBody(request, maxBytes) {
+  return new Promise((resolveBody, rejectBody) => {
+    const chunks = [];
+    let bytes = 0;
+    request.on('data', chunk => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        rejectBody(new Error('Metadata cache payload is too large'));
+        request.destroy();
+      } else chunks.push(chunk);
+    });
+    request.on('end', () => {
+      try { resolveBody(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      catch { rejectBody(new Error('Metadata cache payload is not valid JSON')); }
+    });
+    request.on('error', rejectBody);
+  });
+}
+
+function serveStatic(response, pathname) {
+  const requested = pathname === '/' ? '/index.html' : pathname;
+  const safePath = normalize(requested).replace(/^(\.\.[/\\])+/, '');
+  let filePath = resolve(distDir, `.${safePath}`);
+  if (!filePath.startsWith(resolve(distDir)) || !existsSync(filePath) || !statSync(filePath).isFile()) {
+    filePath = join(distDir, 'index.html');
   }
-  return `${value.toFixed(index ? 1 : 0)} ${units[index]}`;
+  if (!existsSync(filePath)) return text(response, 503, 'Run npm run build first');
+  response.writeHead(200, {
+    'Content-Type': mimeType(extname(filePath)),
+    'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
+  });
+  createReadStream(filePath).pipe(response);
+}
+
+function mimeType(extension) {
+  return {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.heic': 'image/heic',
+    '.heif': 'image/heif',
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/x-m4v',
+    '.mov': 'video/quicktime',
+    '.webm': 'video/webm',
+    '.ico': 'image/x-icon'
+  }[extension] || 'application/octet-stream';
+}
+
+function json(response, status, value) {
+  const body = JSON.stringify(value);
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body)
+  });
+  response.end(body);
+}
+
+function text(response, status, body) {
+  response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
+  response.end(body);
 }
