@@ -2,54 +2,22 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, rebuild/v2]
   pull_request:
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Syntax checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check server.mjs
-          for file in scripts/*.mjs src/*.js tests/*.js; do
-            node --check "$file"
-          done
-      - name: Bundled Timeline startup check
-        shell: bash
-        run: |
-          set -euo pipefail
-          node server.mjs > server.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
-          for i in {1..20}; do
-            if curl --fail --silent http://localhost:5173/data/timeline-bundle.js -o timeline-bundle.js; then
-              break
-            fi
-            sleep 0.25
-          done
-          test -s timeline-bundle.js
-          grep -q 'BUNDLED_TIMELINE' timeline-bundle.js
-          grep -q 'BUNDLED_TIMELINE_META' timeline-bundle.js
-          curl --fail --silent http://localhost:5173/api/map-status -o map-status.json
-          grep -q '"ready"' map-status.json
-          curl --fail --silent http://localhost:5173/api/timeline-status -o timeline-status.json
-          grep -q '"semanticSegments"' timeline-status.json
-          curl --fail --silent http://localhost:5173/api/google-photos-config -o google-photos-config.json
-          grep -q '"configured":false' google-photos-config.json
-          curl --fail --silent http://localhost:5173/ -o index-response.html
-          grep -q 'Travel Camera Visualizer' index-response.html
-          curl --fail --silent http://localhost:5173/vendor/maplibre-gl.js -o maplibre-gl.js
-          test -s maplibre-gl.js
-          cat server.log
-      - name: Unit tests
-        run: npm test
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

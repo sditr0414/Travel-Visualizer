@@ -1,476 +1,64 @@
-# AI Project Context — Travel Camera Visualizer
+# AI Project Context — Travel Camera Visualizer v2
 
-> **Purpose**: continuity handoff for AI-assisted development. Read this file completely, then fetch the latest `main` and verify current code before editing.
->
-> **Authority rule**: current repository code is more authoritative than this document if they diverge. Update this file in the same task when architecture, active wrappers, media pipeline, timing semantics, route/photo UX invariants, GPS/place resolution, runtime commands, CI, or major technical debt changes.
+## Product
 
-## 1. Repository and workflow
+Google Timeline JSON을 브라우저에서만 처리해 지도 위 여행 경로를 재생하는 개인 로컬용 반응형 웹앱입니다. 시작 화면에서 로컬 Timeline과 사진 폴더를 선택하며 개인 파일은 업로드하거나 영구 저장하지 않습니다.
 
-- Repository: `sditr0414/travel-camera-visualizer`
-- Default branch: `main`
-- Private repository because Timeline fixtures contain location history.
-- Runtime: Node.js `>=20`, browser ES modules, MapLibre GL JS.
-- Normal workflow has been direct updates to `main`.
-- Before editing an existing file, fetch latest `main`, then fetch the exact file and blob SHA.
-- Never assume a SHA in this document is current.
-- Verify GitHub Actions after code changes. Do not report CI as passed until the final relevant workflow job has `conclusion: success`.
-- Prefer structural fixes over compatibility shims.
-- Preserve existing UX invariants unless the user explicitly changes them.
+## Architecture
 
----
+- React 19 + strict TypeScript + Vite
+- MapLibre GL, 온라인 OpenFreeMap 기본, 로컬 PMTiles 선택
+- Timeline JSON 파싱과 재생 계획은 Web Worker에서 실행
+- 앱 상태는 `idle/loading/ready/planning/playing/paused/complete/error` reducer로 관리
+- 60fps 프레임 재생은 React 밖의 `PlayerController`가 담당
+- Node 서버는 Vite middleware/정적 파일, `/api/map-status`, PMTiles Range만 제공
 
-## 2. Product goal
-
-Travel Camera Visualizer converts Google Maps Timeline JSON into cinematic travel playback:
-
-1. parse Timeline movements
-2. infer/correct mobility classes
-3. allocate route playback time
-4. plan smooth map cameras
-5. render route playback
-6. optionally match photos/videos by capture time and GPS
-7. pause at matched media locations, show media, then resume travel
-
-Primary validation trip is Japan/Korea around `2026-03-17 ~ 2026-03-31`.
-Browser-first architecture. Capacitor/native device-media integration remains a future option.
-
----
-
-## 3. User-facing modes and photo split UX
-
-### Route mode
-
-`JourneyMode.ROUTE` / `발자취`
-
-- full-map route playback
-- movement, speed, travel date, route head/trail
-- final OUTRO shows full journey route
-
-### Photo journey mode
-
-`JourneyMode.PHOTOS` / `사진 여정`
-
-Desktop is a persistent horizontal map/media split, default about `60% / 40%`.
-Mobile is a persistent vertical map/media split, default about `52% / 48%`.
-
-Important invariants:
-
-- media rail remains present throughout TRAVEL in photo mode
-- photo appearance must not cause repeated full-map → split-map jumps
-- map camera is biased to the current map pane for the entire photo-mode TRAVEL section
-- split is user-resizable: desktop horizontal drag, mobile vertical drag
-- ratio is clamped so both panes remain usable
-- keyboard adjustment and double-click reset remain supported
-- map camera target follows the resized map pane
-- separator has no decorative center grabber; invisible hit area/boundary is sufficient
-- separator is hidden while settings are open; ratio is preserved across settings open/close
-- player controls and travel HUD stay in the map pane
-- photo location/capture time remain below media, never over the image/video
-- the empty media rail and contained-media background use a mid-tone graphite surface rather than near-black, reducing contrast against the map
-- between media beats, media pane shows current mobility pictogram/label
-- while actual photo/video is active, movement pictogram disappears
-- the obsolete background text `사진 여정` must not be shown in the media rail
-- photo/video ↔ movement pictogram changes use a crossfade/scale transition rather than hard swapping
-- transition duration scales with configured route `영상 길이`, with bounded minimum/maximum; shorter routes transition faster and longer routes more slowly
-- `prefers-reduced-motion` disables these media transitions
-- final OUTRO returns to full-map overview
-
-Main files:
-
-- `src/route-player-split.js`
-- `src/photo-split-layout.js`
-- `src/photo-split-resizer.js`
-- `src/photo-media-transition.js`
-- `src/photo-journey-v4.js`
-- `media-journey.css`
-
----
-
-## 4. Playback duration semantics
-
-Configured `#videoDuration` is the target **route movement playback duration** passed to `planPlayback` as `targetTotalSeconds`.
-
-Actual final playback is:
+핵심 순수 알고리즘은 기존 검증 코드를 유지하며 TypeScript 도메인 경계로 감쌉니다.
 
 ```text
-configured route playback
-+ photo hold time
-+ video hold/play time
+sample/file text
+  -> TimelineWorkerClient
+  -> timeline.worker.ts
+  -> typed timeline/planner domain
+  -> PlaybackPlan
+  -> PlayerController
+  -> MapLibre sources/camera
 ```
 
-After media-stop insertion, `plan.durationSec` is the actual final player duration.
-The player clock shows current time / actual total time.
+## Public types
 
-Settings reanalysis invariant:
+`src/types.ts`가 다음 계약의 기준입니다.
 
-- `설정 적용 · 경로 다시 분석` must not reset configured route duration to minimum
-- `src/main.js` uses `analyzeParsedTimeline(sourceLabel, { preserveVideoDuration })`
-- settings apply uses `preserveVideoDuration: true`
-- previous duration is clamped into new min/max
-- do not restore the old `HTMLInputElement.prototype.value` interception shim
+- `TimelineSource`, `TimelineScanResult`, `ParsedTrip`
+- `AnalysisOptions`, `PlaybackPlan`, `PlaybackFrame`
+- `MapSourceConfig`, `MapStatus`
+- `WorkerRequest`, `WorkerResponse`
 
-Media transition timing is visual only and does not add to playback duration. `src/photo-media-transition.js` derives a bounded transition time from `#videoDuration` and updates `--photo-media-transition`.
+Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`만 사용합니다. 플레이어 API는 `loadPlan`, `play`, `pause`, `seek`, `reset`, `dispose`로 제한합니다.
 
----
+## UX invariants
 
-## 5. Timeline and camera architecture
+- 첫 화면의 주인공은 전체 지도와 여행 경로다.
+- 재생 컨트롤은 항상 하단에 유지한다.
+- 설정은 접을 수 있고 모바일에서 핵심 지도를 가리지 않아야 한다.
+- 개인 Timeline은 서버에 전송하지 않는다.
+- 기본 지도는 온라인이며 로컬 지도 파일이 없을 때 빈 화면으로 전환하지 않는다.
+- 카메라 전략은 복원된 AUTO를 기본값으로 제공하고 DAY·SEGMENT를 선택할 수 있다.
+- `prefers-reduced-motion`을 존중한다.
 
-Primary files:
+## Out of scope
 
-- `src/timeline-parser.js`
-- `src/mobility.js`
-- `src/camera-planner.js`
-- `src/playback-pacing.js`
-- `src/camera-modes.js`
-- `src/camera-modes-auto.js`
-- `src/route-player.js`
-- `src/route-player-split.js`
-- `src/main.js`
+로컬 사진·영상 여정은 MVP에 포함됩니다. Google Photos, Takeout 전용 가져오기, 영상 파일 내보내기, PWA, 네이티브 앱은 이후 작업입니다. 관련 과거 구현은 Git 이력에서만 참고합니다.
 
-Mobility classes include `WALK`, `BIKE`, `URBAN_TRANSIT`, `ROAD`, `FAST_GROUND`, `FERRY`, `FLIGHT`, `UNKNOWN`.
+## Commands
 
-Browser import mapping redirects:
-
-```text
-/src/camera-modes.js  -> /src/camera-modes-auto.js
-/src/route-player.js  -> /src/route-player-split.js
-/src/photo-journey.js -> /src/photo-journey-v4.js
-```
-
-Camera rules:
-
-- `AUTO` is normal strategy
-- local travel is framed closer than old core defaults
-- flights retain wide/overview behavior
-- final route overview is preserved
-- photo mode keeps camera framing inside current map pane throughout TRAVEL
-- `src/photo-split-layout.js` owns split defaults/limits and pane target
-- `src/photo-split-resizer.js` updates ratio and triggers immediate camera reframe
-- media holds retain a visible approach trail
-
-Do not revert photo-mode travel to full-screen framing between media stops.
-
----
-
-## 6. Device gallery / local media architecture
-
-Dedicated pipeline:
-
-```text
-#photoGalleryInput (individual files)
-#photoGalleryFolderInput (folder tree via directory selection)
-  -> src/gallery-photo-ui.js
-  -> src/local-media-loader.js
-  -> src/local-media-worker.js (when available)
-  -> src/image-metadata.js
-  -> src/media-library-state.js (LOCAL_GALLERY)
-  -> src/main.js rebuildPlan()
-  -> src/photo-journey-v4.js
-  -> Timeline/media matching
-```
-
-Active media source is centralized in `src/media-library-state.js`:
-
-- `NONE`
-- `LOCAL_GALLERY`
-- `GOOGLE_PHOTOS_PICKER`
-- `GOOGLE_PHOTOS_TAKEOUT`
-
-`src/gallery-photo-ui.js` routes individual-file and folder selection through the same loader. Folder entries are recursively supplied by the browser and filtered by `isLocalMediaFile`; unsupported files are ignored. Both inputs are disabled during an active import and reset afterward so the same selection can be chosen again.
-
-Do not restore wrapper-local local-gallery preference state or `travel-camera:local-media-ready` source override behavior.
-Never reintroduce device gallery → `DataTransfer` → hidden Takeout input.
-
-Local metadata priority:
-
-1. embedded JPEG EXIF capture metadata
-2. common camera filename timestamp
-3. `File.lastModified`
-
-Memory invariant: no eager Blob/Object URLs for the whole gallery. Create URLs only for currently rendered media and revoke them on scene changes.
-
----
-
-## 7. Google Photos and Takeout
-
-Google Photos Picker:
-
-- explicit Picker approval only
-- public OAuth client ID only; never expose client secret
-- temporary media URLs
-- preview media must not be persisted to IndexedDB or uploaded to project server
-- Picker GPS is not reliable enough here; Timeline-time positioning is used
-- downloaded Picker previews may enter the Takeout-compatible metadata loader
-
-Takeout:
-
-- folder may include media + JSON sidecars
-- sidecar capture time/GPS preferred when present
-
-Selecting a new source replaces prior active media through `src/media-library-state.js`.
-
----
-
-## 8. Photo ↔ Timeline matching and media holds
-
-Core matching is in `src/photo-journey.js` and wrapper layers.
-
-Important behavior:
-
-- media needs usable `takenMs`
-- clearly out-of-trip media is rejected
-- capture time maps to nearest Timeline segment/frame
-- GPS is used only when plausibly close to Timeline position; core safety threshold is about `80 km`
-- otherwise Timeline-derived position is used
-- nearby media are grouped into beats
-- beat count is bounded; current core cap is `48`
-- beats are distributed across route playback
-
-`src/photo-journey-v2.js` inserts stationary media frames:
-
-```text
-travel -> media hold -> travel resumes
-```
-
-Do not place clearly out-of-range photos arbitrarily just to make them appear.
-
----
-
-## 9. Local video rendering
-
-`File.type` is not authoritative for local video. MP4/MOV can arrive with empty/generic MIME.
-Use normalized `mediaType` / extension semantics.
-
-Real local video nodes are muted, `defaultMuted`, `playsInline`, and use `playsinline`.
-PLAY mode retries around `loadeddata` / `canplay`.
-
-Google Photos logical videos can use still-thumbnail sentinel files; those remain `<img>`, not `<video>`.
-
----
-
-## 10. GPS place-name resolution with Korean labels and English fallback
-
-Active resolver: `src/photo-journey-v4.js`.
-
-For GPS-based media, prefer administrative geography over nearby POIs. When city-level information is available, show all usable city-and-below units exposed by map data in hierarchy order:
-
-```text
-city/town/municipality
--> district/ward/borough
--> neighborhood/suburb/quarter/locality
-```
-
-Example target:
-
-```text
-오사카시 · 주오구 · 신사이바시
-```
-
-If city-level data is unavailable, region/prefecture may be fallback, followed by usable lower levels.
-
-Name-selection invariant:
-
-1. preserve explicit Korean map properties (`name:ko` / `name_ko`) when present
-2. otherwise use English properties (`name:en` / `name_en`)
-3. otherwise use Latin/international properties (`name:latin`, `int_name`, and aliases)
-4. otherwise use the source/native `name`, then language-specific native properties
-
-Do not generate Korean phonetic translations for GPS place captions.
-
-The resolver checks rendered features and relevant source layers. Polygon/MultiPolygon administrative features use a bounded representative position for distance ranking.
-
-Limitation: this is not a true reverse-geocoder. Only map levels and multilingual properties actually present in the active source can be used. Korean labels are preserved only when the map provides them; otherwise English or source/native names are used. Do not fabricate missing administrative levels.
-
----
-
-## 11. Active photo wrapper chain
-
-```text
-photo-journey-v4.js
-  -> photo-journey-v3.js
-  -> photo-journey-v2.js
-  -> photo-journey.js?core=1
-```
-
-Responsibilities:
-
-- core `photo-journey.js`: matching/grouping/placement/base controller
-- v2: media/video support, hold insertion, per-item duration
-- v3: richer import/progress/diagnostics, embedded local metadata fallback
-- v4: robust local video rendering, detailed Korean-preserving administrative GPS labels with English fallback, movement pictograms, local-ready state integration
-
-`?core=1` avoids import-map recursion.
-Technical debt: wrapper stack is deep. Do not casually add v5/v6; consolidate only in a dedicated refactor with regression tests.
-
----
-
-## 12. Important files
-
-Entry/UI: `index.html`, `styles.css`, `mode-ui.css`, `media-journey.css`, `consumer-ui.css`.
-
-Main orchestration: `src/main.js`.
-
-Timeline/camera: `src/timeline-parser.js`, `src/mobility.js`, `src/camera-planner.js`, `src/playback-pacing.js`, `src/camera-modes*.js`, `src/route-player*.js`, `src/photo-split-layout.js`, `src/photo-split-resizer.js`.
-
-Media: `src/media-library-state.js`, `src/photo-journey*.js`, `src/photo-media-transition.js`, `src/gallery-photo-ui.js`, `src/local-media-loader.js`, `src/local-media-worker.js`, `src/image-metadata.js`, `src/photo-progress-ui.js`, `src/photo-media-settings-ui.js`, `src/google-photos-picker.js`, `src/google-photos-ui.js`.
-
-Server/map/fixture: `server.mjs`, `src/local-map.js`, `src/bundled-timeline.js`, `scripts/setup-local-map.mjs`, `scripts/setup-timeline.mjs`, `data/`, `maps/`.
-
----
-
-## 13. Settings and progress UX invariants
-
-`consumer-ui.css` is the active consumer-facing design layer loaded after the functional styles. It uses a soft graphite editor surface, restrained coral accent, compact creator controls, and direct Korean labels for Instagram-oriented users. Avoid pure-white panels, overly dark media rails, and translated product jargon.
-
-Settings workspace must remain viewport-safe and scrollable. Desktop uses at most two primary columns for readability; short windows reduce density; mobile fills the stage below its close control and reserves bottom safe-area padding. Do not size the panel against the full browser viewport because it lives inside the shorter map stage, and do not make lower controls unreachable.
-
-Large imports need real progress rather than appearing frozen. Conceptual phases: `PREPARE`, `METADATA`, `MATCH`, `BUILD`, `COMPLETE`, `ERROR`.
-
-Performance priorities:
-
-1. reduce file reads
-2. keep EXIF work off main UI thread
-3. avoid eager decoding/object URLs
-4. yield during fallback batches
-5. show accurate progress/counts
-
----
-
-## 14. Map, server, security, privacy
-
-Preferred local PMTiles hybrid:
-
-```text
-zoom 0 ~ 5  -> maps/world-z5.pmtiles
-zoom 6 ~ 14 -> maps/korea-japan-z14.pmtiles
-```
-
-`src/local-map.js` requests Korean basemap labels with `{ lang: 'ko' }`. Photo GPS captions are resolved independently: explicit Korean properties are preserved, then English/Latin names are preferred.
-
-Fallback online basemap is supported. Local map files are not committed due size. Server supports PMTiles HTTP Range requests.
-
-`server.mjs` exposes only `GOOGLE_PHOTOS_CLIENT_ID` to browser config. Never expose a client secret.
-
-Privacy:
-
-- keep repository private unless location disclosure is intentional
-- device photos/videos stay browser-local
-- do not upload local media to project server as an optimization shortcut
-- do not add persistent browser media caching without explicit request/privacy review
-
----
-
-## 15. Known failed patterns — do not repeat
-
-1. Device gallery through `DataTransfer` into Takeout input.
-2. Eager Blob URLs for entire gallery.
-3. Bulk EXIF work on main thread.
-4. Full-map ↔ split-map transition for every photo.
-5. MIME-only local video detection.
-6. Resetting `영상 길이` on every settings apply.
-7. Adding another photo wrapper for each small feature.
-8. Wrapper-local media source override state.
-9. Hard-coding split camera/layout to only 60/40 or 52/48.
-10. Generated Hangul transliteration, or forcing English when an explicit Korean map label is available.
-
----
-
-## 16. Known technical debt / limitations
-
-### P1 — Photo wrapper consolidation
-v2/v3/v4 is functional but costly to reason about.
-
-### P2 — Browser reverse geocoding is approximate
-Administrative levels and Korean/English availability still depend on map features.
-
-### P2 — HEIC metadata/rendering
-Selection is supported but browser decoding varies and embedded parsing is JPEG-centric.
-
-### P2 — Very large local galleries remain browser-limited
-Workers help, but browser I/O/decode/memory limits remain.
-
-### P3 — Playback clock injected by JS
-`#playbackTime` is created by `src/photo-media-settings-ui.js` rather than static HTML.
-
-### P3 — Some user-facing copy is duplicated
-Photo journey help strings exist in more than one UI module. Keep `index.html`, `src/main.js`, and `src/photo-media-settings-ui.js` aligned when changing story terminology.
-
----
-
-## 17. Recommended refactor priority
-
-```text
-P1. Keep current route/photo/video UX stable
-P1. Consolidate photo-journey v2/v3/v4 in a dedicated refactor
-P2. Add local-media performance instrumentation
-P2. Improve HEIC strategy if real files require it
-P2. Evaluate deterministic reverse geocoding only if map-feature labels remain insufficient
-P3. Consider Capacitor NativePhotoSource for packaged app
-```
-
----
-
-## 18. Tests and CI
-
-Local: `npm test`.
-
-GitHub Actions performs npm install, JavaScript syntax checks, bundled Timeline/local-server startup checks, static/API endpoint checks, and full Node tests.
-
-Relevant regression tests include camera, route player, mobility, media-source, metadata, photo journey, photo split, Korean-preserving administrative-place with English fallback, consumer UI/copy, media-transition timing, and playback pacing tests.
-
-Add focused tests for testable regressions. Never claim CI passed until final job conclusion is success.
-
----
-
-## 19. Local development
-
-Initial setup:
-
-```powershell
-git pull origin main
-npm ci
-npm run map:setup
+```bash
 npm start
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run test:e2e
 ```
 
-Default URL: `http://localhost:5173`.
-After browser module/CSS changes, hard refresh (`Ctrl+F5`) is often useful.
-
----
-
-## 20. Bug triage shortcuts
-
-Photos counted but never appear: imported count → matched beats → `takenMs`/range → position source/GPS plausibility → active media source → renderer/Object URL errors.
-
-Photo split issues: persistent layout class → import-map target → split state → resizer vars/event → pane-biased camera → settings visibility.
-
-GPS label too coarse: inspect exposed city/district/locality features → classification → representative distance → missing map levels cannot be synthesized.
-
-GPS caption unexpectedly changed from Korean: inspect `name:ko`/`name_ko` first, then English/Latin and source/native fallbacks. Missing Korean properties must not be synthesized phonetically.
-
-Media transition feels abrupt: verify `src/photo-media-transition.js` loaded through `photo-split-resizer.js`, `--photo-media-transition` follows `#videoDuration`, both card and pictogram retain DOM during opacity transition, and reduced-motion is not active.
-
----
-
-## 21. New AI session procedure
-
-1. Read this file completely.
-2. Fetch latest `main` HEAD.
-3. Fetch exact relevant files and current blob SHAs.
-4. Treat current code as authoritative if docs differ.
-5. Identify affected invariant.
-6. Prefer minimal structural fix over another workaround layer.
-7. Preserve route-only vs actual-playback duration semantics.
-8. Preserve dedicated local-gallery pipeline/shared media source state.
-9. Preserve persistent/resizable photo split unless explicitly changed.
-10. Preserve duration-aware photo/video ↔ movement-pictogram transitions unless explicitly changed.
-11. Preserve city-and-below GPS labels, explicit Korean map names, and English fallback when Korean is unavailable.
-12. Add/update focused tests.
-13. Verify final `main` GitHub Actions before claiming success.
-14. Update this file in the same task when maintained architecture/invariants change.
-
-Useful new-chat instruction:
-
-```text
-GitHub의 AI_PROJECT_CONTEXT.md를 먼저 읽고 최신 main을 확인한 뒤 이어서 작업하자.
-```
+모든 검증을 통과한 뒤에만 `main` 병합 대상으로 판단합니다. 실제 Timeline과 PMTiles는 커밋하지 않습니다.

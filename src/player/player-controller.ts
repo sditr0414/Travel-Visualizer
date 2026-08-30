@@ -1,0 +1,308 @@
+import type { GeoJSONSource, Map } from 'maplibre-gl';
+import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
+import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
+
+const TILE_SIZE = 512;
+
+const COLORS: Record<MobilityClass, string> = {
+  WALK: '#ff725d',
+  BIKE: '#e0a43f',
+  URBAN_TRANSIT: '#20a99a',
+  FAST_GROUND: '#507fd4',
+  FERRY: '#1b91c7',
+  FLIGHT: '#8f6bd8',
+  ROAD: '#75808a',
+  UNKNOWN: '#64748b'
+};
+
+export interface PlayerCallbacks {
+  onFrame?: (frame: PlaybackFrame, frameIndex: number, timeSec: number, activeStopId: string | null) => void;
+  onComplete?: () => void;
+}
+
+export class PlayerController {
+  private plan: PlaybackPlan | null = null;
+  private playing = false;
+  private timeSec = 0;
+  private startedAt = 0;
+  private frameIndex = -1;
+  private raf: number | null = null;
+  private lockToPosition = true;
+  private trackingSpeed = 1;
+  private trackedCenter: Coordinate | null = null;
+  private stops: PlaybackStop[] = [];
+  private lastStopId: string | null = null;
+
+  constructor(private readonly map: Map, private readonly callbacks: PlayerCallbacks = {}) {}
+
+  loadPlan(plan: PlaybackPlan, stops: PlaybackStop[] = []): void {
+    this.pause();
+    this.plan = plan;
+    this.timeSec = 0;
+    this.frameIndex = -1;
+    this.trackedCenter = null;
+    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
+    this.lastStopId = null;
+    this.setSource('route-all', fullRoute(plan));
+    this.setSource('route-progress', emptyCollection());
+    this.setSource('route-head', emptyCollection());
+    this.render(0, true);
+  }
+
+  setStops(stops: PlaybackStop[]): void {
+    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
+    this.timeSec = Math.min(this.timeSec, this.getDuration());
+    this.renderForTime(true);
+  }
+
+  setLockToPosition(enabled: boolean): void {
+    this.lockToPosition = enabled;
+    this.trackedCenter = null;
+    this.renderForTime(true);
+  }
+
+  setTrackingSpeed(multiplier: number): void {
+    this.trackingSpeed = clamp(Number(multiplier) || 1, 0.5, 2);
+  }
+
+  getDuration(): number {
+    return (this.plan?.durationSec ?? 0) + this.stops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0);
+  }
+
+  play(): void {
+    if (!this.plan?.frames.length || this.playing) return;
+    if (this.timeSec >= this.getDuration()) this.reset();
+    this.playing = true;
+    this.startedAt = performance.now() - this.timeSec * 1000;
+    this.tick(performance.now());
+  }
+
+  pause(): void {
+    this.playing = false;
+    if (this.raf !== null) cancelAnimationFrame(this.raf);
+    this.raf = null;
+  }
+
+  seek(seconds: number): void {
+    if (!this.plan) return;
+    this.timeSec = Math.max(0, Math.min(this.getDuration(), Number(seconds) || 0));
+    this.startedAt = performance.now() - this.timeSec * 1000;
+    this.trackedCenter = null;
+    this.renderForTime(true);
+  }
+
+  reset(): void {
+    this.pause();
+    this.timeSec = 0;
+    this.frameIndex = -1;
+    this.trackedCenter = null;
+    this.lastStopId = null;
+    this.render(0, true);
+  }
+
+  dispose(): void {
+    this.pause();
+    this.plan = null;
+  }
+
+  isPlaying(): boolean {
+    return this.playing;
+  }
+
+  private tick = (now: number): void => {
+    if (!this.playing || !this.plan) return;
+    this.timeSec = Math.min((now - this.startedAt) / 1000, this.getDuration());
+    this.renderForTime();
+    if (this.timeSec >= this.getDuration()) {
+      this.pause();
+      this.callbacks.onComplete?.();
+      return;
+    }
+    this.raf = requestAnimationFrame(this.tick);
+  };
+
+  private renderForTime(force = false): void {
+    if (!this.plan) return;
+    const mapped = mapJourneyTime(this.timeSec, this.stops, this.plan.durationSec);
+    const stopChanged = mapped.activeStopId !== this.lastStopId;
+    this.lastStopId = mapped.activeStopId;
+    this.render(Math.floor(mapped.routeTimeSec * this.plan.fps), force || stopChanged, mapped.activeStopId);
+  }
+
+  private render(index: number, force = false, activeStopId: string | null = null): void {
+    if (!this.plan?.frames.length) return;
+    const nextIndex = Math.max(0, Math.min(index, this.plan.frames.length - 1));
+    if (!force && nextIndex === this.frameIndex) return;
+    const frame = this.plan.frames[nextIndex];
+    let center: Coordinate;
+    let zoom = frame.zoom;
+    if (frame.kind !== 'TRAVEL') {
+      center = frame.center;
+      this.trackedCenter = null;
+    } else if (this.lockToPosition) {
+      center = frame.lockedCenter ?? frame.position;
+      zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
+      this.trackedCenter = { ...center };
+    } else {
+      center = this.followCamera(frame, nextIndex, force || frame.sceneBreak);
+    }
+    this.map.jumpTo({ center: [center.lng, center.lat], zoom });
+    this.frameIndex = nextIndex;
+
+    if (frame.kind === 'TRAVEL') {
+      this.setSource('route-progress', trailForFrame(this.plan, nextIndex));
+      this.setSource('route-head', headForFrame(frame));
+    } else {
+      this.setSource('route-progress', fullRoute(this.plan));
+      this.setSource('route-head', emptyCollection());
+    }
+    this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, nextIndex, this.timeSec, activeStopId);
+  }
+
+  private followCamera(frame: TravelFrame, frameIndex: number, reset = false): Coordinate {
+    const target = trackingTargetProjected(frame);
+    if (reset || !this.trackedCenter) {
+      this.trackedCenter = { ...frame.position };
+      return this.trackedCenter;
+    }
+    const current = mercatorProject(this.trackedCenter);
+    const scale = TILE_SIZE * 2 ** frame.zoom;
+    const dxPx = (target.x - current.x) * scale;
+    const dyPx = (target.y - current.y) * scale;
+    const lagPx = Math.hypot(dxPx, dyPx);
+    const maxStepPx = trackingPanLimitPxPerSec(this.plan!, frameIndex, this.trackingSpeed, lagPx) / Math.max(1, this.plan?.fps || 60);
+    const ratio = Math.min(Math.max(0, lagPx - 4), maxStepPx) / Math.max(lagPx, 1e-9);
+    this.trackedCenter = mercatorUnproject({ x: current.x + dxPx * ratio / scale, y: current.y + dyPx * ratio / scale });
+    return this.trackedCenter;
+  }
+
+  private setSource(id: string, data: object): void {
+    (this.map.getSource(id) as GeoJSONSource | undefined)?.setData(data as never);
+  }
+}
+
+export function mapJourneyTime(timeSec: number, stops: PlaybackStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
+  let added = 0;
+  for (const stop of stops) {
+    const start = clamp(stop.atSec, 0, routeDurationSec) + added;
+    const duration = Math.max(0, stop.durationSec);
+    if (timeSec < start) break;
+    if (timeSec < start + duration) return { routeTimeSec: clamp(stop.atSec, 0, routeDurationSec), activeStopId: stop.id };
+    added += duration;
+  }
+  return { routeTimeSec: clamp(timeSec - added, 0, routeDurationSec), activeStopId: null };
+}
+
+export function trackingDurationScale(plan: PlaybackPlan): number {
+  const recommended = Number(plan.durationLimits?.recommendedSeconds);
+  const actual = Number(plan.durationSec);
+  return recommended > 0 && actual > 0 ? clamp(Math.sqrt(recommended / actual), 0.72, 1.85) : 1;
+}
+
+export function trackingDemandPxPerSec(plan: PlaybackPlan, frameIndex: number): number {
+  const frames = plan.frames;
+  const fps = Math.max(1, plan.fps || 60);
+  const index = clamp(Math.round(frameIndex), 0, Math.max(0, frames.length - 1));
+  const frame = frames[index];
+  if (!frame || frame.kind !== 'TRAVEL') return 0;
+  const radius = Math.max(1, Math.round(fps * 0.1));
+  let left = index;
+  let right = index;
+  while (left > 0 && index - left < radius) {
+    const candidate = frames[left - 1];
+    if (candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
+    left -= 1;
+  }
+  while (right < frames.length - 1 && right - index < radius) {
+    const candidate = frames[right + 1];
+    if (candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
+    right += 1;
+  }
+  if (left === right) return 0;
+  const first = frames[left];
+  const last = frames[right];
+  if (first.kind !== 'TRAVEL' || last.kind !== 'TRAVEL') return 0;
+  const a = trackingTargetProjected(first);
+  const b = trackingTargetProjected(last);
+  const scale = TILE_SIZE * 2 ** frame.zoom;
+  return Math.hypot((b.x - a.x) * scale, (b.y - a.y) * scale) / Math.max((right - left) / fps, 1 / fps);
+}
+
+export function trackingPanLimitPxPerSec(plan: PlaybackPlan, frameIndex: number, userMultiplier = 1, lagPx = 0): number {
+  const frame = plan.frames[clamp(Math.round(frameIndex), 0, Math.max(0, plan.frames.length - 1))];
+  const basePan = Math.max(120, Number(frame?.kind === 'TRAVEL' ? frame.maxPanPxPerSec : 0) || 240);
+  const demand = trackingDemandPxPerSec(plan, frameIndex);
+  const durationFloor = basePan * trackingDurationScale(plan) * 0.82;
+  const synchronized = demand > 0 ? demand * 1.16 + 36 : 0;
+  const catchUp = Math.max(0, lagPx - 36) * 2.8;
+  const automatic = clamp(Math.max(basePan * 0.72, durationFloor, synchronized) + catchUp, 120, 2600);
+  return clamp(automatic * clamp(userMultiplier, 0.5, 2), 80, 3600);
+}
+
+function trackingTargetProjected(frame: TravelFrame): { x: number; y: number } {
+  return Number.isFinite(frame.targetCenterX) && Number.isFinite(frame.targetCenterY)
+    ? { x: frame.targetCenterX!, y: frame.targetCenterY! }
+    : mercatorProject(frame.center || frame.position);
+}
+
+function fullRoute(plan: PlaybackPlan): object {
+  const travel = plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL');
+  return lineFeatures(travel);
+}
+
+function trailForFrame(plan: PlaybackPlan, index: number): object {
+  const maxFrames = Math.max(2, Math.round(plan.fps * 4));
+  const frames: TravelFrame[] = [];
+  for (let cursor = index; cursor >= 0 && frames.length < maxFrames; cursor -= 1) {
+    const frame = plan.frames[cursor];
+    if (frame.kind !== 'TRAVEL') break;
+    frames.push(frame);
+  }
+  return lineFeatures(frames.reverse());
+}
+
+function lineFeatures(frames: TravelFrame[]): object {
+  if (!frames.length) return emptyCollection();
+  const features: object[] = [];
+  let mode = frames[0].mobilityClass;
+  let scene = frames[0].sceneId;
+  let coordinates: number[][] = [[frames[0].position.lng, frames[0].position.lat]];
+
+  const flush = () => {
+    if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
+    features.push({
+      type: 'Feature',
+      properties: { mobilityClass: mode, color: COLORS[mode] },
+      geometry: { type: 'LineString', coordinates }
+    });
+  };
+
+  for (let index = 1; index < frames.length; index += 1) {
+    const frame = frames[index];
+    if (frame.mobilityClass !== mode || frame.sceneId !== scene) {
+      flush();
+      mode = frame.mobilityClass;
+      scene = frame.sceneId;
+      coordinates = [[frame.position.lng, frame.position.lat]];
+    } else {
+      coordinates.push([frame.position.lng, frame.position.lat]);
+    }
+  }
+  flush();
+  return { type: 'FeatureCollection', features };
+}
+
+function headForFrame(frame: TravelFrame): object {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      properties: { color: COLORS[frame.mobilityClass] },
+      geometry: { type: 'Point', coordinates: [frame.position.lng, frame.position.lat] }
+    }]
+  };
+}
+
+function emptyCollection(): object {
+  return { type: 'FeatureCollection', features: [] };
+}

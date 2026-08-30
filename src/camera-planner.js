@@ -88,8 +88,8 @@ export function planPlayback(movements, {
     if (sceneBreakBefore) sceneId += 1;
     const result = {
       ...segment,
-      videoStartSec: cursor,
-      videoEndSec: cursor + videoSec,
+      startVideoSec: cursor,
+      endVideoSec: cursor + videoSec,
       videoSec,
       gapKm,
       sceneBreakBefore,
@@ -102,7 +102,7 @@ export function planPlayback(movements, {
   if (segments.length) {
     const delta = movementBudgetSec - cursor;
     segments.at(-1).videoSec += delta;
-    segments.at(-1).videoEndSec += delta;
+    segments.at(-1).endVideoSec += delta;
     cursor = movementBudgetSec;
   }
 
@@ -112,9 +112,9 @@ export function planPlayback(movements, {
 
   for (let i = 0; i < movementFrameCount; i += 1) {
     const timeSec = Math.min(cursor, i / safeFps);
-    while (segmentIndex < segments.length - 1 && timeSec >= segments[segmentIndex].videoEndSec) segmentIndex += 1;
+    while (segmentIndex < segments.length - 1 && timeSec >= segments[segmentIndex].endVideoSec) segmentIndex += 1;
     const segment = segments[segmentIndex];
-    const local = clamp((timeSec - segment.videoStartSec) / Math.max(segment.videoSec, 1 / safeFps), 0, 1);
+    const local = clamp((timeSec - segment.startVideoSec) / Math.max(segment.videoSec, 1 / safeFps), 0, 1);
     const distanceAlongM = segment.path.totalMeters * local;
     const position = pointAtPathDistance(segment.path, distanceAlongM) || segment.end;
 
