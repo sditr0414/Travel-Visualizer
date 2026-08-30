@@ -1,5 +1,5 @@
-import { Film, ImagePlus, MapPin, MoveRight } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { Film, ImageOff, ImagePlus, MapPin, MoveRight } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import type { JourneyMedia } from '../types';
 
 interface Props {
@@ -21,9 +21,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, placeName, onFile
       {active && url ? (
         <article className="media-card">
           <div className="media-frame">
-            {active.kind === 'image'
-              ? <img src={url} alt={active.title} />
-              : <video src={url} muted playsInline autoPlay={videoMode === 'PLAY'} controls={videoMode === 'PLAY'} preload="metadata" />}
+            <MediaAsset key={active.id} item={active} url={url} videoMode={videoMode} />
             {active.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 대표 장면</span>}
           </div>
           <footer>
@@ -51,6 +49,16 @@ export function MediaJourneyPane({ media, activeId, videoMode, placeName, onFile
       )}
     </aside>
   );
+}
+
+function MediaAsset({ item, url, videoMode }: { item: JourneyMedia; url: string; videoMode: Props['videoMode'] }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <div className="media-load-error" role="status"><ImageOff size={24} /><span>이 형식은 브라우저에서 미리 볼 수 없습니다.</span></div>;
+  }
+  return item.kind === 'image'
+    ? <img src={url} alt={item.title} onError={() => setFailed(true)} />
+    : <video src={url} muted playsInline autoPlay={videoMode === 'PLAY'} controls={videoMode === 'PLAY'} preload="metadata" onError={() => setFailed(true)} />;
 }
 
 function formatMediaDate(value: number): string {

@@ -58,7 +58,7 @@ export async function analyzeMediaFilesInline(
       if (parsed) {
         const mediaFile = findMatchingMedia(sidecar, parsed.title, mediaIndex);
         const record = mediaFile ? recordByFile.get(mediaFile) : null;
-        if (record) Object.assign(record, parsed, { source: 'takeout-sidecar' satisfies MediaMetadataSource });
+        if (record) Object.assign(record, mergeSidecarMetadata(record, parsed));
       }
     } catch {
       // Invalid or unrelated JSON files are intentionally ignored.
@@ -85,6 +85,19 @@ export function parseTakeoutSidecar(data: unknown, sidecarName = ''): { title: s
     takenMs,
     lat: gps?.lat ?? null,
     lng: gps?.lng ?? null
+  };
+}
+
+export function mergeSidecarMetadata(
+  record: MediaMetadataRecord,
+  sidecar: { title: string; takenMs: number; lat: number | null; lng: number | null }
+): MediaMetadataRecord {
+  return {
+    ...record,
+    ...sidecar,
+    lat: sidecar.lat ?? record.lat,
+    lng: sidecar.lng ?? record.lng,
+    source: 'takeout-sidecar'
   };
 }
 

@@ -20,6 +20,12 @@ export interface PlayerCallbacks {
   onComplete?: () => void;
 }
 
+interface ScheduledStop extends PlaybackStop {
+  journeyStartSec: number;
+  journeyEndSec: number;
+  addedThroughSec: number;
+}
+
 export class PlayerController {
   private plan: PlaybackPlan | null = null;
   private playing = false;
@@ -31,6 +37,9 @@ export class PlayerController {
   private trackingSpeed = 1;
   private trackedCenter: Coordinate | null = null;
   private stops: PlaybackStop[] = [];
+  private stopSchedule: ScheduledStop[] = [];
+  private stopDurationSec = 0;
+  private fullRouteData: object = emptyCollection();
   private lastStopId: string | null = null;
 
   constructor(private readonly map: Map, private readonly callbacks: PlayerCallbacks = {}) {}
@@ -41,16 +50,17 @@ export class PlayerController {
     this.timeSec = 0;
     this.frameIndex = -1;
     this.trackedCenter = null;
-    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
+    this.replaceStops(stops);
+    this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
-    this.setSource('route-all', fullRoute(plan));
+    this.setSource('route-all', this.fullRouteData);
     this.setSource('route-progress', emptyCollection());
     this.setSource('route-head', emptyCollection());
     this.render(0, true);
   }
 
   setStops(stops: PlaybackStop[]): void {
-    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
+    this.replaceStops(stops);
     this.timeSec = Math.min(this.timeSec, this.getDuration());
     this.renderForTime(true);
   }
@@ -66,7 +76,7 @@ export class PlayerController {
   }
 
   getDuration(): number {
-    return (this.plan?.durationSec ?? 0) + this.stops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0);
+    return (this.plan?.durationSec ?? 0) + this.stopDurationSec;
   }
 
   play(): void {
@@ -103,6 +113,10 @@ export class PlayerController {
   dispose(): void {
     this.pause();
     this.plan = null;
+    this.stops = [];
+    this.stopSchedule = [];
+    this.stopDurationSec = 0;
+    this.fullRouteData = emptyCollection();
   }
 
   isPlaying(): boolean {
@@ -123,7 +137,7 @@ export class PlayerController {
 
   private renderForTime(force = false): void {
     if (!this.plan) return;
-    const mapped = mapJourneyTime(this.timeSec, this.stops, this.plan.durationSec);
+    const mapped = mapScheduledJourneyTime(this.timeSec, this.stopSchedule, this.plan.durationSec);
     const stopChanged = mapped.activeStopId !== this.lastStopId;
     this.lastStopId = mapped.activeStopId;
     this.render(Math.floor(mapped.routeTimeSec * this.plan.fps), force || stopChanged, mapped.activeStopId);
@@ -153,7 +167,7 @@ export class PlayerController {
       this.setSource('route-progress', trailForFrame(this.plan, nextIndex));
       this.setSource('route-head', headForFrame(frame));
     } else {
-      this.setSource('route-progress', fullRoute(this.plan));
+      this.setSource('route-progress', this.fullRouteData);
       this.setSource('route-head', emptyCollection());
     }
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, nextIndex, this.timeSec, activeStopId);
@@ -179,6 +193,38 @@ export class PlayerController {
   private setSource(id: string, data: object): void {
     (this.map.getSource(id) as GeoJSONSource | undefined)?.setData(data as never);
   }
+
+  private replaceStops(stops: PlaybackStop[]): void {
+    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
+    let added = 0;
+    this.stopSchedule = this.stops.map(stop => {
+      const duration = Math.max(0, stop.durationSec);
+      const routeTimeSec = clamp(stop.atSec, 0, this.plan?.durationSec ?? Math.max(0, stop.atSec));
+      const journeyStartSec = routeTimeSec + added;
+      added += duration;
+      return { ...stop, journeyStartSec, journeyEndSec: journeyStartSec + duration, addedThroughSec: added };
+    });
+    this.stopDurationSec = added;
+  }
+}
+
+function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
+  let low = 0;
+  let high = schedule.length - 1;
+  let index = -1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    if (schedule[middle].journeyStartSec <= timeSec) {
+      index = middle;
+      low = middle + 1;
+    } else high = middle - 1;
+  }
+  if (index < 0) return { routeTimeSec: clamp(timeSec, 0, routeDurationSec), activeStopId: null };
+  const stop = schedule[index];
+  if (timeSec < stop.journeyEndSec) {
+    return { routeTimeSec: clamp(stop.atSec, 0, routeDurationSec), activeStopId: stop.id };
+  }
+  return { routeTimeSec: clamp(timeSec - stop.addedThroughSec, 0, routeDurationSec), activeStopId: null };
 }
 
 export function mapJourneyTime(timeSec: number, stops: PlaybackStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {

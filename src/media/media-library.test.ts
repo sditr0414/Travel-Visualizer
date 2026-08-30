@@ -14,7 +14,7 @@ describe('local media matching', () => {
       totalBytes: 2_162_417,
       items: [{
         id: '0', name: '20260410_000500.jpg', size: 2_162_417, lastModified: Date.now(), kind: 'image',
-        metadata: { takenMs: Date.parse('2026-04-10T00:05:00'), lat: null, lng: null, source: 'filename-time' }
+        metadata: { takenMs: Date.parse('2026-04-10T00:05:00'), lat: null, lng: null, source: 'filename-time', embeddedScanned: true }
       }]
     }, plan);
     const resolved = await result;
@@ -40,6 +40,10 @@ describe('local media matching', () => {
     const value = parseFilenameTimestamp('IMG_20260410_091530.jpg');
     expect(value).not.toBeNull();
     expect(new Date(value!).getFullYear()).toBe(2026);
+  });
+
+  it('rejects impossible filename dates instead of rolling them into another month', () => {
+    expect(parseFilenameTimestamp('20260231_120000.jpg')).toBeNull();
   });
 
   it('matches capture time into a route segment', () => {

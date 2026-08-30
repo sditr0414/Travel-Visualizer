@@ -60,7 +60,7 @@ const [worldStat, regionStat] = await Promise.all([stat(WORLD_FILE), stat(REGION
 console.log('\n완료');
 console.log(`  세계 개요: ${formatBytes(worldStat.size)}`);
 console.log(`  한국·일본 상세: ${formatBytes(regionStat.size)}`);
-console.log('  npm start 후 브라우저를 새로고침하면 로컬 지도를 자동 사용합니다.');
+console.log('  npm start 후 설정의 지도 소스에서 로컬 PMTiles를 선택하세요.');
 
 async function resolvePlanetUrl(pmtilesBin) {
   const explicit = process.env.PROTOMAPS_BUILD_URL;

@@ -2,63 +2,97 @@
 
 ## Product
 
-Google Timeline JSON을 브라우저에서만 처리해 지도 위 여행 경로를 재생하는 개인 로컬용 반응형 웹앱입니다. 시작 화면에서 로컬 Timeline과 사진 폴더를 선택하며 개인 파일은 업로드하거나 영구 저장하지 않습니다.
+Google Timeline JSON과 로컬 사진·영상을 지도 위에서 시네마틱하게 재생하는 개인 로컬용 반응형 웹앱입니다. Google Photos나 외부 저장소를 사용하지 않습니다. 기본 데이터는 loopback 서버가 같은 PC의 브라우저에만 제공합니다.
+
+## Current version
+
+- `main`과 `v2` 태그: 현재 React/TypeScript 버전
+- `v1` 태그: 이전 JavaScript 구현
+- Node.js 24+, React 19, strict TypeScript, Vite 8
 
 ## Architecture
 
-- React 19 + strict TypeScript + Vite
-- MapLibre GL, 온라인 OpenFreeMap 기본, 로컬 PMTiles 선택
-- Timeline JSON 파싱과 재생 계획은 Web Worker에서 실행
-- 앱 상태는 `idle/loading/ready/planning/playing/paused/complete/error` reducer로 관리
-- 60fps 프레임 재생은 React 밖의 `PlayerController`가 담당
-- Node 서버는 Vite middleware/정적 파일, `/api/map-status`, PMTiles Range만 제공
-
-핵심 순수 알고리즘은 기존 검증 코드를 유지하며 TypeScript 도메인 경계로 감쌉니다.
-
 ```text
-sample/file text
+Timeline file/text
   -> TimelineWorkerClient
   -> timeline.worker.ts
-  -> typed timeline/planner domain
+  -> timeline/planner domain
   -> PlaybackPlan
   -> PlayerController
-  -> MapLibre sources/camera
+  -> MapLibre sources and camera
+
+Local media manifest
+  -> sidecar/cache
+  -> bounded EXIF header scan
+  -> Timeline/GPS matching
+  -> photo playback stops
 ```
 
-## Public types
+- 앱 상태: `idle/loading/ready/planning/playing/paused/complete/error` reducer
+- Timeline 파싱·계획: Web Worker
+- 프레임 재생: React 밖의 `PlayerController`
+- 지도: 온라인 OpenFreeMap 기본, PMTiles 코드는 선택 시 동적 로드
+- 사진: Takeout sidecar → JPEG EXIF → 파일명 → 수정 시각
+- 캐시: `.cache/media-metadata.json`, 파일 fingerprint와 parser version으로 무효화
+- 서버: `127.0.0.1` 전용 Vite/정적 서버와 제한된 로컬 API
 
-`src/types.ts`가 다음 계약의 기준입니다.
+## Contracts
 
-- `TimelineSource`, `TimelineScanResult`, `ParsedTrip`
-- `AnalysisOptions`, `PlaybackPlan`, `PlaybackFrame`
-- `MapSourceConfig`, `MapStatus`
-- `WorkerRequest`, `WorkerResponse`
+`src/types.ts`가 데이터 계약의 기준입니다.
 
-Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`만 사용합니다. 플레이어 API는 `loadPlan`, `play`, `pause`, `seek`, `reset`, `dispose`로 제한합니다.
+- Timeline: `TimelineSource`, `TimelineScanResult`, `ParsedTrip`
+- 계획: `AnalysisOptions`, `PlaybackPlan`, `PlaybackFrame`, `PlaybackStop`
+- 미디어: `JourneyMedia`, `LocalMediaManifest`, `MediaMetadataRecord`
+- 지도: `MapSourceConfig`, `MapStatus`
+- Worker: `WorkerRequest`, `WorkerResponse`
+
+Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플레이어의 핵심 제어는 `loadPlan`, `play`, `pause`, `seek`, `reset`, `dispose`이며 설정 동기화를 위한 `setStops`, `setLockToPosition`, `setTrackingSpeed`가 있습니다.
+
+## Local API
+
+- `GET /api/map-status`
+- `GET|HEAD /api/local-timeline`
+- `GET|HEAD /api/local-media-manifest`
+- `GET|HEAD /api/local-media/:id` — Range 지원
+- `POST /api/local-media-metadata-cache` — same-origin 전용
+- `GET|HEAD /maps/*.pmtiles` — 허용된 두 파일만 Range 지원
+
+기본 경로는 저장소 상위의 `타임라인.json`, `여행 사진`입니다. `TRAVEL_TIMELINE_PATH`, `TRAVEL_MEDIA_DIR`, `TRAVEL_METADATA_CACHE`, `PORT`로 바꿀 수 있습니다.
 
 ## UX invariants
 
-- 첫 화면의 주인공은 전체 지도와 여행 경로다.
-- 재생 컨트롤은 항상 하단에 유지한다.
-- 설정은 접을 수 있고 모바일에서 핵심 지도를 가리지 않아야 한다.
-- 개인 Timeline은 서버에 전송하지 않는다.
-- 기본 지도는 온라인이며 로컬 지도 파일이 없을 때 빈 화면으로 전환하지 않는다.
-- 카메라 전략은 복원된 AUTO를 기본값으로 제공하고 DAY·SEGMENT를 선택할 수 있다.
-- `prefers-reduced-motion`을 존중한다.
+- 전체 지도와 여행 경로가 첫 화면의 중심이다.
+- 재생 컨트롤은 하단, 설정은 접이식 패널에 둔다.
+- 모바일에서도 지도와 핵심 조작을 우선한다.
+- AUTO 카메라를 기본으로 유지하고 검증된 카메라 계산을 임의로 단순화하지 않는다.
+- 정지 상태에서만 휠 확대를 허용한다.
+- 재생 전·일시정지에는 전체 경로, 재생 중에는 진행 경로를 표시한다.
+- `prefers-reduced-motion`과 키보드 조작을 유지한다.
+- 기존 시각 스타일을 수정할 때는 정보 위계와 조작성을 우선한다.
 
-## Out of scope
+## Privacy and repository rules
 
-로컬 사진·영상 여정은 MVP에 포함됩니다. Google Photos, Takeout 전용 가져오기, 영상 파일 내보내기, PWA, 네이티브 앱은 이후 작업입니다. 관련 과거 구현은 Git 이력에서만 참고합니다.
+- Timeline과 사진은 외부로 업로드하지 않는다.
+- 서버 바인딩은 `127.0.0.1`을 유지한다.
+- Google Photos API·OAuth를 추가하지 않는다.
+- Timeline, 사진, PMTiles, `.env`, OAuth secret, `.cache`를 커밋하지 않는다.
+- 저장소는 과거 위치 fixture 이력 때문에 비공개 상태를 유지한다.
+
+## Known limitations
+
+- MP4·MOV 내부 촬영 시각과 GPS 파싱은 미구현이다.
+- JPEG 이외 이미지의 내장 위치 메타데이터는 아직 읽지 않는다.
+- 영상 내보내기, PWA, 네이티브 앱은 범위 밖이다.
+- 로컬 49MB Timeline 검증은 파일을 커밋하지 않고 `REAL_TIMELINE_JSON` 환경 변수로 수행한다.
+- Playwright 서버는 `--no-local-data`로 개인 기본 파일의 자동 로드를 차단한다.
 
 ## Commands
 
-```bash
+```powershell
 npm start
-npm run typecheck
-npm run lint
-npm test
-npm run build
+npm run verify
 npm run test:e2e
+npm run map:setup
 ```
 
-모든 검증을 통과한 뒤에만 `main` 병합 대상으로 판단합니다. 실제 Timeline과 PMTiles는 커밋하지 않습니다.
+실제 데이터 없이 typecheck, lint, 단위·통합 테스트, build, 데스크톱·모바일 E2E가 모두 통과해야 합니다.

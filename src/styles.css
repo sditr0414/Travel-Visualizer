@@ -120,6 +120,8 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; }
 .media-card { position: relative; display: grid; width: min(100%, 620px); max-height: 100%; margin: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.12); border-radius: 13px; background: #101214; box-shadow: 0 24px 70px rgba(0,0,0,.34); animation: media-in 260ms cubic-bezier(.16,.82,.2,1); }
 .media-frame { position: relative; display: grid; place-items: center; min-height: 220px; max-height: calc(100vh - 245px); background: #0b0d0f; }
 .media-frame img, .media-frame video { display: block; width: 100%; height: 100%; max-height: calc(100vh - 245px); object-fit: contain; }
+.media-load-error { display: grid; justify-items: center; gap: 9px; padding: 24px; color: var(--muted); font-size: 11px; text-align: center; }
+.media-load-error svg { color: var(--accent); }
 .video-badge { position: absolute; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 7px; color: #f7f3ed; background: rgba(10,12,14,.78); font-size: 9px; font-weight: 750; }
 .media-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 12px 14px; }
 .media-card footer > div { display: grid; gap: 3px; min-width: 0; }

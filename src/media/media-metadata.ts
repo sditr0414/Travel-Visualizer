@@ -1,7 +1,7 @@
 const JPEG_SCAN_BYTES = 256 * 1024;
 
 export interface EmbeddedMetadata {
-  takenMs: number;
+  takenMs: number | null;
   lat: number | null;
   lng: number | null;
 }
@@ -58,8 +58,8 @@ function parseTiff(view: DataView, base: number, end: number): EmbeddedMetadata 
   const dateText = readAscii(view, base, end, exif?.get(0x9003) ?? exif?.get(0x9004) ?? ifd0.get(0x0132), little);
   const zone = readAscii(view, base, end, exif?.get(0x9011) ?? exif?.get(0x9012), little);
   const takenMs = parseExifDate(dateText, zone);
-  if (takenMs == null) return null;
   const coordinate = readGps(view, base, end, gps, little);
+  if (takenMs == null && !coordinate) return null;
   return { takenMs, lat: coordinate?.lat ?? null, lng: coordinate?.lng ?? null };
 }
 
@@ -135,7 +135,16 @@ function parseExifDate(value: string | null, zoneValue: string | null): number |
 
 function localTimestamp(parts: number[]): number | null {
   const [year, month, day, hour, minute, second] = parts;
-  if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 60) return null;
+  if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return null;
   const value = new Date(year, month - 1, day, hour, minute, second).getTime();
-  return Number.isFinite(value) ? value : null;
+  if (!Number.isFinite(value)) return null;
+  const date = new Date(value);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day
+    && date.getHours() === hour
+    && date.getMinutes() === minute
+    && date.getSeconds() === second
+    ? value
+    : null;
 }

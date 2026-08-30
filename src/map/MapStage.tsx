@@ -19,11 +19,19 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
     let map: Map | null = null;
     let ready = false;
     let fallbackTimeout = 0;
-    const initTimeout = window.setTimeout(() => {
+    const initTimeout = window.setTimeout(async () => {
+      if (!containerRef.current) return;
+      let style;
+      try {
+        style = await mapStyleFor(source);
+      } catch {
+        onError('지도 구성을 준비하지 못해 기본 배경으로 전환했습니다.');
+        style = fallbackStyle();
+      }
       if (!containerRef.current) return;
       map = new maplibregl.Map({
         container: containerRef.current,
-        style: mapStyleFor(source),
+        style,
         center: [127.6, 36.2],
         zoom: 5.4,
         attributionControl: false,
