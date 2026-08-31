@@ -7,11 +7,15 @@ interface Props {
   activeId: string | null;
   videoMode: 'THUMBNAIL' | 'PLAY';
   mobilityClass: MobilityClass;
+  movementDate: string;
+  movementSpeed: string;
+  originCity: string | null;
+  destinationCity: string | null;
   placeName: string | null;
   onFiles: (files: FileList) => void;
 }
 
-export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, placeName, onFiles }: Props) {
+export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
   const active = media.find(item => item.id === activeId) ?? null;
   const movement = MOVEMENT_VISUALS[mobilityClass];
   const objectUrl = useMemo(() => active?.file ? URL.createObjectURL(active.file) : null, [active]);
@@ -39,7 +43,12 @@ export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, pl
         <div className="media-transit" aria-live="polite">
           <span className="movement-pictogram" aria-hidden="true">{movement.icon}</span>
           <strong>{movement.label}</strong>
-          <p>{media.length}개의 사진·영상이 경로에 연결되었습니다.</p>
+          <div className="movement-meta"><span>{movementDate}</span><span>{movementSpeed}</span></div>
+          {originCity && destinationCity && originCity !== destinationCity && (
+            <div className="movement-route" aria-label={`출발 ${originCity}, 도착 ${destinationCity}`}>
+              <span>{originCity}</span><span aria-hidden="true">→</span><span>{destinationCity}</span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="media-empty">

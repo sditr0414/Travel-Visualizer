@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Camera, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
-import type { Map } from 'maplibre-gl';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 import { ONLINE_STYLE_URL } from './map/map-style';
+import { resolveCityLabel } from './map/city-label';
 import { PlayerController } from './player/player-controller';
 import { loadJourneyMedia } from './media/media-library';
 import { loadLocalMediaManifest } from './media/local-media-library';
@@ -20,6 +21,8 @@ interface HudState {
   mobilityClass: MobilityClass;
   mobility: string;
   speed: string;
+  originCity: string | null;
+  destinationCity: string | null;
 }
 
 const MOBILITY_LABELS: Record<string, string> = {
@@ -46,7 +49,7 @@ export function App({ workerClient }: AppProps) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [client] = useState<TimelineWorkerPort>(() => workerClient ?? new TimelineWorkerClient());
 
-  const [map, setMap] = useState<Map | null>(null);
+  const [map, setMap] = useState<MapLibreMap | null>(null);
   const [mapKind, setMapKind] = useState<'online' | 'local-pmtiles'>('online');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -71,7 +74,7 @@ export function App({ workerClient }: AppProps) {
   const [desktopMapShare, setDesktopMapShare] = useState(0.60);
   const [mobileMapShare, setMobileMapShare] = useState(0.52);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
-  const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—' });
+  const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
   const playerRef = useRef<PlayerController | null>(null);
   const autoPlanRef = useRef(false);
   const scanOperationRef = useRef(0);
@@ -84,6 +87,7 @@ export function App({ workerClient }: AppProps) {
   const activeMediaRef = useRef<string | null>(null);
   const shellRef = useRef<HTMLElement>(null);
   const lastHudUpdateRef = useRef(0);
+  const cityRouteCacheRef = useRef(new Map<number, { originCity: string | null; destinationCity: string | null; lastAttemptMs: number }>());
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<{ name: string; count: number } | null>(null);
   const media = photoViewMode === 'ALL' ? mediaLibrary.all : mediaLibrary.preview;
 
@@ -260,6 +264,7 @@ export function App({ workerClient }: AppProps) {
     playerRef.current?.dispose();
     playerRef.current = null;
     activeMediaRef.current = '__controller-reset__';
+    cityRouteCacheRef.current.clear();
     if (!map || !state.plan) return;
     const controller = new PlayerController(map, {
       onFrame: (frame, _frameIndex, timeSec, stopId) => {
@@ -271,7 +276,25 @@ export function App({ workerClient }: AppProps) {
         }
         if (timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
         lastHudUpdateRef.current = performance.now();
-        setHud(hudForFrame(frame, state.plan!, timeSec));
+        const nextHud = hudForFrame(frame, state.plan!, timeSec);
+        if (frame.kind === 'TRAVEL') {
+          const segment = state.plan!.segments[frame.segmentIndex];
+          const cached = cityRouteCacheRef.current.get(frame.segmentIndex);
+          const now = performance.now();
+          if (!cached || ((!cached.originCity || !cached.destinationCity) && now - cached.lastAttemptMs >= 1000)) {
+            cityRouteCacheRef.current.set(frame.segmentIndex, {
+              originCity: cached?.originCity ?? resolveCityLabel(map, segment.start),
+              destinationCity: cached?.destinationCity ?? resolveCityLabel(map, segment.end),
+              lastAttemptMs: now
+            });
+          }
+          const route = cityRouteCacheRef.current.get(frame.segmentIndex);
+          if (route) {
+            nextHud.originCity = route.originCity;
+            nextHud.destinationCity = route.destinationCity;
+          }
+        }
+        setHud(nextHud);
       },
       onComplete: () => {
         setActiveMediaId(null);
@@ -317,7 +340,7 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     if (!map) return;
-    const timer = window.setTimeout(() => (map as Map & { resize?: () => void }).resize?.(), 220);
+    const timer = window.setTimeout(() => (map as MapLibreMap & { resize?: () => void }).resize?.(), 220);
     return () => window.clearTimeout(timer);
   }, [journeyMode, map, mapShare]);
 
@@ -326,7 +349,7 @@ export function App({ workerClient }: AppProps) {
     map.setLayoutProperty('route-all', 'visibility', state.phase === 'playing' ? 'none' : 'visible');
   }, [map, state.phase, state.plan]);
 
-  const onMapReady = useCallback((nextMap: Map) => setMap(nextMap), []);
+  const onMapReady = useCallback((nextMap: MapLibreMap) => setMap(nextMap), []);
   const onMapError = useCallback((message: string) => {
     dispatch({ type: 'NOTICE', message: `지도 알림 · ${message}` });
   }, []);
@@ -473,6 +496,10 @@ export function App({ workerClient }: AppProps) {
           activeId={state.phase === 'ready' || state.phase === 'planning' ? null : activeMediaId}
           videoMode={videoMode}
           mobilityClass={hud.mobilityClass}
+          movementDate={hud.date}
+          movementSpeed={hud.speed}
+          originCity={hud.originCity}
+          destinationCity={hud.destinationCity}
           placeName={activePlaceName}
           onFiles={files => void onMediaFiles(files)}
         />
@@ -542,7 +569,7 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && <section className="journey-hud" aria-live="polite">
+      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud" aria-live="polite">
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong>{hud.mobility}</strong>
         <div className="hud-meta"><span>{hud.date}</span><span>{hud.speed}</span></div>
@@ -678,7 +705,7 @@ export function App({ workerClient }: AppProps) {
           />
           <div className="timeline-meta">
             <span>{formatClock(hud.timeSec)}</span>
-            <p className="player-status">{state.statusMessage}</p>
+            <p className="player-status">{journeyMode === 'PHOTOS' && (state.phase === 'ready' || state.phase === 'planning' || !activeMediaId) ? '' : state.statusMessage}</p>
             <span>{formatClock(duration)}</span>
           </div>
         </div>
@@ -688,7 +715,7 @@ export function App({ workerClient }: AppProps) {
 }
 
 function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number): HudState {
-  if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '—' };
+  if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '—', originCity: null, destinationCity: null };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
@@ -697,7 +724,9 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number):
     date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }).format(sourceMs),
     mobilityClass: travel.mobilityClass,
     mobility: `${MOBILITY_LABELS[travel.mobilityClass] ?? '이동'}${segment.inferred ? ' · 추정' : ''}`,
-    speed: `${travel.speedKmh.toFixed(0)} km/h`
+    speed: `${travel.speedKmh.toFixed(0)} km/h`,
+    originCity: null,
+    destinationCity: null
   };
 }
 
@@ -740,7 +769,7 @@ function progressValue(progress: MediaImportProgress | null): number {
   return start + (end - start) * ratio;
 }
 
-function resolvePlaceName(map: Map, item: JourneyMedia): string {
+function resolvePlaceName(map: MapLibreMap, item: JourneyMedia): string {
   try {
     const point = map.project([item.matchedLng, item.matchedLat]);
     const features = map.queryRenderedFeatures([

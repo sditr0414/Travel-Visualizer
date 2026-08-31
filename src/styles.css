@@ -141,7 +141,12 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; }
 .media-empty > span, .media-transit > span { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--accent); background: rgba(255,255,255,.035); }
 .media-transit > .movement-pictogram { width: auto; height: auto; border: 0; background: transparent; color: inherit; font-size: clamp(46px, 6vw, 76px); line-height: 1; filter: grayscale(.15); }
 .media-empty strong, .media-transit strong { font-size: 16px; letter-spacing: -.03em; }
-.media-empty p, .media-transit p { margin: 8px 0 17px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.media-empty p { margin: 8px 0 17px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.movement-meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.movement-meta span + span::before { content: "·"; margin-right: 8px; color: rgba(255,255,255,.28); }
+.movement-route { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; margin-top: 14px; color: #ddd8d1; font-size: 12px; font-weight: 750; }
+.movement-route span:not([aria-hidden]) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movement-route span[aria-hidden] { color: var(--accent); }
 .media-import-action { position: relative; display: grid; place-items: center; min-height: 40px; padding: 0 14px; border-radius: 9px; color: var(--ink); background: var(--paper); font-size: 11px; font-weight: 850; cursor: pointer; }
 .media-import-action input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 @keyframes media-in { from { opacity: 0; transform: translateX(12px) scale(.992); } }
