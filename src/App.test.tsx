@@ -89,7 +89,7 @@ describe('App integration', () => {
     };
     render(<App workerClient={worker} />);
     fireEvent.change(screen.getByLabelText('시작할 사진 폴더 선택'), {
-      target: { files: [new File(['image'], 'IMG_20260410_000500.png', { type: 'image/png' })] }
+      target: { files: [new File(['image'], 'IMG_trip.png', { type: 'image/png', lastModified: Date.parse('2026-04-10T00:00:00Z') })] }
     });
     expect(screen.getByText('선택한 파일 · 1개')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
@@ -97,7 +97,7 @@ describe('App integration', () => {
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
-    expect(screen.getByAltText('IMG 20260410 000500')).toBeInTheDocument();
+    expect(screen.getByAltText('IMG trip')).toBeInTheDocument();
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
     expect(separator).toHaveAttribute('aria-valuenow', '60');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
