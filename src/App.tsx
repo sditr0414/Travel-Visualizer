@@ -8,7 +8,7 @@ import { loadLocalMediaManifest } from './media/local-media-library';
 import { MediaJourneyPane } from './media/MediaJourneyPane';
 import { TimelineWorkerClient, type TimelineWorkerPort } from './services/timeline-worker-client';
 import { appReducer, initialAppState } from './state/app-reducer';
-import type { CameraMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, PacingMode, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
+import type { CameraMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PacingMode, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
 
 interface AppProps {
   workerClient?: TimelineWorkerPort;
@@ -17,6 +17,7 @@ interface AppProps {
 interface HudState {
   timeSec: number;
   date: string;
+  mobilityClass: MobilityClass;
   mobility: string;
   speed: string;
 }
@@ -70,7 +71,7 @@ export function App({ workerClient }: AppProps) {
   const [desktopMapShare, setDesktopMapShare] = useState(0.60);
   const [mobileMapShare, setMobileMapShare] = useState(0.52);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
-  const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobility: '여행 준비', speed: '—' });
+  const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—' });
   const playerRef = useRef<PlayerController | null>(null);
   const autoPlanRef = useRef(false);
   const scanOperationRef = useRef(0);
@@ -462,12 +463,19 @@ export function App({ workerClient }: AppProps) {
     : targetDurationSec;
 
   return (
-    <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
+    <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
         <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
       </Suspense>
       {journeyMode === 'PHOTOS' && <>
-        <MediaJourneyPane media={media} activeId={activeMediaId} videoMode={videoMode} placeName={activePlaceName} onFiles={files => void onMediaFiles(files)} />
+        <MediaJourneyPane
+          media={media}
+          activeId={state.phase === 'ready' || state.phase === 'planning' ? null : activeMediaId}
+          videoMode={videoMode}
+          mobilityClass={hud.mobilityClass}
+          placeName={activePlaceName}
+          onFiles={files => void onMediaFiles(files)}
+        />
         <div
           className="photo-split-handle"
           role="separator"
@@ -540,7 +548,7 @@ export function App({ workerClient }: AppProps) {
         <div className="hud-meta"><span>{hud.date}</span><span>{hud.speed}</span></div>
       </section>}
 
-      {state.scan && <details className="settings-panel">
+      {state.scan && <details className="settings-panel" data-placement="topbar">
         <summary><span><Layers3 size={16} /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" /></summary>
         <div className="settings-content">
           <div className="source-summary">
@@ -679,13 +687,14 @@ export function App({ workerClient }: AppProps) {
 }
 
 function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number): HudState {
-  if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobility: '전체 경로', speed: '—' };
+  if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '—' };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
   return {
     timeSec,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }).format(sourceMs),
+    mobilityClass: travel.mobilityClass,
     mobility: `${MOBILITY_LABELS[travel.mobilityClass] ?? '이동'}${segment.inferred ? ' · 추정' : ''}`,
     speed: `${travel.speedKmh.toFixed(0)} km/h`
   };

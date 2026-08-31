@@ -97,7 +97,8 @@ describe('App integration', () => {
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
-    expect(screen.getByAltText('IMG trip')).toBeInTheDocument();
+    expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
+    expect(screen.getByText('도보 이동')).toBeInTheDocument();
     const playerStatus = screen.getByText('1개의 사진·영상을 여행 경로에 연결했습니다.');
     expect(playerStatus.parentElement).toHaveClass('timeline-meta');
     expect(playerStatus.previousElementSibling).toHaveTextContent('0:00');
@@ -107,6 +108,7 @@ describe('App integration', () => {
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
     expect(separator).toHaveAttribute('aria-valuenow', '62');
     fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
     expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
     expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
