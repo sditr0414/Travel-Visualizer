@@ -99,10 +99,13 @@ describe('App integration', () => {
     await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
     expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
     expect(screen.getByText('도보 이동')).toBeInTheDocument();
-    const playerStatus = screen.getByText('1개의 사진·영상을 여행 경로에 연결했습니다.');
-    expect(playerStatus.parentElement).toHaveClass('timeline-meta');
-    expect(playerStatus.previousElementSibling).toHaveTextContent('0:00');
-    expect(playerStatus.nextElementSibling).toHaveTextContent('0:04');
+    expect(screen.getByText('12 km/h')).toBeInTheDocument();
+    expect(screen.queryByText(/개의 사진·영상이 경로에 연결되었습니다/)).not.toBeInTheDocument();
+    expect(screen.queryByText('현재 장면')).not.toBeInTheDocument();
+    const playerStatus = screen.getByLabelText('재생 컨트롤').querySelector('.player-status');
+    expect(playerStatus).toBeEmptyDOMElement();
+    expect(playerStatus?.previousElementSibling).toHaveTextContent('0:00');
+    expect(playerStatus?.nextElementSibling).toHaveTextContent('0:04');
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
     expect(separator).toHaveAttribute('aria-valuenow', '60');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
