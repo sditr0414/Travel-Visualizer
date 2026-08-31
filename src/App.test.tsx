@@ -10,6 +10,7 @@ const fakeMap = {
   getSource: () => ({ setData: vi.fn() }),
   getLayer: () => ({}),
   setLayoutProperty: vi.fn(),
+  fitBounds: vi.fn(),
   jumpTo: vi.fn()
 };
 
