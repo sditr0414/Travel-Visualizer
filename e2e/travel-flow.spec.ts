@@ -17,8 +17,17 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
 test('settings stay usable on a narrow screen', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
-  await page.getByText('여행 설정').click();
+  const settings = page.getByText('여행 설정');
+  const settingsBox = await settings.boundingBox();
+  const topbarBox = await page.locator('.topbar-actions').boundingBox();
+  expect(settingsBox).not.toBeNull();
+  expect(topbarBox).not.toBeNull();
+  expect(settingsBox!.x).toBeGreaterThanOrEqual(topbarBox!.x + topbarBox!.width);
+  await settings.click();
   await expect(page.getByLabel('여행 시작')).toBeVisible();
+  const contentBox = await page.locator('.settings-content').boundingBox();
+  expect(contentBox).not.toBeNull();
+  expect(contentBox!.y).toBeGreaterThan(settingsBox!.y + settingsBox!.height);
   await expect(page.getByRole('button', { name: /경로 다시 만들기/ })).toBeVisible();
 });
 
