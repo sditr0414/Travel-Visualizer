@@ -667,9 +667,12 @@ export function App({ workerClient }: AppProps) {
               dispatch({ type: 'PAUSE' });
             }}
           />
-          <div><span>{formatClock(hud.timeSec)}</span><span>{formatClock(duration)}</span></div>
+          <div className="timeline-meta">
+            <span>{formatClock(hud.timeSec)}</span>
+            <p className="player-status">{state.statusMessage}</p>
+            <span>{formatClock(duration)}</span>
+          </div>
         </div>
-        <p className="player-status">{state.statusMessage}</p>
       </footer>}
     </main>
   );
