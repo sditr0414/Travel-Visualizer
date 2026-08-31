@@ -109,8 +109,8 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; }
 .secondary-control:disabled, .play-control:disabled, .timeline-control input:disabled { opacity: 0.36; cursor: not-allowed; }
 .timeline-control { display: grid; gap: 2px; }
 .timeline-control input { width: 100%; margin: 0; }
-.timeline-control div { display: flex; justify-content: space-between; color: #d2ccc5; font-size: 13px; font-weight: 750; line-height: 1.25; font-variant-numeric: tabular-nums; }
-.player-status { grid-column: 1 / -1; margin: -1px 0 0; overflow: hidden; color: #aaa49d; font-size: 11px; line-height: 1.35; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: 12px; color: #d2ccc5; font-size: 13px; font-weight: 750; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.player-status { min-width: 0; margin: 0; overflow: hidden; color: #aaa49d; font-size: 11px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 
 .media-journey-pane { position: absolute; z-index: 2; inset: 0 0 0 var(--photo-map-share, 60%); display: grid; place-items: center; padding: 84px 22px 98px; overflow: hidden; color: var(--paper); background: #181b1e; border-left: 1px solid rgba(255,255,255,.12); }
 .photo-split-handle { position: absolute; z-index: 6; top: 0; bottom: 0; left: var(--photo-map-share, 60%); width: 12px; padding: 0; transform: translateX(-50%); border: 0; outline: 0; background: transparent; cursor: col-resize; touch-action: none; }
@@ -173,7 +173,6 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; }
   .settings-panel:not([open]) { width: 132px; }
   .player-dock { bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: 40px 92px 1fr; gap: 7px; width: calc(100vw - 20px); padding: 8px; }
   .play-control { font-size: 11px; }
-  .player-status { display: none; }
   .maplibregl-ctrl-bottom-right { margin-bottom: 86px; }
   .photo-mode .map-canvas { right: 0; bottom: calc(100% - var(--photo-map-share, 52%)); }
   .media-journey-pane { inset: var(--photo-map-share, 52%) 0 0; padding: 12px 10px 86px; border-top: 1px solid rgba(255,255,255,.12); border-left: 0; }

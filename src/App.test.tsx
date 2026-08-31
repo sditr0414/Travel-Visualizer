@@ -98,6 +98,10 @@ describe('App integration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
     expect(screen.getByAltText('IMG trip')).toBeInTheDocument();
+    const playerStatus = screen.getByText('1개의 사진·영상을 여행 경로에 연결했습니다.');
+    expect(playerStatus.parentElement).toHaveClass('timeline-meta');
+    expect(playerStatus.previousElementSibling).toHaveTextContent('0:00');
+    expect(playerStatus.nextElementSibling).toHaveTextContent('0:04');
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
     expect(separator).toHaveAttribute('aria-valuenow', '60');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
