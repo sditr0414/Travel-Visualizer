@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('local trip can be planned, played, paused and reset', async ({ page }) => {
   await page.goto('/');
+  await expect.poll(async () => (await page.getByTestId('map-stage').boundingBox())?.height ?? 0).toBeGreaterThan(400);
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생' });
   await expect(play).toBeEnabled({ timeout: 20_000 });

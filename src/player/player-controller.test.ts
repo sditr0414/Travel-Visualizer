@@ -15,13 +15,11 @@ describe('photo journey stops', () => {
   it('caches the total stop duration when stops change', () => {
     const map = {
       getSource: () => ({ setData: vi.fn() }),
-      fitBounds: vi.fn(),
       jumpTo: vi.fn()
     } as unknown as Map;
     const controller = new PlayerController(map);
     const plan = simplePlan();
     controller.loadPlan(plan, stops);
-    expect(map.fitBounds).toHaveBeenCalledWith([[127, 37.5], [127.01, 37.51]], { padding: 64, duration: 0, maxZoom: 10 });
     expect(controller.getDuration()).toBe(plan.durationSec + 8);
     controller.setStops([{ id: 'only', atSec: 1, durationSec: 2 }]);
     expect(controller.getDuration()).toBe(plan.durationSec + 2);
