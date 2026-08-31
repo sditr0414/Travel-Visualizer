@@ -66,12 +66,25 @@ const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> =
 
 function MediaAsset({ item, url, videoMode }: { item: JourneyMedia; url: string; videoMode: Props['videoMode'] }) {
   const [failed, setFailed] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   if (failed) {
     return <div className="media-load-error" role="status"><ImageOff size={24} /><span>이 형식은 브라우저에서 미리 볼 수 없습니다.</span></div>;
   }
   return item.kind === 'image'
     ? <img src={url} alt={item.title} onError={() => setFailed(true)} />
-    : <video src={url} muted playsInline autoPlay={videoMode === 'PLAY'} controls={videoMode === 'PLAY'} preload="metadata" onError={() => setFailed(true)} />;
+    : <video
+        src={url}
+        muted
+        playsInline
+        autoPlay={videoMode === 'PLAY'}
+        controls={videoMode === 'PLAY' && showControls}
+        preload="metadata"
+        onPointerEnter={() => setShowControls(true)}
+        onPointerLeave={() => setShowControls(false)}
+        onFocus={() => setShowControls(true)}
+        onBlur={() => setShowControls(false)}
+        onError={() => setFailed(true)}
+      />;
 }
 
 function formatMediaDate(value: number): string {
