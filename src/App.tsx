@@ -85,7 +85,6 @@ export function App({ workerClient }: AppProps) {
   const lastHudUpdateRef = useRef(0);
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<{ name: string; count: number } | null>(null);
   const media = photoViewMode === 'ALL' ? mediaLibrary.all : mediaLibrary.preview;
-  const presentedMediaId = activeMediaId ?? (hud.timeSec === 0 ? media[0]?.id ?? null : null);
 
   const mapSource = useMemo<MapSourceConfig>(() => mapKind === 'online'
     ? { kind: 'online', styleUrl: ONLINE_STYLE_URL }
@@ -468,7 +467,7 @@ export function App({ workerClient }: AppProps) {
         <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
       </Suspense>
       {journeyMode === 'PHOTOS' && <>
-        <MediaJourneyPane media={media} activeId={presentedMediaId} videoMode={videoMode} placeName={activePlaceName} onFiles={files => void onMediaFiles(files)} />
+        <MediaJourneyPane media={media} activeId={activeMediaId} videoMode={videoMode} placeName={activePlaceName} onFiles={files => void onMediaFiles(files)} />
         <div
           className="photo-split-handle"
           role="separator"

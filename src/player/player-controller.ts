@@ -57,8 +57,6 @@ export class PlayerController {
     this.setSource('route-progress', emptyCollection());
     this.setSource('route-head', emptyCollection());
     this.render(0, true);
-    const bounds = routeBounds(plan);
-    if (bounds) this.map.fitBounds(bounds, { padding: 64, duration: 0, maxZoom: 10 });
   }
 
   setStops(stops: PlaybackStop[]): void {
@@ -296,26 +294,6 @@ function trackingTargetProjected(frame: TravelFrame): { x: number; y: number } {
 function fullRoute(plan: PlaybackPlan): object {
   const travel = plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL');
   return lineFeatures(travel);
-}
-
-function routeBounds(plan: PlaybackPlan): [[number, number], [number, number]] | null {
-  const points = plan.routeRenderPoints.length > 1
-    ? plan.routeRenderPoints
-    : plan.segments.flatMap(segment => [segment.start, segment.end]);
-  if (points.length < 2) return null;
-  let minLng = Infinity;
-  let minLat = Infinity;
-  let maxLng = -Infinity;
-  let maxLat = -Infinity;
-  for (const point of points) {
-    minLng = Math.min(minLng, point.lng);
-    minLat = Math.min(minLat, point.lat);
-    maxLng = Math.max(maxLng, point.lng);
-    maxLat = Math.max(maxLat, point.lat);
-  }
-  return Number.isFinite(minLng + minLat + maxLng + maxLat)
-    ? [[minLng, minLat], [maxLng, maxLat]]
-    : null;
 }
 
 function trailForFrame(plan: PlaybackPlan, index: number): object {
