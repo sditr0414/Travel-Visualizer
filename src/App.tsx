@@ -463,7 +463,7 @@ export function App({ workerClient }: AppProps) {
     : targetDurationSec;
 
   return (
-    <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
+    <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''} ${state.phase === 'playing' ? 'playback-active' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
         <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
       </Suspense>
@@ -654,6 +654,7 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
+      {state.plan && <div className="player-reveal-zone" aria-hidden="true" />}
       {state.plan && <footer className="player-dock" aria-label="재생 컨트롤">
         <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기"><RotateCcw size={17} /></button>
         <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}>

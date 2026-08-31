@@ -31,6 +31,20 @@ test('settings stay usable on a narrow screen', async ({ page }) => {
   await expect(page.getByRole('button', { name: /경로 다시 만들기/ })).toBeVisible();
 });
 
+test('photo journey keeps playback controls inside the route pane', async ({ page }) => {
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  await page.getByRole('button', { name: '사진 여정' }).click();
+  const mapBox = await page.getByTestId('map-stage').boundingBox();
+  const mediaBox = await page.getByRole('complementary', { name: '사진 여정' }).boundingBox();
+  const playerBox = await page.getByLabel('재생 컨트롤').boundingBox();
+  expect(mapBox).not.toBeNull();
+  expect(mediaBox).not.toBeNull();
+  expect(playerBox).not.toBeNull();
+  if (mediaBox!.x > 0) expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mediaBox!.x + 1);
+  else expect(playerBox!.y + playerBox!.height).toBeLessThanOrEqual(mediaBox!.y + 1);
+});
+
 test('large local Timeline stays browser-local and produces a playable plan', async ({ page }) => {
   const timelinePath = process.env.REAL_TIMELINE_JSON;
   test.skip(!timelinePath, 'REAL_TIMELINE_JSON is only available for local validation.');
@@ -43,7 +57,7 @@ test('large local Timeline stays browser-local and produces a playable plan', as
 });
 
 async function loadLocalTimeline(page: import('@playwright/test').Page) {
-  await page.getByLabel('시작할 Timeline JSON 선택').setInputFiles({
+  await page.getByLabel('Timeline JSON 선택', { exact: true }).setInputFiles({
     name: 'local-timeline.json',
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ semanticSegments: [{
