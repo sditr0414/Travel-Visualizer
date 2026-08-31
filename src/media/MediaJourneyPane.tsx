@@ -1,17 +1,19 @@
-import { Film, ImageOff, ImagePlus, MapPin, MoveRight } from 'lucide-react';
+import { Film, ImageOff, ImagePlus, MapPin } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { JourneyMedia } from '../types';
+import type { JourneyMedia, MobilityClass } from '../types';
 
 interface Props {
   media: JourneyMedia[];
   activeId: string | null;
   videoMode: 'THUMBNAIL' | 'PLAY';
+  mobilityClass: MobilityClass;
   placeName: string | null;
   onFiles: (files: FileList) => void;
 }
 
-export function MediaJourneyPane({ media, activeId, videoMode, placeName, onFiles }: Props) {
+export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, placeName, onFiles }: Props) {
   const active = media.find(item => item.id === activeId) ?? null;
+  const movement = MOVEMENT_VISUALS[mobilityClass];
   const objectUrl = useMemo(() => active?.file ? URL.createObjectURL(active.file) : null, [active]);
   const url = active?.sourceUrl ?? objectUrl;
   useEffect(() => () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }, [objectUrl]);
@@ -35,8 +37,8 @@ export function MediaJourneyPane({ media, activeId, videoMode, placeName, onFile
         </article>
       ) : media.length ? (
         <div className="media-transit" aria-live="polite">
-          <span><MoveRight size={22} /></span>
-          <strong>다음 장면으로 이동 중</strong>
+          <span className="movement-pictogram" aria-hidden="true">{movement.icon}</span>
+          <strong>{movement.label}</strong>
           <p>{media.length}개의 사진·영상이 경로에 연결되었습니다.</p>
         </div>
       ) : (
@@ -50,6 +52,17 @@ export function MediaJourneyPane({ media, activeId, videoMode, placeName, onFile
     </aside>
   );
 }
+
+const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> = {
+  WALK: { icon: '🚶', label: '도보 이동' },
+  BIKE: { icon: '🚲', label: '자전거 이동' },
+  URBAN_TRANSIT: { icon: '🚇', label: '도시교통 이동' },
+  FAST_GROUND: { icon: '🚆', label: '철도 이동' },
+  FERRY: { icon: '⛴', label: '페리 이동' },
+  FLIGHT: { icon: '✈', label: '항공 이동' },
+  ROAD: { icon: '🚗', label: '도로 이동' },
+  UNKNOWN: { icon: '●', label: '이동 중' }
+};
 
 function MediaAsset({ item, url, videoMode }: { item: JourneyMedia; url: string; videoMode: Props['videoMode'] }) {
   const [failed, setFailed] = useState(false);
