@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime, photoJourneyZoom } from './player-controller';
+import { PlayerController, mapJourneyTime, photoJourneyZoom, remapJourneyTimeForStops } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -10,6 +10,21 @@ describe('photo journey stops', () => {
     expect(mapJourneyTime(15, stops, 60)).toEqual({ routeTimeSec: 12, activeStopId: null });
     expect(mapJourneyTime(25, stops, 60)).toEqual({ routeTimeSec: 20, activeStopId: 'b' });
     expect(mapJourneyTime(31, stops, 60)).toEqual({ routeTimeSec: 23, activeStopId: null });
+  });
+
+  it('preserves route progress when photo stops are added or removed', () => {
+    const photoStops = [{ id: 'photo', atSec: 10, durationSec: 4 }];
+    expect(remapJourneyTimeForStops(18, photoStops, [], 60)).toBe(14);
+    expect(remapJourneyTimeForStops(14, [], photoStops, 60)).toBe(18);
+  });
+
+  it('preserves progress inside the same media stop when its duration changes', () => {
+    expect(remapJourneyTimeForStops(
+      12,
+      [{ id: 'photo', atSec: 10, durationSec: 4 }],
+      [{ id: 'photo', atSec: 10, durationSec: 8 }],
+      60
+    )).toBe(14);
   });
 
   it('caches the total stop duration when stops change', () => {
