@@ -36,6 +36,41 @@ describe('local media matching', () => {
     request.mockRestore();
   });
 
+  it('upgrades a previously filename-matched video with bounded QuickTime metadata', async () => {
+    const embeddedTakenMs = Date.parse('2026-04-10T09:05:00+09:00');
+    const bytes = Uint8Array.from(new TextEncoder().encode([
+      'com.apple.quicktime.creationdate',
+      '2026-04-10T09:05:00+09:00',
+      'com.apple.quicktime.location.ISO6709',
+      '+37.5000+127.0000+000.000/'
+    ].join('\0')));
+    const request = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      if (String(input).startsWith('/api/local-media/')) return new Response(bytes, { status: 206 });
+      return new Response(JSON.stringify({ saved: 1 }), { status: 200 });
+    });
+
+    const result = await loadLocalMediaManifest({
+      available: true,
+      rootName: '여행 사진',
+      count: 1,
+      totalBytes: 5_000_000,
+      items: [{
+        id: 'video-1', name: '20260410_120000.mov', size: 5_000_000, lastModified: Date.now(), kind: 'video',
+        metadata: { takenMs: Date.parse('2026-04-10T12:00:00'), lat: null, lng: null, source: 'filename-time', embeddedScanned: false }
+      }]
+    }, simplePlan());
+
+    expect(result.all[0]).toMatchObject({
+      takenMs: embeddedTakenMs,
+      lat: 37.5,
+      lng: 127,
+      metadataSource: 'embedded-exif',
+      positionSource: 'gps'
+    });
+    expect(request).toHaveBeenCalledWith('/api/local-media-metadata-cache', expect.objectContaining({ method: 'POST' }));
+    request.mockRestore();
+  });
+
   it('reads common camera filename timestamps', () => {
     const value = parseFilenameTimestamp('IMG_20260410_091530.jpg');
     expect(value).not.toBeNull();
