@@ -1,7 +1,7 @@
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MediaJourneyPane } from './MediaJourneyPane';
-import { sceneTransitionDurationMs } from './scene-transition';
+import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia } from '../types';
 
 const media: JourneyMedia = {
@@ -100,7 +100,7 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });
 
-  it('keeps the outgoing scene mounted during a real cross-fade', () => {
+  it('keeps the outgoing scene mounted during a ten-percent cross-fade', () => {
     vi.useFakeTimers();
     const view = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} photoDisplaySec={2} />);
 
@@ -108,15 +108,46 @@ describe('MediaJourneyPane', () => {
     act(() => vi.advanceTimersByTime(20));
     expect(view.container.querySelector('.media-scene-layer.is-previous .media-card')).toBeInTheDocument();
     expect(view.container.querySelector('.media-scene-layer.is-current .media-transit')).toBeInTheDocument();
+    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '200');
 
     act(() => vi.advanceTimersByTime(sceneTransitionDurationMs(2) + 60));
     expect(view.container.querySelector('.media-scene-layer.is-previous')).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
-  it('scales scene transition time with the photo display duration', () => {
-    expect(sceneTransitionDurationMs(1.5)).toBe(300);
-    expect(sceneTransitionDurationMs(3)).toBe(540);
-    expect(sceneTransitionDurationMs(8)).toBe(900);
+  it('shortens pictogram transitions when transport modes change quickly', () => {
+    vi.useFakeTimers();
+    const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" />);
+    act(() => vi.advanceTimersByTime(400));
+
+    view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="ROAD" />);
+    act(() => vi.advanceTimersByTime(20));
+
+    expect(view.container.querySelector('.media-scene-layer.is-previous .movement-pictogram')).toHaveTextContent('🚶');
+    expect(view.container.querySelector('.media-scene-layer.is-current .movement-pictogram')).toHaveTextContent('🚗');
+    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '40');
+    vi.useRealTimers();
+  });
+
+  it('does not restart the pictogram cross-fade when only route text changes', () => {
+    vi.useFakeTimers();
+    const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="ROAD" originCity="서울" destinationCity="인천" />);
+    act(() => vi.advanceTimersByTime(500));
+
+    view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="ROAD" originCity="인천" destinationCity="수원" />);
+    act(() => vi.advanceTimersByTime(20));
+
+    expect(view.container.querySelector('.media-scene-layer.is-previous')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.movement-route')).toHaveTextContent('인천→수원');
+    vi.useRealTimers();
+  });
+
+  it('uses about ten percent of display time, with a short cap for pictograms', () => {
+    expect(sceneTransitionDurationMs(1.5)).toBe(150);
+    expect(sceneTransitionDurationMs(3)).toBe(300);
+    expect(sceneTransitionDurationMs(8)).toBe(800);
+    expect(transitSceneTransitionDurationMs(0.4)).toBe(40);
+    expect(transitSceneTransitionDurationMs(2)).toBe(200);
+    expect(transitSceneTransitionDurationMs(8)).toBe(320);
   });
 });
