@@ -1,13 +1,16 @@
-import { planPlayback } from '../camera-planner.js';
+import { durationLimitsForMovements, planPlayback } from '../camera-planner.js';
 import { applyCameraMode } from '../camera-modes.js';
 import type { AnalysisOptions, Movement, PlaybackPlan, TravelFrame } from '../types';
 
 const AUTO_ZOOM_BIAS = 0.28;
 
 export function buildPlaybackPlan(movements: Movement[], options: AnalysisOptions): PlaybackPlan {
+  const requestedDurationSec = options.targetDurationSec > 0
+    ? options.targetDurationSec
+    : midpointDuration(durationLimitsForMovements(movements));
   const basePlan = planPlayback(movements, {
     fps: 60,
-    targetTotalSeconds: options.targetDurationSec,
+    targetTotalSeconds: requestedDurationSec,
     viewportWidth: options.viewportWidth,
     viewportHeight: options.viewportHeight,
     pacingMode: options.pacingMode
@@ -32,6 +35,10 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
 
   reconnectOverview(plan);
   return { ...plan, autoCloserBias: AUTO_ZOOM_BIAS, autoLockedCloserBias: AUTO_ZOOM_BIAS + 0.18 };
+}
+
+function midpointDuration(limits: { minSeconds: number; maxSeconds: number }): number {
+  return Math.round(((limits.minSeconds + limits.maxSeconds) / 2) / 5) * 5;
 }
 
 function clampZoom(value: number): number {
