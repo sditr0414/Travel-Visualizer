@@ -41,106 +41,46 @@
 
 .playback-active:has(
   .topbar:hover,
-  .topbar:focus-within,
+  .topbar:has(:focus-visible),
   .settings-panel:hover,
-  .settings-panel:focus-within,
+  .settings-panel:has(:focus-visible),
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:focus-within,
+  .journey-hud:has(:focus-visible),
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:focus-within
-) .topbar,
-.playback-active:has(
-  .topbar:hover,
-  .topbar:focus-within,
-  .settings-panel:hover,
-  .settings-panel:focus-within,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud:focus-within,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock:focus-within
-) .settings-panel,
-.playback-active:has(
-  .topbar:hover,
-  .topbar:focus-within,
-  .settings-panel:hover,
-  .settings-panel:focus-within,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud:focus-within,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock:focus-within
-) .journey-hud,
-.playback-active:has(
-  .topbar:hover,
-  .topbar:focus-within,
-  .settings-panel:hover,
-  .settings-panel:focus-within,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud:focus-within,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock:focus-within
-) .player-dock {
+  .player-dock:has(:focus-visible)
+) :is(.topbar, .settings-panel, .journey-hud, .player-dock) {
   opacity: 1;
   filter: blur(0);
 }
 
 .playback-active:has(
   .topbar:hover,
-  .topbar:focus-within,
+  .topbar:has(:focus-visible),
   .settings-panel:hover,
-  .settings-panel:focus-within,
+  .settings-panel:has(:focus-visible),
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:focus-within,
+  .journey-hud:has(:focus-visible),
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:focus-within
-) .topbar,
-.playback-active:has(
-  .topbar:hover,
-  .topbar:focus-within,
-  .settings-panel:hover,
-  .settings-panel:focus-within,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud:focus-within,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock:focus-within
-) .settings-panel,
-.playback-active:has(
-  .topbar:hover,
-  .topbar:focus-within,
-  .settings-panel:hover,
-  .settings-panel:focus-within,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud:focus-within,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock:focus-within
-) .journey-hud {
+  .player-dock:has(:focus-visible)
+) :is(.topbar, .settings-panel, .journey-hud) {
   transform: translateY(0);
 }
 
 .playback-active:has(
   .topbar:hover,
-  .topbar:focus-within,
+  .topbar:has(:focus-visible),
   .settings-panel:hover,
-  .settings-panel:focus-within,
+  .settings-panel:has(:focus-visible),
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:focus-within,
+  .journey-hud:has(:focus-visible),
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:focus-within
+  .player-dock:has(:focus-visible)
 ) .player-dock {
   transform: translate(-50%, 0);
   pointer-events: auto;
