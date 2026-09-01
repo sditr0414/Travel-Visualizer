@@ -84,6 +84,31 @@ describe('App integration', () => {
     await waitFor(() => expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'visible'));
   });
 
+  it('pauses playback whenever the journey presentation mode changes', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(),
+      dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+      target: { files: [timelineFile()] }
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
+    fireEvent.click(screen.getByRole('button', { name: '재생' }));
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '발자취' }));
+    expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '재생' }));
+    expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
+    expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument();
+  });
+
   it('starts photo journeys with a minimized route pane and video playback enabled', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
