@@ -1,6 +1,7 @@
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
+import { heldMediaStopId } from './media-bridge';
 
 const TILE_SIZE = 512;
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.28;
@@ -145,9 +146,10 @@ export class PlayerController {
   private renderForTime(force = false): void {
     if (!this.plan) return;
     const mapped = mapScheduledJourneyTime(this.timeSec, this.stopSchedule, this.plan.durationSec);
-    const stopChanged = mapped.activeStopId !== this.lastStopId;
-    this.lastStopId = mapped.activeStopId;
-    this.renderAtPosition(mapped.routeTimeSec * this.plan.fps, force || stopChanged, mapped.activeStopId);
+    const displayStopId = mapped.activeStopId ?? heldMediaStopId(mapped.routeTimeSec, this.stops);
+    const stopChanged = displayStopId !== this.lastStopId;
+    this.lastStopId = displayStopId;
+    this.renderAtPosition(mapped.routeTimeSec * this.plan.fps, force || stopChanged, displayStopId);
   }
 
   private render(index: number, force = false, activeStopId: string | null = null): void {
