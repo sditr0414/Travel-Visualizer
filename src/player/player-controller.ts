@@ -1,4 +1,4 @@
-import type { GeoJSONSource, Map } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 
@@ -45,7 +45,7 @@ export class PlayerController {
   private lastStopId: string | null = null;
   private stableFlightZooms = new Map<string, number>();
 
-  constructor(private readonly map: Map, private readonly callbacks: PlayerCallbacks = {}) {}
+  constructor(private readonly map: MapLibreMap, private readonly callbacks: PlayerCallbacks = {}) {}
 
   loadPlan(plan: PlaybackPlan, stops: PlaybackStop[] = []): void {
     this.pause();
