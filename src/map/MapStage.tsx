@@ -40,11 +40,14 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+      collapseAttribution(map);
+      map.once('idle', () => map && collapseAttribution(map));
       const markReady = () => {
         if (ready || !map) return;
         ready = true;
         window.clearTimeout(fallbackTimeout);
         ensureRouteLayers(map);
+        collapseAttribution(map);
         onReady(map);
       };
       map.once('style.load', markReady);
@@ -68,6 +71,20 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
   }, [source, onError, onReady]);
 
   return <div ref={containerRef} className="map-canvas" aria-label="여행 경로 지도" data-testid="map-stage" />;
+}
+
+function collapseAttribution(map: Map): void {
+  const attribution = map.getContainer().querySelector<HTMLDetailsElement>('.maplibregl-ctrl-attrib');
+  if (!attribution) return;
+  if (!attribution.dataset.collapseReady) {
+    attribution.dataset.collapseReady = 'true';
+    attribution.querySelector('.maplibregl-ctrl-attrib-button')?.addEventListener('click', () => {
+      attribution.dataset.userOpened = 'true';
+    }, { once: true });
+  }
+  if (attribution.dataset.userOpened) return;
+  attribution.open = false;
+  attribution.classList.remove('maplibregl-compact-show');
 }
 
 function fallbackStyle(): maplibregl.StyleSpecification {

@@ -3,6 +3,7 @@ import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 
 const TILE_SIZE = 512;
+const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.28;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -160,6 +161,14 @@ export class PlayerController {
     } else {
       center = this.followCamera(frame, nextIndex, force || frame.sceneBreak);
     }
+    if (frame.kind === 'TRAVEL' && this.stops.length) {
+      const segment = this.plan.segments[frame.segmentIndex];
+      zoom = photoJourneyZoom(
+        zoom,
+        segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0,
+        frame.mobilityClass
+      );
+    }
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
     this.frameIndex = nextIndex;
 
@@ -206,6 +215,13 @@ export class PlayerController {
     });
     this.stopDurationSec = added;
   }
+}
+
+export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
+  if (mobilityClass === 'FLIGHT') return baseZoom;
+  const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
+  const shortRouteBoost = distanceKm <= 2 ? 0.62 : distanceKm <= 8 ? 0.46 : distanceKm <= 30 ? 0.24 : 0;
+  return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
 }
 
 function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {

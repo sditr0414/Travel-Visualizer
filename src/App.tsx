@@ -56,7 +56,7 @@ export function App({ workerClient }: AppProps) {
   const [includeFlights, setIncludeFlights] = useState(true);
   const [targetDurationSec, setTargetDurationSec] = useState(90);
   const [cameraMode, setCameraMode] = useState<CameraMode>('AUTO');
-  const [zoomOffset, setZoomOffset] = useState(0.3);
+  const [zoomOffset, setZoomOffset] = useState(0.7);
   const [pacingMode, setPacingMode] = useState<PacingMode>('LOCAL_DAYS');
   const [lockToPosition, setLockToPosition] = useState(true);
   const [trackingSpeed, setTrackingSpeed] = useState(1);

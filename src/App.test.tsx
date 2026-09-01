@@ -76,7 +76,7 @@ describe('App integration', () => {
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
     expect(worker.scan).toHaveBeenCalled();
     expect(worker.plan).toHaveBeenCalled();
-    expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0.3, pacingMode: 'LOCAL_DAYS' }), expect.any(Function));
+    expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0.7, pacingMode: 'LOCAL_DAYS' }), expect.any(Function));
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
     await waitFor(() => expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'visible'));
