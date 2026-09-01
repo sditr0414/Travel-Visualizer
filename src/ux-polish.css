@@ -9,97 +9,73 @@
   gap: 10px;
 }
 
-/* Treat playback chrome as one animated surface: touching any reveal target shows all chrome. */
+/* Playback chrome is coordinated by React state. Edge zones only request a delayed reveal. */
 .topbar,
 .settings-panel,
 .journey-hud,
 .player-dock {
   transition:
-    opacity 220ms cubic-bezier(.2, .72, .2, 1),
-    transform 220ms cubic-bezier(.2, .72, .2, 1),
-    filter 220ms ease;
+    opacity 320ms cubic-bezier(.2, .72, .2, 1),
+    transform 360ms cubic-bezier(.16, .84, .24, 1);
+  will-change: opacity, transform;
 }
 
-/* Keep the invisible reveal zone behind the interactive playback dock. */
+.topbar-reveal-zone,
 .player-reveal-zone {
+  position: absolute;
   z-index: 9;
+  left: 0;
+  width: 100%;
+  pointer-events: auto;
+}
+
+.topbar-reveal-zone {
+  top: 0;
+  height: 34px;
+}
+
+.player-reveal-zone {
+  top: auto;
+  bottom: 0;
+  height: 34px;
+}
+
+.photo-mode .player-reveal-zone {
+  width: var(--photo-map-share, 60%);
 }
 
 .player-dock {
   z-index: 12;
 }
 
-.playback-active .topbar,
-.playback-active .settings-panel:not([open]),
-.playback-active .journey-hud,
-.playback-active .player-dock {
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel,
+.playback-active.playback-chrome-hidden .journey-hud,
+.playback-active.playback-chrome-hidden .player-dock {
   opacity: 0;
-  filter: blur(1.5px);
-}
-
-.playback-active .topbar,
-.playback-active .settings-panel:not([open]),
-.playback-active .journey-hud {
-  transform: translateY(-10px);
-}
-
-.playback-active .player-dock {
-  transform: translate(-50%, 12px);
   pointer-events: none;
 }
 
-/* Override the legacy mouse-click focus rule; only focus-visible is a keyboard reveal signal. */
-.playback-active .player-dock:focus-within {
-  opacity: 0;
-  filter: blur(1.5px);
-  transform: translate(-50%, 12px);
-  pointer-events: none;
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel,
+.playback-active.playback-chrome-hidden .journey-hud {
+  transform: translateY(-14px) scale(.985);
 }
 
-.playback-active:has(
-  .topbar-actions:hover,
-  .topbar :focus-visible,
-  .settings-panel:hover,
-  .settings-panel :focus-visible,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud :focus-visible,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock :focus-visible
-) :is(.topbar, .settings-panel, .journey-hud, .player-dock) {
+.playback-active.playback-chrome-hidden .player-dock {
+  transform: translate(-50%, 16px) scale(.985);
+}
+
+.playback-chrome-visible .topbar,
+.playback-chrome-visible .settings-panel,
+.playback-chrome-visible .journey-hud {
   opacity: 1;
-  filter: blur(0);
+  transform: translateY(0) scale(1);
 }
 
-.playback-active:has(
-  .topbar-actions:hover,
-  .topbar :focus-visible,
-  .settings-panel:hover,
-  .settings-panel :focus-visible,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud :focus-visible,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock :focus-visible
-) :is(.topbar, .settings-panel, .journey-hud) {
-  transform: translateY(0);
-}
-
-.playback-active:has(
-  .topbar-actions:hover,
-  .topbar :focus-visible,
-  .settings-panel:hover,
-  .settings-panel :focus-visible,
-  .settings-panel[open],
-  .journey-hud:hover,
-  .journey-hud :focus-visible,
-  .player-reveal-zone:hover,
-  .player-dock:hover,
-  .player-dock :focus-visible
-) .player-dock {
-  transform: translate(-50%, 0);
+.playback-chrome-visible .player-dock {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
   pointer-events: auto;
 }
 
@@ -117,25 +93,26 @@
 .media-import-action,
 .media-import-row label,
 .form-grid input,
-.select-field select {
+.select-field select,
+.photo-split-handle::after {
   transition:
-    transform 150ms cubic-bezier(.2, .72, .2, 1),
-    opacity 150ms ease,
-    color 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease,
-    box-shadow 180ms ease;
+    transform 170ms cubic-bezier(.2, .72, .2, 1),
+    opacity 170ms ease,
+    color 170ms ease,
+    background-color 170ms ease,
+    border-color 170ms ease,
+    box-shadow 200ms ease;
 }
 
 .settings-panel[open] .settings-content {
   transform-origin: top right;
-  animation: ui-panel-in 190ms cubic-bezier(.16, .84, .24, 1);
+  animation: ui-panel-in 240ms cubic-bezier(.16, .84, .24, 1) both;
 }
 
 .local-import-panel,
 .status-card,
 .journey-hud {
-  animation: ui-surface-in 240ms cubic-bezier(.16, .84, .24, 1);
+  animation: ui-surface-in 280ms cubic-bezier(.16, .84, .24, 1) both;
 }
 
 @media (hover: hover) {
@@ -178,22 +155,23 @@
 }
 
 @keyframes ui-panel-in {
-  from { opacity: 0; transform: translateY(-6px) scale(.985); }
+  from { opacity: 0; transform: translateY(-8px) scale(.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes ui-surface-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Cross-fade the outgoing and incoming photo/transit scenes in the same space. */
+/* Cross-dissolve outgoing and incoming photo/transit scenes in the same space. */
 .media-scene-stack {
   position: relative;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
+  isolation: isolate;
 }
 
 .media-scene-layer {
@@ -203,18 +181,19 @@
   place-items: center;
   min-width: 0;
   min-height: 0;
+  backface-visibility: hidden;
   will-change: opacity, transform;
 }
 
 .media-scene-layer.is-current {
   z-index: 2;
-  animation: scene-crossfade-in var(--scene-transition-ms, 540ms) cubic-bezier(.16, .84, .24, 1) both;
+  animation: scene-crossfade-in var(--scene-transition-ms, 480ms) cubic-bezier(.22, .61, .36, 1) both;
 }
 
 .media-scene-layer.is-previous {
   z-index: 1;
   pointer-events: none;
-  animation: scene-crossfade-out var(--scene-transition-ms, 540ms) cubic-bezier(.16, .84, .24, 1) both;
+  animation: scene-crossfade-out var(--scene-transition-ms, 480ms) cubic-bezier(.22, .61, .36, 1) both;
 }
 
 .media-card,
@@ -224,17 +203,17 @@
 
 .media-frame img,
 .media-frame video {
-  transition: opacity 300ms ease, transform var(--scene-transition-ms, 540ms) cubic-bezier(.16, .84, .24, 1);
+  backface-visibility: hidden;
 }
 
 @keyframes scene-crossfade-in {
-  from { opacity: 0; transform: translateY(8px) scale(.994); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: scale(1.008); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes scene-crossfade-out {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(-5px) scale(1.004); }
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(.996); }
 }
 
 /* Keep photo metadata on one baseline, slightly above the midpoint of the caption strip. */
@@ -392,27 +371,37 @@
     gap: 8px;
     font-size: 15px;
   }
+
+  .photo-mode .player-reveal-zone {
+    top: calc(var(--photo-map-share, 52%) - 34px);
+    bottom: auto;
+    width: 100%;
+    height: 34px;
+  }
 }
 
 @media (hover: none) {
-  .playback-active .topbar,
-  .playback-active .settings-panel:not([open]),
-  .playback-active .journey-hud,
-  .playback-active .player-dock,
-  .playback-active .player-dock:focus-within {
+  .topbar-reveal-zone,
+  .player-reveal-zone {
+    pointer-events: none;
+  }
+
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel,
+  .playback-active.playback-chrome-hidden .journey-hud,
+  .playback-active.playback-chrome-hidden .player-dock {
     opacity: 1;
-    filter: blur(0);
   }
 
-  .playback-active .topbar,
-  .playback-active .settings-panel:not([open]),
-  .playback-active .journey-hud {
-    transform: translateY(0);
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel,
+  .playback-active.playback-chrome-hidden .journey-hud {
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
   }
 
-  .playback-active .player-dock,
-  .playback-active .player-dock:focus-within {
-    transform: translate(-50%, 0);
+  .playback-active.playback-chrome-hidden .player-dock {
+    transform: translate(-50%, 0) scale(1);
     pointer-events: auto;
   }
 }
