@@ -26,8 +26,8 @@ interface HudState {
 }
 
 const MOBILITY_LABELS: Record<string, string> = {
-  WALK: '도보', BIKE: '자전거', URBAN_TRANSIT: '도시교통', FAST_GROUND: '철도',
-  FERRY: '페리', FLIGHT: '항공', ROAD: '도로', UNKNOWN: '이동'
+  WALK: '도보', BIKE: '자전거', URBAN_TRANSIT: '대중교통', FAST_GROUND: '기차',
+  FERRY: '페리', FLIGHT: '비행기', ROAD: '차량', UNKNOWN: '기타'
 };
 
 const DEFAULT_TRIP_START = '2026-03-17';
@@ -721,9 +721,9 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number):
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
   return {
     timeSec,
-    date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Seoul' }).format(sourceMs),
+    date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Seoul' }).format(sourceMs),
     mobilityClass: travel.mobilityClass,
-    mobility: `${MOBILITY_LABELS[travel.mobilityClass] ?? '이동'}${segment.inferred ? ' · 추정' : ''}`,
+    mobility: `${MOBILITY_LABELS[travel.mobilityClass] ?? '기타'}${segment.inferred ? ' · 추정' : ''}`,
     speed: `${travel.speedKmh.toFixed(0)} km/h`,
     originCity: null,
     destinationCity: null
