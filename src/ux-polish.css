@@ -9,25 +9,225 @@
   gap: 10px;
 }
 
-/* Match the playback dock: hide top controls while playing and reveal them on hover/focus. */
+/* Treat playback chrome as one animated surface: touching any reveal target shows all chrome. */
 .topbar,
-.settings-panel {
-  transition: opacity 180ms ease, transform 180ms ease;
+.settings-panel,
+.journey-hud,
+.player-dock {
+  transition:
+    opacity 220ms cubic-bezier(.2, .72, .2, 1),
+    transform 220ms cubic-bezier(.2, .72, .2, 1),
+    filter 220ms ease;
 }
 
 .playback-active .topbar,
-.playback-active .settings-panel:not([open]) {
+.playback-active .settings-panel:not([open]),
+.playback-active .journey-hud,
+.playback-active .player-dock {
   opacity: 0;
-  transform: translateY(-8px);
+  filter: blur(1.5px);
 }
 
-.playback-active .topbar:hover,
-.playback-active .topbar:focus-within,
-.playback-active .settings-panel:hover,
-.playback-active .settings-panel:focus-within,
-.playback-active .settings-panel[open] {
+.playback-active .topbar,
+.playback-active .settings-panel:not([open]),
+.playback-active .journey-hud {
+  transform: translateY(-10px);
+}
+
+.playback-active .player-dock {
+  transform: translate(-50%, 12px);
+  pointer-events: none;
+}
+
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .topbar,
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .settings-panel,
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .journey-hud,
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .player-dock {
   opacity: 1;
+  filter: blur(0);
+}
+
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .topbar,
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .settings-panel,
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .journey-hud {
   transform: translateY(0);
+}
+
+.playback-active:has(
+  .topbar:hover,
+  .topbar:focus-within,
+  .settings-panel:hover,
+  .settings-panel:focus-within,
+  .settings-panel[open],
+  .journey-hud:hover,
+  .journey-hud:focus-within,
+  .player-reveal-zone:hover,
+  .player-dock:hover,
+  .player-dock:focus-within
+) .player-dock {
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+/* Give common controls restrained motion so the entire UI reacts consistently. */
+.mode-switch button,
+.import-button,
+.settings-panel summary,
+.settings-content,
+.settings-group,
+.secondary-control,
+.play-control,
+.plan-button,
+.local-import-primary,
+.local-import-secondary,
+.media-import-action,
+.media-import-row label,
+.form-grid input,
+.select-field select {
+  transition:
+    transform 150ms cubic-bezier(.2, .72, .2, 1),
+    opacity 150ms ease,
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease;
+}
+
+.settings-panel[open] .settings-content {
+  transform-origin: top right;
+  animation: ui-panel-in 190ms cubic-bezier(.16, .84, .24, 1);
+}
+
+.local-import-panel,
+.status-card,
+.journey-hud {
+  animation: ui-surface-in 240ms cubic-bezier(.16, .84, .24, 1);
+}
+
+@media (hover: hover) {
+  .mode-switch button:hover,
+  .import-button:hover,
+  .settings-panel summary:hover,
+  .secondary-control:hover,
+  .play-control:hover,
+  .plan-button:hover,
+  .local-import-primary:hover,
+  .local-import-secondary:hover,
+  .media-import-action:hover,
+  .media-import-row label:hover {
+    transform: translateY(-1px);
+  }
+
+  .settings-group:hover {
+    border-color: rgba(255, 255, 255, .15);
+    background: rgba(255, 255, 255, .038);
+  }
+}
+
+.mode-switch button:active,
+.import-button:active,
+.settings-panel summary:active,
+.secondary-control:active,
+.play-control:active,
+.plan-button:active,
+.local-import-primary:active,
+.local-import-secondary:active,
+.media-import-action:active,
+.media-import-row label:active {
+  transform: translateY(0) scale(.98);
+}
+
+.form-grid input:focus,
+.select-field select:focus {
+  border-color: rgba(255, 114, 93, .72);
+  box-shadow: 0 0 0 3px rgba(255, 114, 93, .10);
+}
+
+@keyframes ui-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-surface-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Cross-fade the outgoing and incoming photo/transit scenes in the same space. */
@@ -239,8 +439,21 @@
 
 @media (hover: none) {
   .playback-active .topbar,
-  .playback-active .settings-panel:not([open]) {
+  .playback-active .settings-panel:not([open]),
+  .playback-active .journey-hud,
+  .playback-active .player-dock {
     opacity: 1;
+    filter: blur(0);
+  }
+
+  .playback-active .topbar,
+  .playback-active .settings-panel:not([open]),
+  .playback-active .journey-hud {
     transform: translateY(0);
+  }
+
+  .playback-active .player-dock {
+    transform: translate(-50%, 0);
+    pointer-events: auto;
   }
 }
