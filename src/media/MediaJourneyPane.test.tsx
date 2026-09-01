@@ -23,7 +23,7 @@ const media: JourneyMedia = {
 };
 
 describe('MediaJourneyPane', () => {
-  it('groups photo date and place without field labels or a separator', () => {
+  it('shows coarse place before timestamp without a place icon', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
@@ -31,23 +31,59 @@ describe('MediaJourneyPane', () => {
       mobilityClass="WALK"
       movementDate="3월 18일 (수) 11시"
       movementSpeed="12 km/h"
-      originCity="후쿠오카"
+      originCity="기타큐슈"
       destinationCity="기타큐슈"
-      placeName="기타큐슈"
+      placeName="기타큐슈시"
       onFiles={() => undefined}
     />);
 
     const footer = container.querySelector('.media-caption');
+    expect(footer).toHaveTextContent('기타큐슈시');
     expect(footer).toHaveTextContent('2026년 3월 18일 11:11');
-    expect(footer).toHaveTextContent('기타큐슈');
-    expect(footer?.querySelector('.media-caption-divider')).not.toBeInTheDocument();
-    expect(footer?.firstElementChild).toHaveClass('media-caption-date');
-    expect(footer?.lastElementChild).toHaveClass('media-caption-place');
+    expect(footer?.firstElementChild).toHaveClass('media-caption-place');
+    expect(footer?.lastElementChild).toHaveClass('media-caption-date');
+    expect(footer?.querySelector('svg')).not.toBeInTheDocument();
     expect(footer).not.toHaveTextContent('날짜');
     expect(footer).not.toHaveTextContent('장소');
     expect(footer).not.toHaveTextContent('IMG_111122');
     expect(footer).not.toHaveTextContent('사진 EXIF');
     expect(footer).not.toHaveTextContent('장면 3 / 4');
+  });
+
+  it('replaces overly detailed Korean place labels with the surrounding city', () => {
+    const { container } = render(<MediaJourneyPane
+      media={[media]}
+      activeId={media.id}
+      videoMode="THUMBNAIL"
+      mobilityClass="WALK"
+      movementDate="3월 18일 (수) 11시"
+      movementSpeed="12 km/h"
+      originCity="인천"
+      destinationCity="인천"
+      placeName="북도면"
+      onFiles={() => undefined}
+    />);
+
+    const place = container.querySelector('.media-caption-place');
+    expect(place).toHaveTextContent('인천');
+    expect(place).not.toHaveTextContent('북도면');
+  });
+
+  it('combines a district-level label with its surrounding city', () => {
+    const { container } = render(<MediaJourneyPane
+      media={[media]}
+      activeId={media.id}
+      videoMode="THUMBNAIL"
+      mobilityClass="WALK"
+      movementDate="3월 18일 (수) 11시"
+      movementSpeed="12 km/h"
+      originCity="인천"
+      destinationCity="인천"
+      placeName="중구"
+      onFiles={() => undefined}
+    />);
+
+    expect(container.querySelector('.media-caption-place')).toHaveTextContent('인천 중구');
   });
 
   it('uses everyday transport labels and places them with the pictogram', () => {
