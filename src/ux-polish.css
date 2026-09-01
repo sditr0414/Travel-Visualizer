@@ -80,31 +80,31 @@
   to { opacity: 0; transform: translateY(-5px) scale(1.004); }
 }
 
-/* Keep photo metadata on one baseline: coarse place first, timestamp immediately after it. */
+/* Keep photo metadata on one baseline, slightly above the midpoint of the caption strip. */
 .media-card .media-caption {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: flex-start;
-  gap: 14px;
-  min-height: 58px;
-  padding: 11px 4px 0;
+  gap: 22px;
+  min-height: 72px;
+  padding: 8px 4px 16px;
   flex-wrap: wrap;
 }
 
 .media-card .media-caption-place {
   min-width: 0;
   color: var(--paper);
-  font-size: clamp(17px, 1.35vw, 20px);
+  font-size: clamp(19px, 1.5vw, 23px);
   font-weight: 820;
-  line-height: 1.25;
+  line-height: 1.22;
   white-space: nowrap;
 }
 
 .media-card .media-caption-date {
   color: #d0cbc4;
-  font-size: clamp(16px, 1.25vw, 19px);
+  font-size: clamp(18px, 1.4vw, 22px);
   font-weight: 720;
-  line-height: 1.25;
+  line-height: 1.22;
   letter-spacing: -.02em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -191,17 +191,17 @@
   }
 
   .media-card .media-caption {
-    gap: 9px;
-    min-height: 49px;
-    padding: 8px 2px 0;
+    gap: 14px;
+    min-height: 58px;
+    padding: 6px 2px 12px;
   }
 
   .media-card .media-caption-place {
-    font-size: 15px;
+    font-size: 17px;
   }
 
   .media-card .media-caption-date {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .media-transit {
