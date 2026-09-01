@@ -57,7 +57,7 @@ describe('App integration', () => {
     );
   });
 
-  it('waits for a local Timeline, creates a plan, and enables playback controls', async () => {
+  it('waits for a local Timeline, creates a midpoint-duration plan, and enables playback controls', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
       plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
@@ -75,14 +75,16 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '재생' }));
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
     expect(worker.scan).toHaveBeenCalled();
-    expect(worker.plan).toHaveBeenCalled();
-    expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0.7, pacingMode: 'LOCAL_DAYS' }), expect.any(Function));
+    expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({
+      startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0.7,
+      pacingMode: 'LOCAL_DAYS', targetDurationSec: 0
+    }), expect.any(Function));
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
     await waitFor(() => expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'visible'));
   });
 
-  it('exposes camera controls and the local photo journey', async () => {
+  it('starts photo journeys with a minimized route pane and video playback enabled', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
       plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }), cancel: vi.fn(), dispose: vi.fn()
@@ -107,15 +109,17 @@ describe('App integration', () => {
     expect(playerStatus?.previousElementSibling).toHaveTextContent('0:00');
     expect(playerStatus?.nextElementSibling).toHaveTextContent('0:04');
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
-    expect(separator).toHaveAttribute('aria-valuenow', '60');
+    expect(separator).toHaveAttribute('aria-valuenow', '38');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
-    expect(separator).toHaveAttribute('aria-valuenow', '62');
+    expect(separator).toHaveAttribute('aria-valuenow', '40');
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
     expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
     expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('ALL');
+    expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
+    expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'PREVIEW' } });
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
   });
