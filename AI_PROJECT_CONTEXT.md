@@ -23,7 +23,7 @@ Timeline file/text
 
 Local media manifest
   -> sidecar/cache
-  -> bounded EXIF header scan
+  -> bounded embedded metadata scan (JPEG EXIF / MP4·MOV·M4V QuickTime)
   -> Timeline/GPS matching
   -> photo playback stops
 ```
@@ -32,7 +32,8 @@ Local media manifest
 - Timeline 파싱·계획: Web Worker
 - 프레임 재생: React 밖의 `PlayerController`
 - 지도: 온라인 OpenFreeMap 기본, PMTiles 코드는 선택 시 동적 로드
-- 사진: Takeout sidecar → JPEG EXIF → 파일명 → 수정 시각
+- 사진·영상: Takeout sidecar → JPEG EXIF / MP4·MOV·M4V QuickTime → 파일명 → 수정 시각
+- QuickTime 스캔: 큰 영상 전체를 읽지 않고 앞·뒤 최대 1MB씩에서 Apple `creationdate`, `location.ISO6709`, `mvhd` 생성 시각을 확인
 - 캐시: `.cache/media-metadata.json`, 파일 fingerprint와 parser version으로 무효화
 - 서버: `127.0.0.1` 전용 Vite/정적 서버와 제한된 로컬 API
 
@@ -86,7 +87,8 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 ## Known limitations
 
-- MP4·MOV 내부 촬영 시각과 GPS 파싱은 미구현이다.
+- WebM 영상의 내부 촬영 시각과 GPS 파싱은 미구현이다.
+- MP4·MOV·M4V는 앞·뒤 제한 범위의 일반적인 QuickTime 메타데이터만 읽으므로 메타데이터가 매우 큰 `moov` 중간에만 있는 특이한 파일은 파일명·수정 시각으로 fallback할 수 있다.
 - JPEG 이외 이미지의 내장 위치 메타데이터는 아직 읽지 않는다.
 - 영상 내보내기, PWA, 네이티브 앱은 범위 밖이다.
 - 로컬 49MB Timeline 검증은 파일을 커밋하지 않고 `REAL_TIMELINE_JSON` 환경 변수로 수행한다.

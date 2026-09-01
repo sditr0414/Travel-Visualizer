@@ -43,18 +43,19 @@ npm start
 
 Timeline과 사진은 외부 서비스로 전송되지 않습니다. 자동 경로를 사용할 때는 `127.0.0.1`에 바인딩된 로컬 서버가 파일을 같은 PC의 브라우저에 제공합니다.
 
-## 사진 메타데이터와 캐시
+## 사진·영상 메타데이터와 캐시
 
 메타데이터는 다음 순서로 결합합니다.
 
 1. Google Takeout sidecar의 촬영 시각·GPS
 2. JPEG EXIF의 촬영 시각·GPS
-3. 파일명에 포함된 촬영 시각
-4. 파일 수정 시각
+3. MP4·MOV·M4V QuickTime 메타데이터의 생성 시각·GPS
+4. 파일명에 포함된 촬영 시각
+5. 파일 수정 시각
 
-Sidecar에 GPS가 없고 EXIF에 GPS가 있으면 두 정보를 결합합니다. 최초 분석에서는 JPEG 전체가 아니라 최대 256KB의 헤더만 읽습니다. 결과는 `.cache/media-metadata.json`에 저장하며 파일 크기·수정 시각 또는 파서 버전이 바뀐 항목만 다시 분석합니다. 캐시와 원본 데이터는 `.gitignore`에서 제외됩니다.
+Sidecar에 GPS가 없고 내장 메타데이터에 GPS가 있으면 두 정보를 결합합니다. 최초 분석에서는 JPEG 전체가 아니라 최대 256KB의 헤더만 읽고, MP4·MOV·M4V는 큰 파일 전체를 읽지 않고 앞·뒤 최대 1MB씩만 확인합니다. 결과는 `.cache/media-metadata.json`에 저장하며 파일 크기·수정 시각 또는 파서 상태가 바뀐 항목만 다시 분석합니다. 캐시와 원본 데이터는 `.gitignore`에서 제외됩니다.
 
-현재 MP4·MOV 등 영상의 내부 촬영 시각과 GPS는 아직 분석하지 않습니다. Sidecar 또는 파일명 시각을 사용하고, 둘 다 없으면 수정 시각을 사용합니다.
+WebM 영상의 내부 촬영 시각과 GPS는 아직 분석하지 않습니다. Sidecar 또는 파일명 시각을 사용하고, 둘 다 없으면 수정 시각을 사용합니다.
 
 ## 지도
 
@@ -70,7 +71,7 @@ npm run map:setup
 
 - `src/workers/timeline.worker.ts`: Timeline 스캔·계획 Worker
 - `src/player/player-controller.ts`: React 밖의 프레임 재생과 지도 갱신
-- `src/media/`: sidecar·EXIF 분석, Timeline 매칭, 사진 여정 구성
+- `src/media/`: sidecar·EXIF·QuickTime 분석, Timeline 매칭, 사진 여정 구성
 - `src/map/`: MapLibre와 온라인·PMTiles 지도 스타일
 - `server.mjs`: 로컬 정적 서버, Timeline·미디어·PMTiles Range 제공, 메타데이터 캐시
 
