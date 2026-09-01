@@ -23,13 +23,13 @@ const media: JourneyMedia = {
 };
 
 describe('MediaJourneyPane', () => {
-  it('shows only the date and place beneath active media', () => {
-    render(<MediaJourneyPane
+  it('groups photo date and place without field labels', () => {
+    const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
       videoMode="THUMBNAIL"
       mobilityClass="WALK"
-      movementDate="3월 18일 (수)"
+      movementDate="3월 18일 (수) 11시"
       movementSpeed="12 km/h"
       originCity="후쿠오카"
       destinationCity="기타큐슈"
@@ -37,22 +37,23 @@ describe('MediaJourneyPane', () => {
       onFiles={() => undefined}
     />);
 
-    const footer = screen.getByText('날짜').closest('footer');
-    expect(footer).toHaveTextContent('2026년 3월 18일');
-    expect(footer).toHaveTextContent('장소');
+    const footer = container.querySelector('.media-caption');
+    expect(footer).toHaveTextContent('2026년 3월 18일 11:11');
     expect(footer).toHaveTextContent('기타큐슈');
+    expect(footer).not.toHaveTextContent('날짜');
+    expect(footer).not.toHaveTextContent('장소');
     expect(footer).not.toHaveTextContent('IMG_111122');
     expect(footer).not.toHaveTextContent('사진 EXIF');
     expect(footer).not.toHaveTextContent('장면 3 / 4');
   });
 
-  it('groups movement information beside the pictogram', () => {
+  it('uses everyday transport labels and places them with the pictogram', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={null}
       videoMode="THUMBNAIL"
-      mobilityClass="FAST_GROUND"
-      movementDate="3월 18일 (수)"
+      mobilityClass="ROAD"
+      movementDate="3월 18일 (수) 11시"
       movementSpeed="82 km/h"
       originCity="후쿠오카"
       destinationCity="기타큐슈"
@@ -60,10 +61,12 @@ describe('MediaJourneyPane', () => {
       onFiles={() => undefined}
     />);
 
-    expect(container.querySelector('.media-transit > .movement-pictogram')).toHaveTextContent('🚆');
-    const details = container.querySelector('.media-transit > .movement-details');
-    expect(details).toHaveTextContent('철도 이동');
-    expect(details).toHaveTextContent('3월 18일 (수)');
+    const identity = container.querySelector('.movement-identity');
+    expect(identity).toHaveTextContent('🚗');
+    expect(identity).toHaveTextContent('차량');
+    expect(identity).not.toHaveTextContent('도로 이동');
+    const details = container.querySelector('.movement-details');
+    expect(details).toHaveTextContent('3월 18일 (수) 11시');
     expect(details).toHaveTextContent('82 km/h');
     expect(details).toHaveTextContent('후쿠오카→기타큐슈');
   });
