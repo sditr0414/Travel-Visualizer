@@ -59,7 +59,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
     <aside className="media-journey-pane" aria-label="사진 여정">
       <div className="media-scene-stack" style={style} data-transition-ms={transitionMs} aria-live="polite">
         {previousScene && (
-          <div className="media-scene-layer is-previous" aria-hidden="true">
+          <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true">
             <SceneContent scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} />
           </div>
         )}
