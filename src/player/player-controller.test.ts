@@ -30,4 +30,49 @@ describe('photo journey stops', () => {
     expect(photoJourneyZoom(12, 12_000, 'ROAD')).toBeCloseTo(12.52);
     expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
   });
+
+  it('interpolates camera position between planned frames and keeps one flight zoom stable', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    plan.fps = 4;
+    plan.frames = [
+      {
+        ...first,
+        mobilityClass: 'FLIGHT',
+        position: { lat: 37.5, lng: 127 },
+        center: { lat: 37.5, lng: 127 },
+        lockedCenter: { lat: 37.5, lng: 127 },
+        zoom: 8,
+        lockedZoom: 8
+      },
+      {
+        ...first,
+        timeSec: 0.25,
+        progress: 0.5,
+        mobilityClass: 'FLIGHT',
+        position: { lat: 37.51, lng: 127.01 },
+        center: { lat: 37.51, lng: 127.01 },
+        lockedCenter: { lat: 37.51, lng: 127.01 },
+        zoom: 10,
+        lockedZoom: 10
+      },
+      outro
+    ];
+
+    const jumpTo = vi.fn();
+    const map = {
+      getSource: () => ({ setData: vi.fn() }),
+      jumpTo
+    } as unknown as Map;
+    const controller = new PlayerController(map);
+    controller.loadPlan(plan);
+    controller.seek(0.125);
+
+    const camera = jumpTo.mock.calls.at(-1)?.[0] as { center: [number, number]; zoom: number };
+    expect(camera.center[0]).toBeCloseTo(127.005, 3);
+    expect(camera.center[1]).toBeCloseTo(37.505, 3);
+    expect(camera.zoom).toBe(8);
+  });
 });
