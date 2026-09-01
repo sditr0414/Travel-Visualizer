@@ -32,7 +32,6 @@ export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, mo
           </div>
           <footer className="media-caption">
             <time className="media-caption-date" dateTime={new Date(active.takenMs).toISOString()}>{formatMediaDate(active.takenMs)}</time>
-            <span className="media-caption-divider" aria-hidden="true">·</span>
             <span className="media-caption-place"><MapPin size={15} aria-hidden="true" /> {placeName ?? (active.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치')}</span>
           </footer>
         </article>
