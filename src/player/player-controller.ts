@@ -348,7 +348,7 @@ function journeyTimeForRouteTime(routeTimeSec: number, schedule: ScheduledStop[]
   const routeTime = clamp(routeTimeSec, 0, routeDurationSec);
   let added = 0;
   for (const stop of schedule) {
-    if (stop.atSec > routeTime) break;
+    if (stop.atSec >= routeTime) break;
     added = stop.addedThroughSec;
   }
   return routeTime + added;
