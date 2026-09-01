@@ -1,5 +1,6 @@
 import { Film, ImageOff, ImagePlus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { sceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
 
 interface Props {
@@ -135,7 +136,8 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
 
   useEffect(() => {
     if (item.kind !== 'video' || videoMode !== 'PLAY') return;
-    void videoRef.current?.play().catch(() => undefined);
+    const playback = videoRef.current?.play();
+    if (playback) void playback.catch(() => undefined);
   }, [item.kind, url, videoMode, videoMuted]);
 
   if (failed) {
@@ -160,28 +162,25 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
 }
 
 function usePreviousScene(scene: SceneDescriptor, transitionMs: number): SceneDescriptor | null {
-  const currentRef = useRef(scene);
-  const transitionRef = useRef(transitionMs);
+  const [lastScene, setLastScene] = useState(scene);
   const [previousScene, setPreviousScene] = useState<SceneDescriptor | null>(null);
-  transitionRef.current = transitionMs;
-  if (currentRef.current.key === scene.key) currentRef.current = scene;
 
   useLayoutEffect(() => {
-    const prior = currentRef.current;
-    if (prior.key === scene.key) return;
-    currentRef.current = scene;
-    setPreviousScene(prior);
-    const timer = window.setTimeout(() => setPreviousScene(null), transitionRef.current + 40);
+    if (lastScene.key === scene.key) {
+      if (lastScene !== scene) setLastScene(scene);
+      return;
+    }
+    setPreviousScene(lastScene);
+    setLastScene(scene);
+  }, [lastScene, scene]);
+
+  useEffect(() => {
+    if (!previousScene) return;
+    const timer = window.setTimeout(() => setPreviousScene(null), transitionMs + 40);
     return () => window.clearTimeout(timer);
-    // Scene contents update continuously, but a transition only starts when its identity changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene.key]);
+  }, [previousScene, transitionMs]);
 
   return previousScene;
-}
-
-export function sceneTransitionDurationMs(photoDisplaySec: number): number {
-  return Math.round(Math.min(900, Math.max(300, (Number(photoDisplaySec) || 3) * 180)));
 }
 
 function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null, positionSource: JourneyMedia['positionSource']): string {
