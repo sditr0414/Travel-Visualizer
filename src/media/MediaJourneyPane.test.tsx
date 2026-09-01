@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { MediaJourneyPane } from './MediaJourneyPane';
 import type { JourneyMedia } from '../types';
 
