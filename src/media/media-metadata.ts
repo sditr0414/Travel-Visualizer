@@ -1,4 +1,6 @@
 const JPEG_SCAN_BYTES = 256 * 1024;
+const QUICKTIME_SCAN_BYTES = 1024 * 1024;
+const QUICKTIME_EPOCH_MS = Date.UTC(1904, 0, 1);
 
 export interface EmbeddedMetadata {
   takenMs: number | null;
@@ -16,13 +18,112 @@ export function parseFilenameTimestamp(name: string): number | null {
 }
 
 export async function readEmbeddedMetadata(file: File): Promise<EmbeddedMetadata | null> {
-  if (!(file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name))) return null;
   try {
-    const buffer = await file.slice(0, Math.min(file.size, JPEG_SCAN_BYTES)).arrayBuffer();
-    return parseJpegExif(buffer);
+    if (file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name)) {
+      const buffer = await file.slice(0, Math.min(file.size, JPEG_SCAN_BYTES)).arrayBuffer();
+      return parseJpegExif(buffer);
+    }
+    if (isQuickTimeVideo(file)) {
+      const chunks = await readQuickTimeChunks(file);
+      return parseQuickTimeMetadataChunks(chunks);
+    }
+    return null;
   } catch {
     return null;
   }
+}
+
+export function parseQuickTimeMetadataChunks(chunks: ArrayBuffer[]): EmbeddedMetadata | null {
+  if (!chunks.length) return null;
+  const texts = chunks.map(decodeMetadataText);
+  const hasLocationKey = texts.some(text => /(?:com\.apple\.quicktime\.location\.ISO6709|©xyz)/i.test(text));
+  const hasCreationDateKey = texts.some(text => /(?:com\.apple\.quicktime\.creationdate|©day)/i.test(text));
+
+  let coordinate: { lat: number; lng: number } | null = null;
+  if (hasLocationKey) {
+    for (const text of texts) {
+      coordinate = parseIso6709(text);
+      if (coordinate) break;
+    }
+  }
+
+  let takenMs: number | null = null;
+  if (hasCreationDateKey) {
+    for (const text of texts) {
+      takenMs = parseQuickTimeDateText(text);
+      if (takenMs != null) break;
+    }
+  }
+  if (takenMs == null) {
+    for (const chunk of chunks) {
+      takenMs = parseMovieHeaderCreationTime(chunk);
+      if (takenMs != null) break;
+    }
+  }
+
+  if (takenMs == null && !coordinate) return null;
+  return { takenMs, lat: coordinate?.lat ?? null, lng: coordinate?.lng ?? null };
+}
+
+async function readQuickTimeChunks(file: File): Promise<ArrayBuffer[]> {
+  if (file.size <= 0) return [];
+  if (file.size <= QUICKTIME_SCAN_BYTES * 2) return [await file.arrayBuffer()];
+  const head = file.slice(0, QUICKTIME_SCAN_BYTES).arrayBuffer();
+  const tail = file.slice(Math.max(0, file.size - QUICKTIME_SCAN_BYTES)).arrayBuffer();
+  return Promise.all([head, tail]);
+}
+
+function isQuickTimeVideo(file: File): boolean {
+  return /^(?:video\/(?:mp4|quicktime|x-m4v))$/i.test(file.type) || /\.(?:mp4|m4v|mov)$/i.test(file.name);
+}
+
+function decodeMetadataText(buffer: ArrayBuffer): string {
+  return new TextDecoder('windows-1252').decode(buffer);
+}
+
+function parseIso6709(text: string): { lat: number; lng: number } | null {
+  const match = text.match(/([+-]\d{2}\.\d+)([+-]\d{3}\.\d+)(?:[+-]\d+(?:\.\d+)?)?\/?/);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+    ? { lat, lng }
+    : null;
+}
+
+function parseQuickTimeDateText(text: string): number | null {
+  const match = text.match(/\b((?:19|20)\d{2}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/);
+  if (!match) return null;
+  const normalized = match[1].replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  const value = Date.parse(normalized);
+  return validEmbeddedTimestamp(value) ? value : null;
+}
+
+function parseMovieHeaderCreationTime(buffer: ArrayBuffer): number | null {
+  if (buffer.byteLength < 20) return null;
+  const view = new DataView(buffer);
+  for (let index = 4; index + 16 <= view.byteLength; index += 1) {
+    if (view.getUint8(index) !== 0x6d
+      || view.getUint8(index + 1) !== 0x76
+      || view.getUint8(index + 2) !== 0x68
+      || view.getUint8(index + 3) !== 0x64) continue;
+    const boxStart = index - 4;
+    const boxSize = view.getUint32(boxStart, false);
+    if (boxSize < 20 || boxStart + boxSize > view.byteLength) continue;
+    const version = view.getUint8(index + 4);
+    let seconds: number;
+    if (version === 0) seconds = view.getUint32(index + 8, false);
+    else if (version === 1 && index + 16 <= view.byteLength) seconds = Number(view.getBigUint64(index + 8, false));
+    else continue;
+    if (!Number.isFinite(seconds) || seconds <= 0) continue;
+    const value = QUICKTIME_EPOCH_MS + seconds * 1000;
+    if (validEmbeddedTimestamp(value)) return value;
+  }
+  return null;
+}
+
+function validEmbeddedTimestamp(value: number): boolean {
+  return Number.isFinite(value) && value > Date.UTC(2000, 0, 1) && value < Date.UTC(2101, 0, 1);
 }
 
 function parseJpegExif(buffer: ArrayBuffer): EmbeddedMetadata | null {

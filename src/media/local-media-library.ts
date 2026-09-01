@@ -1,6 +1,6 @@
 import type { JourneyMedia, LocalMediaManifest, LocalMediaManifestItem, MediaImportProgress, MediaMetadataSource, PlaybackPlan } from '../types';
 import { organizeJourneyMedia, parseFilenameTimestamp, playbackSecondFor, positionAtPlaybackSecond, type JourneyMediaLibrary } from './media-library';
-import { readEmbeddedMetadata } from './media-metadata';
+import { parseQuickTimeMetadataChunks, readEmbeddedMetadata } from './media-metadata';
 
 interface CachedMetadataUpdate {
   id: string;
@@ -13,6 +13,7 @@ interface CachedMetadataUpdate {
 type AnalyzedMetadata = Omit<CachedMetadataUpdate, 'id'>;
 const LOCAL_EXIF_FAST_BYTES = 128 * 1024;
 const LOCAL_EXIF_MAX_BYTES = 256 * 1024;
+const LOCAL_VIDEO_SCAN_BYTES = 1024 * 1024;
 
 export async function loadLocalMediaManifest(
   manifest: LocalMediaManifest,
@@ -67,31 +68,44 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
   shouldCache: boolean;
 }> {
   const cached = item.metadata;
-  const shouldReadJpeg = item.kind === 'image' && /\.jpe?g$/i.test(item.name)
-    && (!cached || (!cached.embeddedScanned && cached.lat == null));
-  if (cached && !shouldReadJpeg) {
+  const supportsEmbedded = isJpeg(item) || isQuickTimeVideo(item);
+  const shouldReadEmbedded = supportsEmbedded && (!cached || cached.embeddedScanned !== true);
+  if (cached && !shouldReadEmbedded) {
     return { item, metadata: { ...cached, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };
   }
+
   let embedded = null;
-  if (shouldReadJpeg) {
-    embedded = await fetchEmbeddedMetadata(item, LOCAL_EXIF_FAST_BYTES);
-    if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchEmbeddedMetadata(item, LOCAL_EXIF_MAX_BYTES);
+  if (shouldReadEmbedded) {
+    if (isJpeg(item)) {
+      embedded = await fetchJpegMetadata(item, LOCAL_EXIF_FAST_BYTES);
+      if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchJpegMetadata(item, LOCAL_EXIF_MAX_BYTES);
+    } else {
+      embedded = await fetchQuickTimeMetadata(item);
+    }
   }
+
   const filenameTime = parseFilenameTimestamp(item.name);
+  const preserveCachedTime = cached?.source === 'takeout-sidecar' || cached?.source === 'embedded-exif';
   return {
     item,
     metadata: {
-      takenMs: cached?.takenMs ?? embedded?.takenMs ?? filenameTime ?? item.lastModified,
+      takenMs: preserveCachedTime
+        ? cached.takenMs
+        : embedded?.takenMs ?? cached?.takenMs ?? filenameTime ?? item.lastModified,
       lat: cached?.lat ?? embedded?.lat ?? null,
       lng: cached?.lng ?? embedded?.lng ?? null,
-      source: cached?.source ?? (embedded ? 'embedded-exif' : filenameTime == null ? 'file-time' : 'filename-time'),
-      embeddedScanned: shouldReadJpeg || cached?.embeddedScanned === true
+      source: cached?.source === 'takeout-sidecar'
+        ? 'takeout-sidecar'
+        : embedded
+          ? 'embedded-exif'
+          : cached?.source ?? (filenameTime == null ? 'file-time' : 'filename-time'),
+      embeddedScanned: shouldReadEmbedded || cached?.embeddedScanned === true
     },
     shouldCache: true
   };
 }
 
-async function fetchEmbeddedMetadata(item: LocalMediaManifestItem, bytes: number) {
+async function fetchJpegMetadata(item: LocalMediaManifestItem, bytes: number) {
   try {
     const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` } });
     if (!response.ok) return null;
@@ -100,6 +114,25 @@ async function fetchEmbeddedMetadata(item: LocalMediaManifestItem, bytes: number
   } catch {
     return null;
   }
+}
+
+async function fetchQuickTimeMetadata(item: LocalMediaManifestItem) {
+  if (item.size <= 0) return null;
+  try {
+    const ranges = item.size <= LOCAL_VIDEO_SCAN_BYTES * 2
+      ? [[0, item.size - 1]]
+      : [[0, LOCAL_VIDEO_SCAN_BYTES - 1], [item.size - LOCAL_VIDEO_SCAN_BYTES, item.size - 1]];
+    const chunks = (await Promise.all(ranges.map(([start, end]) => fetchMediaRange(item.id, start, end))))
+      .filter((value): value is ArrayBuffer => value != null);
+    return parseQuickTimeMetadataChunks(chunks);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMediaRange(id: string, start: number, end: number): Promise<ArrayBuffer | null> {
+  const response = await fetch(`/api/local-media/${encodeURIComponent(id)}`, { headers: { Range: `bytes=${start}-${end}` } });
+  return response.ok ? response.arrayBuffer() : null;
 }
 
 async function saveMetadataCache(entries: CachedMetadataUpdate[]): Promise<void> {
@@ -112,6 +145,14 @@ async function saveMetadataCache(entries: CachedMetadataUpdate[]): Promise<void>
   } catch {
     // Cache writes are an optimization; the journey remains usable without them.
   }
+}
+
+function isJpeg(item: LocalMediaManifestItem): boolean {
+  return item.kind === 'image' && /\.jpe?g$/i.test(item.name);
+}
+
+function isQuickTimeVideo(item: LocalMediaManifestItem): boolean {
+  return item.kind === 'video' && /\.(?:mp4|m4v|mov)$/i.test(item.name);
 }
 
 function cleanTitle(name: string): string {
