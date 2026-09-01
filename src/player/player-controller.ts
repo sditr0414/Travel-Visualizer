@@ -33,6 +33,7 @@ export class PlayerController {
   private timeSec = 0;
   private startedAt = 0;
   private frameIndex = -1;
+  private framePosition = -1;
   private raf: number | null = null;
   private lockToPosition = true;
   private trackingSpeed = 1;
@@ -42,6 +43,7 @@ export class PlayerController {
   private stopDurationSec = 0;
   private fullRouteData: object = emptyCollection();
   private lastStopId: string | null = null;
+  private stableFlightZooms = new Map<string, number>();
 
   constructor(private readonly map: Map, private readonly callbacks: PlayerCallbacks = {}) {}
 
@@ -50,10 +52,12 @@ export class PlayerController {
     this.plan = plan;
     this.timeSec = 0;
     this.frameIndex = -1;
+    this.framePosition = -1;
     this.trackedCenter = null;
     this.replaceStops(stops);
     this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
+    this.stableFlightZooms = buildStableFlightZooms(plan);
     this.setSource('route-all', this.fullRouteData);
     this.setSource('route-progress', emptyCollection());
     this.setSource('route-head', emptyCollection());
@@ -106,6 +110,7 @@ export class PlayerController {
     this.pause();
     this.timeSec = 0;
     this.frameIndex = -1;
+    this.framePosition = -1;
     this.trackedCenter = null;
     this.lastStopId = null;
     this.render(0, true);
@@ -118,6 +123,7 @@ export class PlayerController {
     this.stopSchedule = [];
     this.stopDurationSec = 0;
     this.fullRouteData = emptyCollection();
+    this.stableFlightZooms.clear();
   }
 
   isPlaying(): boolean {
@@ -141,14 +147,22 @@ export class PlayerController {
     const mapped = mapScheduledJourneyTime(this.timeSec, this.stopSchedule, this.plan.durationSec);
     const stopChanged = mapped.activeStopId !== this.lastStopId;
     this.lastStopId = mapped.activeStopId;
-    this.render(Math.floor(mapped.routeTimeSec * this.plan.fps), force || stopChanged, mapped.activeStopId);
+    this.renderAtPosition(mapped.routeTimeSec * this.plan.fps, force || stopChanged, mapped.activeStopId);
   }
 
   private render(index: number, force = false, activeStopId: string | null = null): void {
+    this.renderAtPosition(index, force, activeStopId);
+  }
+
+  private renderAtPosition(framePosition: number, force = false, activeStopId: string | null = null): void {
     if (!this.plan?.frames.length) return;
-    const nextIndex = Math.max(0, Math.min(index, this.plan.frames.length - 1));
-    if (!force && nextIndex === this.frameIndex) return;
-    const frame = this.plan.frames[nextIndex];
+    const clampedPosition = clamp(framePosition, 0, this.plan.frames.length - 1);
+    if (!force && Math.abs(clampedPosition - this.framePosition) < 0.001) return;
+    const baseIndex = Math.floor(clampedPosition);
+    const nextIndex = Math.min(baseIndex + 1, this.plan.frames.length - 1);
+    const mix = clampedPosition - baseIndex;
+    const baseFrame = this.plan.frames[baseIndex];
+    const frame = interpolatePlaybackFrame(baseFrame, this.plan.frames[nextIndex], mix);
     let center: Coordinate;
     let zoom = frame.zoom;
     if (frame.kind !== 'TRAVEL') {
@@ -159,7 +173,10 @@ export class PlayerController {
       zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
       this.trackedCenter = { ...center };
     } else {
-      center = this.followCamera(frame, nextIndex, force || frame.sceneBreak);
+      center = this.followCamera(frame, baseIndex, force || frame.sceneBreak);
+    }
+    if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT') {
+      zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
     }
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
@@ -170,16 +187,17 @@ export class PlayerController {
       );
     }
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
-    this.frameIndex = nextIndex;
+    this.frameIndex = baseIndex;
+    this.framePosition = clampedPosition;
 
     if (frame.kind === 'TRAVEL') {
-      this.setSource('route-progress', trailForFrame(this.plan, nextIndex));
+      this.setSource('route-progress', trailForFrame(this.plan, baseIndex));
       this.setSource('route-head', headForFrame(frame));
     } else {
       this.setSource('route-progress', this.fullRouteData);
       this.setSource('route-head', emptyCollection());
     }
-    this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, nextIndex, this.timeSec, activeStopId);
+    this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
   }
 
   private followCamera(frame: TravelFrame, frameIndex: number, reset = false): Coordinate {
@@ -222,6 +240,69 @@ export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobil
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
   const shortRouteBoost = distanceKm <= 2 ? 0.62 : distanceKm <= 8 ? 0.46 : distanceKm <= 30 ? 0.24 : 0;
   return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
+}
+
+function interpolatePlaybackFrame(frame: PlaybackFrame, next: PlaybackFrame, mix: number): PlaybackFrame {
+  const ratio = clamp(mix, 0, 1);
+  if (ratio <= 0 || frame.kind !== next.kind) return frame;
+  if (frame.kind !== 'TRAVEL' || next.kind !== 'TRAVEL') {
+    return {
+      ...frame,
+      center: interpolateCoordinate(frame.center, next.center, ratio),
+      position: interpolateCoordinate(frame.position, next.position, ratio),
+      zoom: lerp(frame.zoom, next.zoom, ratio)
+    };
+  }
+  if (frame.sceneId !== next.sceneId) return frame;
+  const targetA = trackingTargetProjected(frame);
+  const targetB = trackingTargetProjected(next);
+  const lockedCenter = frame.lockedCenter && next.lockedCenter
+    ? interpolateCoordinate(frame.lockedCenter, next.lockedCenter, ratio)
+    : frame.lockedCenter;
+  const lockedZoom = Number.isFinite(frame.lockedZoom) && Number.isFinite(next.lockedZoom)
+    ? lerp(frame.lockedZoom!, next.lockedZoom!, ratio)
+    : frame.lockedZoom;
+  return {
+    ...frame,
+    position: interpolateCoordinate(frame.position, next.position, ratio),
+    center: interpolateCoordinate(frame.center, next.center, ratio),
+    lockedCenter,
+    lockedZoom,
+    zoom: lerp(frame.zoom, next.zoom, ratio),
+    targetCenterX: lerp(targetA.x, targetB.x, ratio),
+    targetCenterY: lerp(targetA.y, targetB.y, ratio),
+    speedKmh: lerp(frame.speedKmh, next.speedKmh, ratio),
+    progress: frame.segmentIndex === next.segmentIndex ? lerp(frame.progress, next.progress, ratio) : frame.progress
+  };
+}
+
+function interpolateCoordinate(a: Coordinate, b: Coordinate, mix: number): Coordinate {
+  const projectedA = mercatorProject(a);
+  const projectedB = mercatorProject(b);
+  return mercatorUnproject({
+    x: lerp(projectedA.x, projectedB.x, mix),
+    y: lerp(projectedA.y, projectedB.y, mix)
+  });
+}
+
+function lerp(a: number, b: number, mix: number): number {
+  return a + (b - a) * mix;
+}
+
+function buildStableFlightZooms(plan: PlaybackPlan): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const frame of plan.frames) {
+    if (frame.kind !== 'TRAVEL' || frame.mobilityClass !== 'FLIGHT') continue;
+    const candidate = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
+    const key = flightZoomKey(frame);
+    const previous = result.get(key);
+    result.set(key, previous === undefined ? candidate : Math.min(previous, candidate));
+  }
+  return result;
+}
+
+function flightZoomKey(frame: TravelFrame): string {
+  return `${frame.sceneId}:${frame.mobilityClass}`;
 }
 
 function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
