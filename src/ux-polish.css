@@ -9,6 +9,24 @@
   gap: 10px;
 }
 
+/* Give media/pictogram scene changes enough time to read as one continuous transition. */
+.media-card,
+.media-transit {
+  animation-duration: 620ms;
+  animation-timing-function: cubic-bezier(.16, .84, .24, 1);
+}
+
+.media-frame img,
+.media-frame video {
+  transition: opacity 360ms ease, transform 520ms cubic-bezier(.16, .84, .24, 1);
+}
+
+@keyframes scene-in {
+  0% { opacity: .42; transform: translateY(4px) scale(.996); }
+  45% { opacity: .82; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Keep photo metadata compact: coarse place first, timestamp immediately after it. */
 .media-card .media-caption {
   display: flex;
@@ -52,7 +70,7 @@
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 12px;
+  gap: 18px;
   min-width: 0;
 }
 
@@ -134,7 +152,7 @@
   }
 
   .media-transit .movement-identity {
-    gap: 8px;
+    gap: 12px;
   }
 
   .media-transit .movement-pictogram {
