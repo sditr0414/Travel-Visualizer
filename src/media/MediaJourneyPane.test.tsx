@@ -23,7 +23,7 @@ const media: JourneyMedia = {
 };
 
 describe('MediaJourneyPane', () => {
-  it('groups photo date and place without field labels', () => {
+  it('groups photo date and place without field labels or a separator', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
@@ -40,6 +40,9 @@ describe('MediaJourneyPane', () => {
     const footer = container.querySelector('.media-caption');
     expect(footer).toHaveTextContent('2026년 3월 18일 11:11');
     expect(footer).toHaveTextContent('기타큐슈');
+    expect(footer?.querySelector('.media-caption-divider')).not.toBeInTheDocument();
+    expect(footer?.firstElementChild).toHaveClass('media-caption-date');
+    expect(footer?.lastElementChild).toHaveClass('media-caption-place');
     expect(footer).not.toHaveTextContent('날짜');
     expect(footer).not.toHaveTextContent('장소');
     expect(footer).not.toHaveTextContent('IMG_111122');
@@ -66,6 +69,8 @@ describe('MediaJourneyPane', () => {
     expect(identity).toHaveTextContent('차량');
     expect(identity).not.toHaveTextContent('도로 이동');
     const details = container.querySelector('.movement-details');
+    expect(details?.firstElementChild).toHaveClass('movement-date');
+    expect(details?.children[1]).toHaveClass('movement-speed');
     expect(details).toHaveTextContent('3월 18일 (수) 11시');
     expect(details).toHaveTextContent('82 km/h');
     expect(details).toHaveTextContent('후쿠오카→기타큐슈');
