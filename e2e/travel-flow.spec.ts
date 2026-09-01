@@ -15,7 +15,7 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
   await expect(page.getByLabel('재생 위치')).toHaveValue('0');
 });
 
-test('top controls auto-hide during desktop playback and return on hover', async ({ page }, testInfo) => {
+test('desktop playback chrome hides together and any reveal target restores all UI', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Hover reveal is a desktop interaction.');
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -25,11 +25,30 @@ test('top controls auto-hide during desktop playback and return on hover', async
 
   const topbar = page.locator('.topbar');
   const settings = page.locator('.settings-panel');
+  const hud = page.locator('.journey-hud');
+  const dock = page.getByLabel('재생 컨트롤');
   await expect(topbar).toHaveCSS('opacity', '0');
   await expect(settings).toHaveCSS('opacity', '0');
+  await expect(hud).toHaveCSS('opacity', '0');
+  await expect(dock).toHaveCSS('opacity', '0');
 
   await page.locator('.topbar-actions').hover();
   await expect(topbar).toHaveCSS('opacity', '1');
+  await expect(settings).toHaveCSS('opacity', '1');
+  await expect(hud).toHaveCSS('opacity', '1');
+  await expect(dock).toHaveCSS('opacity', '1');
+
+  await page.mouse.move(720, 450);
+  await expect(topbar).toHaveCSS('opacity', '0');
+  await expect(dock).toHaveCSS('opacity', '0');
+
+  await page.locator('.player-reveal-zone').hover();
+  await expect(topbar).toHaveCSS('opacity', '1');
+  await expect(settings).toHaveCSS('opacity', '1');
+  await expect(hud).toHaveCSS('opacity', '1');
+  await expect(dock).toHaveCSS('opacity', '1');
+
+  await expect(page.locator('.play-control')).not.toHaveCSS('transition-duration', '0s');
 });
 
 test('settings stay usable on a narrow screen', async ({ page }) => {
