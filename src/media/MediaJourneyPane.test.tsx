@@ -105,10 +105,11 @@ describe('MediaJourneyPane', () => {
     const view = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} photoDisplaySec={2} />);
 
     view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} photoDisplaySec={2} />);
+    act(() => vi.advanceTimersByTime(20));
     expect(view.container.querySelector('.media-scene-layer.is-previous .media-card')).toBeInTheDocument();
     expect(view.container.querySelector('.media-scene-layer.is-current .media-transit')).toBeInTheDocument();
 
-    act(() => vi.advanceTimersByTime(sceneTransitionDurationMs(2) + 50));
+    act(() => vi.advanceTimersByTime(sceneTransitionDurationMs(2) + 60));
     expect(view.container.querySelector('.media-scene-layer.is-previous')).not.toBeInTheDocument();
     vi.useRealTimers();
   });
