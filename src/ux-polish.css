@@ -57,47 +57,47 @@
 }
 
 .playback-active:has(
-  .topbar:hover,
-  .topbar:has(:focus-visible),
+  .topbar-actions:hover,
+  .topbar :focus-visible,
   .settings-panel:hover,
-  .settings-panel:has(:focus-visible),
+  .settings-panel :focus-visible,
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:has(:focus-visible),
+  .journey-hud :focus-visible,
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:has(:focus-visible)
+  .player-dock :focus-visible
 ) :is(.topbar, .settings-panel, .journey-hud, .player-dock) {
   opacity: 1;
   filter: blur(0);
 }
 
 .playback-active:has(
-  .topbar:hover,
-  .topbar:has(:focus-visible),
+  .topbar-actions:hover,
+  .topbar :focus-visible,
   .settings-panel:hover,
-  .settings-panel:has(:focus-visible),
+  .settings-panel :focus-visible,
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:has(:focus-visible),
+  .journey-hud :focus-visible,
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:has(:focus-visible)
+  .player-dock :focus-visible
 ) :is(.topbar, .settings-panel, .journey-hud) {
   transform: translateY(0);
 }
 
 .playback-active:has(
-  .topbar:hover,
-  .topbar:has(:focus-visible),
+  .topbar-actions:hover,
+  .topbar :focus-visible,
   .settings-panel:hover,
-  .settings-panel:has(:focus-visible),
+  .settings-panel :focus-visible,
   .settings-panel[open],
   .journey-hud:hover,
-  .journey-hud:has(:focus-visible),
+  .journey-hud :focus-visible,
   .player-reveal-zone:hover,
   .player-dock:hover,
-  .player-dock:has(:focus-visible)
+  .player-dock :focus-visible
 ) .player-dock {
   transform: translate(-50%, 0);
   pointer-events: auto;
