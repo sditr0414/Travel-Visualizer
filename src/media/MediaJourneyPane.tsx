@@ -162,23 +162,23 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
 }
 
 function usePreviousScene(scene: SceneDescriptor, transitionMs: number): SceneDescriptor | null {
-  const [lastScene, setLastScene] = useState(scene);
+  const latestSceneRef = useRef(scene);
   const [previousScene, setPreviousScene] = useState<SceneDescriptor | null>(null);
 
   useLayoutEffect(() => {
-    if (lastScene.key === scene.key) {
-      if (lastScene !== scene) setLastScene(scene);
-      return;
-    }
-    setPreviousScene(lastScene);
-    setLastScene(scene);
-  }, [lastScene, scene]);
+    const prior = latestSceneRef.current;
+    if (prior.key === scene.key) return;
+    const showFrame = window.requestAnimationFrame(() => setPreviousScene(prior));
+    const hideTimer = window.setTimeout(() => setPreviousScene(null), transitionMs + 60);
+    return () => {
+      window.cancelAnimationFrame(showFrame);
+      window.clearTimeout(hideTimer);
+    };
+  }, [scene.key, transitionMs]);
 
-  useEffect(() => {
-    if (!previousScene) return;
-    const timer = window.setTimeout(() => setPreviousScene(null), transitionMs + 40);
-    return () => window.clearTimeout(timer);
-  }, [previousScene, transitionMs]);
+  useLayoutEffect(() => {
+    latestSceneRef.current = scene;
+  }, [scene]);
 
   return previousScene;
 }
