@@ -1,6 +1,7 @@
 import { act, render } from '@testing-library/react';
 import { vi } from 'vitest';
-import { MediaJourneyPane, sceneTransitionDurationMs } from './MediaJourneyPane';
+import { MediaJourneyPane } from './MediaJourneyPane';
+import { sceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia } from '../types';
 
 const media: JourneyMedia = {
