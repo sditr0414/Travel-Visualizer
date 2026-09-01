@@ -30,25 +30,29 @@ export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, mo
             <MediaAsset key={active.id} item={active} url={url} videoMode={videoMode} />
             {active.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 대표 장면</span>}
           </div>
-          <footer>
-            <div>
-              <strong>{active.title}</strong>
-              <span>{formatMediaDate(active.takenMs)} · {metadataLabel(active)}</span>
-              {active.groupCount > 1 && <span className="media-sequence">장면 {active.groupIndex + 1} / {active.groupCount}{active.sourceCount > active.groupCount ? ` · 외 ${active.sourceCount - active.groupCount}개` : ''}</span>}
+          <footer className="media-caption">
+            <div className="media-caption-item">
+              <span>날짜</span>
+              <strong>{formatMediaDate(active.takenMs)}</strong>
             </div>
-            <span className="location-chip"><MapPin size={12} /> {placeName ?? (active.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치')}</span>
+            <div className="media-caption-item media-caption-place">
+              <span>장소</span>
+              <strong><MapPin size={15} aria-hidden="true" /> {placeName ?? (active.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치')}</strong>
+            </div>
           </footer>
         </article>
       ) : media.length ? (
         <div className="media-transit" aria-live="polite">
           <span className="movement-pictogram" aria-hidden="true">{movement.icon}</span>
-          <strong>{movement.label}</strong>
-          <div className="movement-meta"><span>{movementDate}</span><span>{movementSpeed}</span></div>
-          {originCity && destinationCity && originCity !== destinationCity && (
-            <div className="movement-route" aria-label={`출발 ${originCity}, 도착 ${destinationCity}`}>
-              <span>{originCity}</span><span aria-hidden="true">→</span><span>{destinationCity}</span>
-            </div>
-          )}
+          <div className="movement-details">
+            <strong>{movement.label}</strong>
+            <div className="movement-meta"><span>{movementDate}</span><span>{movementSpeed}</span></div>
+            {originCity && destinationCity && originCity !== destinationCity && (
+              <div className="movement-route" aria-label={`출발 ${originCity}, 도착 ${destinationCity}`}>
+                <span>{originCity}</span><span aria-hidden="true">→</span><span>{destinationCity}</span>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="media-empty">
@@ -97,15 +101,5 @@ function MediaAsset({ item, url, videoMode }: { item: JourneyMedia; url: string;
 }
 
 function formatMediaDate(value: number): string {
-  return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(value);
-}
-
-function metadataLabel(item: JourneyMedia): string {
-  const labels: Record<JourneyMedia['metadataSource'], string> = {
-    'takeout-sidecar': '로컬 Takeout 정보',
-    'embedded-exif': '사진 EXIF',
-    'filename-time': '파일명 시간',
-    'file-time': '파일 수정 시간'
-  };
-  return labels[item.metadataSource];
+  return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }).format(value);
 }
