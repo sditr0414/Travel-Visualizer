@@ -9,39 +9,34 @@
   gap: 10px;
 }
 
-/* Keep photo metadata as one compact, left-aligned block directly beneath the media. */
+/* Keep photo metadata compact: coarse place first, timestamp immediately after it. */
 .media-card .media-caption {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-content: start;
-  justify-items: start;
-  gap: 4px;
-  min-height: 62px;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 54px;
   padding: 10px 4px 0;
-}
-
-.media-card .media-caption-date {
-  color: var(--paper);
-  font-size: clamp(16px, 1.25vw, 19px);
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: -.025em;
+  flex-wrap: wrap;
 }
 
 .media-card .media-caption-place {
-  display: flex;
-  align-items: center;
-  gap: 5px;
   min-width: 0;
-  color: #cbc6bf;
-  font-size: clamp(14px, 1.05vw, 16px);
-  font-weight: 650;
+  color: var(--paper);
+  font-size: clamp(15px, 1.15vw, 17px);
+  font-weight: 800;
   line-height: 1.3;
+  white-space: nowrap;
 }
 
-.media-card .media-caption-place svg {
-  flex: 0 0 auto;
-  color: var(--muted);
+.media-card .media-caption-date {
+  color: #c5c0b9;
+  font-size: clamp(14px, 1.05vw, 17px);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Keep the movement scene visually compact: icon and mode on the left, facts stacked on the right. */
@@ -57,7 +52,7 @@
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -119,16 +114,16 @@
   }
 
   .media-card .media-caption {
-    gap: 3px;
-    min-height: 50px;
+    gap: 8px;
+    min-height: 46px;
     padding: 7px 2px 0;
   }
 
-  .media-card .media-caption-date {
-    font-size: 14px;
+  .media-card .media-caption-place {
+    font-size: 13px;
   }
 
-  .media-card .media-caption-place {
+  .media-card .media-caption-date {
     font-size: 12px;
   }
 
@@ -139,7 +134,7 @@
   }
 
   .media-transit .movement-identity {
-    gap: 6px;
+    gap: 8px;
   }
 
   .media-transit .movement-pictogram {
