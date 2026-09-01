@@ -1,3 +1,4 @@
+import type { FocusEvent as ReactFocusEvent } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import {
   PLAYBACK_CHROME_HIDE_DELAY_MS,
@@ -41,9 +42,21 @@ describe('playback chrome visibility', () => {
     expect(view.result.current.visible).toBe(true);
     view.rerender({ keepVisible: false });
 
-    act(() => view.result.current.interactionProps.onFocusCapture());
+    const keyboardTarget = document.createElement('button');
+    vi.spyOn(keyboardTarget, 'matches').mockReturnValue(true);
+    act(() => view.result.current.interactionProps.onFocusCapture({ target: keyboardTarget } as unknown as ReactFocusEvent<HTMLElement>));
     expect(view.result.current.visible).toBe(true);
     act(() => vi.advanceTimersByTime(PLAYBACK_CHROME_HIDE_DELAY_MS * 2));
     expect(view.result.current.visible).toBe(true);
+  });
+
+  it('does not keep chrome visible for focus created by a pointer click', () => {
+    const view = renderHook(() => usePlaybackChrome({ playing: true }));
+    const pointerTarget = document.createElement('button');
+    vi.spyOn(pointerTarget, 'matches').mockReturnValue(false);
+
+    act(() => view.result.current.interactionProps.onFocusCapture({ target: pointerTarget } as unknown as ReactFocusEvent<HTMLElement>));
+    act(() => vi.advanceTimersByTime(PLAYBACK_CHROME_INITIAL_VISIBLE_MS));
+    expect(view.result.current.visible).toBe(false);
   });
 });
