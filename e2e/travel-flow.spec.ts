@@ -43,7 +43,9 @@ test('desktop playback chrome hides together and any reveal target restores all 
   await expect(topbar).toHaveCSS('opacity', '0');
   await expect(dock).toHaveCSS('opacity', '0');
 
-  await page.locator('.player-reveal-zone').hover();
+  const revealBox = await page.locator('.player-reveal-zone').boundingBox();
+  expect(revealBox).not.toBeNull();
+  await page.mouse.move(revealBox!.x + 8, revealBox!.y + revealBox!.height - 8);
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(settings).toHaveCSS('opacity', '1');
   await expect(hud).toHaveCSS('opacity', '1');
