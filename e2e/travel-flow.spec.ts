@@ -22,6 +22,7 @@ test('desktop playback chrome hides together and any reveal target restores all 
   const play = page.getByRole('button', { name: '재생' });
   await expect(play).toBeEnabled({ timeout: 20_000 });
   await play.click();
+  await page.mouse.move(720, 450);
 
   const topbar = page.locator('.topbar');
   const settings = page.locator('.settings-panel');
