@@ -105,6 +105,7 @@ function formatMediaDate(value: number): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    hourCycle: 'h23'
+    hourCycle: 'h23',
+    timeZone: 'Asia/Seoul'
   }).format(value);
 }
