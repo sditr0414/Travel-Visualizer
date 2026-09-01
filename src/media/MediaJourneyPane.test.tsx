@@ -100,7 +100,7 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });
 
-  it('keeps the outgoing scene mounted during a ten-percent cross-fade', () => {
+  it('keeps the outgoing scene mounted during the photo cross-dissolve', () => {
     vi.useFakeTimers();
     const view = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} photoDisplaySec={2} />);
 
@@ -108,7 +108,7 @@ describe('MediaJourneyPane', () => {
     act(() => vi.advanceTimersByTime(20));
     expect(view.container.querySelector('.media-scene-layer.is-previous .media-card')).toBeInTheDocument();
     expect(view.container.querySelector('.media-scene-layer.is-current .media-transit')).toBeInTheDocument();
-    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '200');
+    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', String(sceneTransitionDurationMs(2)));
 
     act(() => vi.advanceTimersByTime(sceneTransitionDurationMs(2) + 60));
     expect(view.container.querySelector('.media-scene-layer.is-previous')).not.toBeInTheDocument();
@@ -142,10 +142,10 @@ describe('MediaJourneyPane', () => {
     vi.useRealTimers();
   });
 
-  it('uses about ten percent of display time, with a short cap for pictograms', () => {
-    expect(sceneTransitionDurationMs(1.5)).toBe(150);
-    expect(sceneTransitionDurationMs(3)).toBe(300);
-    expect(sceneTransitionDurationMs(8)).toBe(800);
+  it('keeps photo dissolves stable while pictograms remain dwell-adaptive', () => {
+    expect(sceneTransitionDurationMs(1.5)).toBe(420);
+    expect(sceneTransitionDurationMs(3)).toBe(448);
+    expect(sceneTransitionDurationMs(8)).toBe(540);
     expect(transitSceneTransitionDurationMs(0.4)).toBe(40);
     expect(transitSceneTransitionDurationMs(2)).toBe(200);
     expect(transitSceneTransitionDurationMs(8)).toBe(320);
