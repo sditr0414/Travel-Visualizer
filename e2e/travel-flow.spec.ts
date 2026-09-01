@@ -15,7 +15,7 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
   await expect(page.getByLabel('재생 위치')).toHaveValue('0');
 });
 
-test('desktop playback chrome hides together and any reveal target restores all UI', async ({ page }, testInfo) => {
+test('desktop playback chrome uses delayed unified hide and reveal', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Hover reveal is a desktop interaction.');
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -24,34 +24,59 @@ test('desktop playback chrome hides together and any reveal target restores all 
   await play.click();
   await page.mouse.move(720, 450);
 
+  const shell = page.locator('.app-shell');
   const topbar = page.locator('.topbar');
   const settings = page.locator('.settings-panel');
   const hud = page.locator('.journey-hud');
   const dock = page.getByLabel('재생 컨트롤');
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3_000 });
   await expect(topbar).toHaveCSS('opacity', '0');
   await expect(settings).toHaveCSS('opacity', '0');
   await expect(hud).toHaveCSS('opacity', '0');
   await expect(dock).toHaveCSS('opacity', '0');
 
-  await page.locator('.topbar-actions').hover();
+  const topReveal = page.locator('.topbar-reveal-zone');
+  await topReveal.hover();
+  await page.waitForTimeout(60);
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden');
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_000 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(settings).toHaveCSS('opacity', '1');
   await expect(hud).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
 
   await page.mouse.move(720, 450);
-  await expect(topbar).toHaveCSS('opacity', '0');
-  await expect(dock).toHaveCSS('opacity', '0');
+  await page.waitForTimeout(250);
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible');
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1_500 });
 
-  const revealBox = await page.locator('.player-reveal-zone').boundingBox();
+  const bottomReveal = page.locator('.player-reveal-zone');
+  const revealBox = await bottomReveal.boundingBox();
   expect(revealBox).not.toBeNull();
-  await page.mouse.move(revealBox!.x + 8, revealBox!.y + revealBox!.height - 8);
+  await page.mouse.move(revealBox!.x + 8, revealBox!.y + revealBox!.height / 2);
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_000 });
   await expect(topbar).toHaveCSS('opacity', '1');
-  await expect(settings).toHaveCSS('opacity', '1');
-  await expect(hud).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
 
   await expect(page.locator('.play-control')).not.toHaveCSS('transition-duration', '0s');
+});
+
+test('switching between route and photo presentations pauses playback', async ({ page }) => {
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  const play = page.getByRole('button', { name: '재생' });
+  await expect(play).toBeEnabled({ timeout: 20_000 });
+
+  await page.getByRole('button', { name: '사진 여정' }).click();
+  await play.click();
+  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await page.getByRole('button', { name: '발자취' }).click();
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+
+  await page.getByRole('button', { name: '재생' }).click();
+  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await page.getByRole('button', { name: '사진 여정' }).click();
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
 });
 
 test('settings stay usable on a narrow screen', async ({ page }) => {
