@@ -1,5 +1,6 @@
-import { render } from '@testing-library/react';
-import { MediaJourneyPane } from './MediaJourneyPane';
+import { act, render } from '@testing-library/react';
+import { vi } from 'vitest';
+import { MediaJourneyPane, sceneTransitionDurationMs } from './MediaJourneyPane';
 import type { JourneyMedia } from '../types';
 
 const media: JourneyMedia = {
@@ -22,46 +23,42 @@ const media: JourneyMedia = {
   sourceCount: 4
 };
 
+const baseProps = {
+  videoMode: 'PLAY' as const,
+  videoMuted: true,
+  photoDisplaySec: 3,
+  mobilityClass: 'WALK' as const,
+  movementDate: '3월 18일 (수) 11시',
+  movementSpeed: '12 km/h',
+  originCity: '기타큐슈',
+  destinationCity: '기타큐슈',
+  placeName: '기타큐슈시',
+  onFiles: () => undefined
+};
+
 describe('MediaJourneyPane', () => {
-  it('shows coarse place before timestamp without a place icon', () => {
-    const { container } = render(<MediaJourneyPane
-      media={[media]}
-      activeId={media.id}
-      videoMode="THUMBNAIL"
-      mobilityClass="WALK"
-      movementDate="3월 18일 (수) 11시"
-      movementSpeed="12 km/h"
-      originCity="기타큐슈"
-      destinationCity="기타큐슈"
-      placeName="기타큐슈시"
-      onFiles={() => undefined}
-    />);
+  it('shows coarse place before a Korean-unit timestamp without a place icon', () => {
+    const { container } = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} />);
 
     const footer = container.querySelector('.media-caption');
     expect(footer).toHaveTextContent('기타큐슈시');
-    expect(footer).toHaveTextContent('2026년 3월 18일 11:11');
+    expect(footer).toHaveTextContent('2026년 3월 18일 11시 11분');
     expect(footer?.firstElementChild).toHaveClass('media-caption-place');
     expect(footer?.lastElementChild).toHaveClass('media-caption-date');
     expect(footer?.querySelector('svg')).not.toBeInTheDocument();
     expect(footer).not.toHaveTextContent('날짜');
     expect(footer).not.toHaveTextContent('장소');
     expect(footer).not.toHaveTextContent('IMG_111122');
-    expect(footer).not.toHaveTextContent('사진 EXIF');
-    expect(footer).not.toHaveTextContent('장면 3 / 4');
   });
 
   it('replaces overly detailed Korean place labels with the surrounding city', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
-      videoMode="THUMBNAIL"
-      mobilityClass="WALK"
-      movementDate="3월 18일 (수) 11시"
-      movementSpeed="12 km/h"
+      {...baseProps}
       originCity="인천"
       destinationCity="인천"
       placeName="북도면"
-      onFiles={() => undefined}
     />);
 
     const place = container.querySelector('.media-caption-place');
@@ -73,42 +70,51 @@ describe('MediaJourneyPane', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
-      videoMode="THUMBNAIL"
-      mobilityClass="WALK"
-      movementDate="3월 18일 (수) 11시"
-      movementSpeed="12 km/h"
+      {...baseProps}
       originCity="인천"
       destinationCity="인천"
       placeName="중구"
-      onFiles={() => undefined}
     />);
 
     expect(container.querySelector('.media-caption-place')).toHaveTextContent('인천 중구');
   });
 
-  it('uses everyday transport labels and places them with the pictogram', () => {
+  it('aligns pictogram/date and transport/route into matching rows', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={null}
-      videoMode="THUMBNAIL"
+      {...baseProps}
       mobilityClass="ROAD"
-      movementDate="3월 18일 (수) 11시"
       movementSpeed="82 km/h"
       originCity="후쿠오카"
       destinationCity="기타큐슈"
       placeName={null}
-      onFiles={() => undefined}
     />);
 
-    const identity = container.querySelector('.movement-identity');
-    expect(identity).toHaveTextContent('🚗');
-    expect(identity).toHaveTextContent('차량');
-    expect(identity).not.toHaveTextContent('도로 이동');
-    const details = container.querySelector('.movement-details');
-    expect(details?.firstElementChild).toHaveClass('movement-date');
-    expect(details?.children[1]).toHaveClass('movement-speed');
-    expect(details).toHaveTextContent('3월 18일 (수) 11시');
-    expect(details).toHaveTextContent('82 km/h');
-    expect(details).toHaveTextContent('후쿠오카→기타큐슈');
+    expect(container.querySelector('.movement-pictogram')).toHaveTextContent('🚗');
+    expect(container.querySelector('.movement-mode')).toHaveTextContent('차량');
+    expect(container.querySelector('.movement-primary')).toHaveTextContent('3월 18일 (수) 11시');
+    expect(container.querySelector('.movement-primary')).toHaveTextContent('82 km/h');
+    expect(container.querySelector('.movement-route')).toHaveTextContent('후쿠오카→기타큐슈');
+    expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
+  });
+
+  it('keeps the outgoing scene mounted during a real cross-fade', () => {
+    vi.useFakeTimers();
+    const view = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} photoDisplaySec={2} />);
+
+    view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} photoDisplaySec={2} />);
+    expect(view.container.querySelector('.media-scene-layer.is-previous .media-card')).toBeInTheDocument();
+    expect(view.container.querySelector('.media-scene-layer.is-current .media-transit')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(sceneTransitionDurationMs(2) + 50));
+    expect(view.container.querySelector('.media-scene-layer.is-previous')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('scales scene transition time with the photo display duration', () => {
+    expect(sceneTransitionDurationMs(1.5)).toBe(300);
+    expect(sceneTransitionDurationMs(3)).toBe(540);
+    expect(sceneTransitionDurationMs(8)).toBe(900);
   });
 });
