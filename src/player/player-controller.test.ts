@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime } from './player-controller';
+import { PlayerController, mapJourneyTime, photoJourneyZoom } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -23,5 +23,11 @@ describe('photo journey stops', () => {
     expect(controller.getDuration()).toBe(plan.durationSec + 8);
     controller.setStops([{ id: 'only', atSec: 1, durationSec: 2 }]);
     expect(controller.getDuration()).toBe(plan.durationSec + 2);
+  });
+
+  it('keeps photo journeys closer and gives short routes more detail', () => {
+    expect(photoJourneyZoom(12, 1_500, 'WALK')).toBeCloseTo(12.9);
+    expect(photoJourneyZoom(12, 12_000, 'ROAD')).toBeCloseTo(12.52);
+    expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
   });
 });
