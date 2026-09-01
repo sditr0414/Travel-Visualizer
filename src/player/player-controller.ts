@@ -28,6 +28,12 @@ interface ScheduledStop extends PlaybackStop {
   addedThroughSec: number;
 }
 
+interface StopSchedule {
+  stops: PlaybackStop[];
+  schedule: ScheduledStop[];
+  totalDurationSec: number;
+}
+
 export class PlayerController {
   private plan: PlaybackPlan | null = null;
   private playing = false;
@@ -66,8 +72,13 @@ export class PlayerController {
   }
 
   setStops(stops: PlaybackStop[]): void {
+    const routeDurationSec = this.plan?.durationSec ?? 0;
+    const remappedTimeSec = this.plan
+      ? remapJourneyTimeForStops(this.timeSec, this.stops, stops, routeDurationSec)
+      : this.timeSec;
     this.replaceStops(stops);
-    this.timeSec = Math.min(this.timeSec, this.getDuration());
+    this.timeSec = clamp(remappedTimeSec, 0, this.getDuration());
+    this.startedAt = performance.now() - this.timeSec * 1000;
     this.renderForTime(true);
   }
 
@@ -224,16 +235,10 @@ export class PlayerController {
   }
 
   private replaceStops(stops: PlaybackStop[]): void {
-    this.stops = [...stops].sort((a, b) => a.atSec - b.atSec);
-    let added = 0;
-    this.stopSchedule = this.stops.map(stop => {
-      const duration = Math.max(0, stop.durationSec);
-      const routeTimeSec = clamp(stop.atSec, 0, this.plan?.durationSec ?? Math.max(0, stop.atSec));
-      const journeyStartSec = routeTimeSec + added;
-      added += duration;
-      return { ...stop, journeyStartSec, journeyEndSec: journeyStartSec + duration, addedThroughSec: added };
-    });
-    this.stopDurationSec = added;
+    const next = buildStopSchedule(stops, this.plan?.durationSec ?? 0);
+    this.stops = next.stops;
+    this.stopSchedule = next.schedule;
+    this.stopDurationSec = next.totalDurationSec;
   }
 }
 
@@ -307,6 +312,19 @@ function flightZoomKey(frame: TravelFrame): string {
   return `${frame.sceneId}:${frame.mobilityClass}`;
 }
 
+function buildStopSchedule(stops: PlaybackStop[], routeDurationSec: number): StopSchedule {
+  const sorted = [...stops].sort((a, b) => a.atSec - b.atSec);
+  let added = 0;
+  const schedule = sorted.map(stop => {
+    const duration = Math.max(0, Number(stop.durationSec) || 0);
+    const routeTimeSec = clamp(stop.atSec, 0, routeDurationSec);
+    const journeyStartSec = routeTimeSec + added;
+    added += duration;
+    return { ...stop, atSec: routeTimeSec, durationSec: duration, journeyStartSec, journeyEndSec: journeyStartSec + duration, addedThroughSec: added };
+  });
+  return { stops: sorted, schedule, totalDurationSec: added };
+}
+
 function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
   let low = 0;
   let high = schedule.length - 1;
@@ -324,6 +342,32 @@ function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], rou
     return { routeTimeSec: clamp(stop.atSec, 0, routeDurationSec), activeStopId: stop.id };
   }
   return { routeTimeSec: clamp(timeSec - stop.addedThroughSec, 0, routeDurationSec), activeStopId: null };
+}
+
+function journeyTimeForRouteTime(routeTimeSec: number, schedule: ScheduledStop[], routeDurationSec: number): number {
+  const routeTime = clamp(routeTimeSec, 0, routeDurationSec);
+  let added = 0;
+  for (const stop of schedule) {
+    if (stop.atSec > routeTime) break;
+    added = stop.addedThroughSec;
+  }
+  return routeTime + added;
+}
+
+export function remapJourneyTimeForStops(timeSec: number, previousStops: PlaybackStop[], nextStops: PlaybackStop[], routeDurationSec: number): number {
+  const previous = buildStopSchedule(previousStops, routeDurationSec);
+  const next = buildStopSchedule(nextStops, routeDurationSec);
+  const mapped = mapScheduledJourneyTime(timeSec, previous.schedule, routeDurationSec);
+  if (mapped.activeStopId) {
+    const oldStop = previous.schedule.find(stop => stop.id === mapped.activeStopId);
+    const newStop = next.schedule.find(stop => stop.id === mapped.activeStopId);
+    if (oldStop && newStop) {
+      const oldDuration = Math.max(oldStop.journeyEndSec - oldStop.journeyStartSec, 1e-9);
+      const progress = clamp((timeSec - oldStop.journeyStartSec) / oldDuration, 0, 1);
+      return newStop.journeyStartSec + (newStop.journeyEndSec - newStop.journeyStartSec) * progress;
+    }
+  }
+  return journeyTimeForRouteTime(mapped.routeTimeSec, next.schedule, routeDurationSec);
 }
 
 export function mapJourneyTime(timeSec: number, stops: PlaybackStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
