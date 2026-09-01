@@ -1,0 +1,148 @@
+/* Layout refinements that depend on the photo-journey composition. */
+
+/* Keep the Timeline picker visually separated from the independently positioned settings button. */
+.topbar {
+  right: 174px;
+}
+
+.topbar-actions {
+  gap: 10px;
+}
+
+/* Photo captions intentionally show only the capture date and resolved place. */
+.media-card footer {
+  min-height: 68px;
+  padding: 12px 4px 0;
+}
+
+.media-card footer > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.media-card footer .media-date {
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.media-card footer .location-chip {
+  gap: 6px;
+  min-width: 0;
+  color: #d5d0ca;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.location-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Use the media pane horizontally: pictogram on the left, movement facts on the right. */
+.media-transit {
+  grid-template-columns: minmax(130px, 0.42fr) minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
+  column-gap: clamp(28px, 5vw, 72px);
+  width: min(720px, 92%);
+  text-align: left;
+}
+
+.media-transit > .movement-pictogram {
+  justify-self: end;
+  margin: 0;
+  font-size: clamp(96px, 10vw, 148px);
+}
+
+.movement-copy {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.movement-primary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.media-transit .movement-meta,
+.media-transit .movement-route {
+  margin-top: 0;
+}
+
+.media-transit .movement-route {
+  justify-content: flex-start;
+  gap: 12px;
+  font-size: clamp(16px, 1.35vw, 20px);
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    right: 154px;
+  }
+
+  .topbar-actions {
+    gap: 7px;
+  }
+
+  .media-card footer {
+    min-height: 100%;
+    padding: 10px;
+  }
+
+  .media-card footer > div {
+    display: grid;
+    gap: 7px;
+  }
+
+  .media-card footer .media-date {
+    font-size: 13px;
+    white-space: normal;
+  }
+
+  .media-card footer .location-chip {
+    display: flex !important;
+    font-size: 12px;
+  }
+
+  .media-transit {
+    grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr);
+    column-gap: 20px;
+    width: min(520px, 94%);
+  }
+
+  .media-transit > .movement-pictogram {
+    font-size: clamp(70px, 18vw, 96px);
+  }
+
+  .movement-copy {
+    gap: 10px;
+  }
+
+  .movement-primary {
+    display: grid;
+    gap: 5px;
+  }
+
+  .media-transit strong {
+    font-size: 20px;
+  }
+
+  .media-transit .movement-meta {
+    font-size: 13px;
+  }
+
+  .media-transit .movement-route {
+    gap: 8px;
+    font-size: 14px;
+  }
+}
