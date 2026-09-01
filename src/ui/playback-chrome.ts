@@ -61,7 +61,9 @@ export function usePlaybackChrome({ playing, keepVisible = false }: PlaybackChro
     scheduleHide();
   }, [scheduleHide]);
 
-  const onFocusCapture = useCallback(() => {
+  const onFocusCapture = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches(':focus-visible')) return;
     focusInsideRef.current = true;
     reveal(0);
   }, [reveal]);
