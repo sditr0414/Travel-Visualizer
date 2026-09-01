@@ -32,6 +32,8 @@ const MOBILITY_LABELS: Record<string, string> = {
 
 const DEFAULT_TRIP_START = '2026-03-17';
 const DEFAULT_TRIP_END = '2026-03-31';
+const PHOTO_MAP_MIN_DESKTOP = 0.38;
+const PHOTO_MAP_MIN_MOBILE = 0.34;
 const MapStage = lazy(() => import('./map/MapStage').then(module => ({ default: module.MapStage })));
 
 interface TimelineFileHandle {
@@ -54,7 +56,7 @@ export function App({ workerClient }: AppProps) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [includeFlights, setIncludeFlights] = useState(true);
-  const [targetDurationSec, setTargetDurationSec] = useState(90);
+  const [targetDurationSec, setTargetDurationSec] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>('AUTO');
   const [zoomOffset, setZoomOffset] = useState(0.7);
   const [pacingMode, setPacingMode] = useState<PacingMode>('LOCAL_DAYS');
@@ -65,14 +67,15 @@ export function App({ workerClient }: AppProps) {
   const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('ALL');
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [photoDisplaySec, setPhotoDisplaySec] = useState(3);
-  const [videoMode, setVideoMode] = useState<'THUMBNAIL' | 'PLAY'>('THUMBNAIL');
+  const [videoMode, setVideoMode] = useState<'THUMBNAIL' | 'PLAY'>('PLAY');
+  const [videoMuted, setVideoMuted] = useState(true);
   const [videoMaxSec, setVideoMaxSec] = useState(5);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaProgress, setMediaProgress] = useState<MediaImportProgress | null>(null);
   const [localMediaManifest, setLocalMediaManifest] = useState<LocalMediaManifest | null>(null);
   const [splitNarrow, setSplitNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 820);
-  const [desktopMapShare, setDesktopMapShare] = useState(0.60);
-  const [mobileMapShare, setMobileMapShare] = useState(0.52);
+  const [desktopMapShare, setDesktopMapShare] = useState(PHOTO_MAP_MIN_DESKTOP);
+  const [mobileMapShare, setMobileMapShare] = useState(PHOTO_MAP_MIN_MOBILE);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
   const playerRef = useRef<PlayerController | null>(null);
@@ -103,6 +106,11 @@ export function App({ workerClient }: AppProps) {
     dispatch({ type: 'PROGRESS', progress, message });
   }, []);
 
+  const minimizePhotoRoute = useCallback(() => {
+    setDesktopMapShare(PHOTO_MAP_MIN_DESKTOP);
+    setMobileMapShare(PHOTO_MAP_MIN_MOBILE);
+  }, []);
+
   const scanSource = useCallback(async (source: TimelineSource, text: string) => {
     const operation = ++scanOperationRef.current;
     dispatch({ type: 'LOAD_START', source });
@@ -112,7 +120,7 @@ export function App({ workerClient }: AppProps) {
       const preferred = preferredTripRange(scan.startDate, scan.endDate);
       setStartDate(preferred.startDate);
       setEndDate(preferred.endDate);
-      setTargetDurationSec(90);
+      setTargetDurationSec(0);
       autoPlanRef.current = true;
       dispatch({ type: 'SCAN_SUCCESS', scan });
     } catch (error) {
@@ -141,6 +149,7 @@ export function App({ workerClient }: AppProps) {
         zoomOffset,
         pacingMode
       }, reportProgress);
+      if (targetDurationSec <= 0) setTargetDurationSec(roundDurationStep(result.plan.durationSec));
       dispatch({ type: 'PLAN_SUCCESS', plan: result.plan });
     } catch (error) {
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '경로를 계산하지 못했습니다.' });
@@ -166,6 +175,7 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
+      minimizePhotoRoute();
       setJourneyMode('PHOTOS');
       dispatch({ type: 'NOTICE', message: `${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
@@ -174,7 +184,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, []);
+  }, [minimizePhotoRoute]);
 
   const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan) => {
     if (lastLocalMediaPlanRef.current === plan) return;
@@ -189,6 +199,7 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
+      minimizePhotoRoute();
       setJourneyMode('PHOTOS');
       setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 로컬 사진·영상을 연결했습니다.` });
       dispatch({ type: 'NOTICE', message: `${manifest.rootName}에서 ${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
@@ -199,7 +210,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, []);
+  }, [minimizePhotoRoute]);
 
   const mapShare = splitNarrow ? mobileMapShare : desktopMapShare;
   const mediaProgressValue = progressValue(mediaProgress);
@@ -430,6 +441,7 @@ export function App({ workerClient }: AppProps) {
   };
 
   const changeJourneyMode = (mode: 'ROUTE' | 'PHOTOS') => {
+    if (mode === 'PHOTOS') minimizePhotoRoute();
     setJourneyMode(mode);
     if (mode === 'ROUTE') {
       activeMediaRef.current = null;
@@ -454,7 +466,7 @@ export function App({ workerClient }: AppProps) {
   };
 
   const setMapShare = (value: number) => {
-    const limits = splitNarrow ? { min: 0.34, max: 0.72 } : { min: 0.38, max: 0.78 };
+    const limits = splitNarrow ? { min: PHOTO_MAP_MIN_MOBILE, max: 0.72 } : { min: PHOTO_MAP_MIN_DESKTOP, max: 0.78 };
     const next = Math.min(limits.max, Math.max(limits.min, value));
     if (splitNarrow) setMobileMapShare(next);
     else setDesktopMapShare(next);
@@ -472,7 +484,7 @@ export function App({ workerClient }: AppProps) {
     let next = mapShare;
     if ((!splitNarrow && event.key === 'ArrowLeft') || (splitNarrow && event.key === 'ArrowUp')) next -= step;
     else if ((!splitNarrow && event.key === 'ArrowRight') || (splitNarrow && event.key === 'ArrowDown')) next += step;
-    else if (event.key === 'Home') next = splitNarrow ? 0.34 : 0.38;
+    else if (event.key === 'Home') next = splitNarrow ? PHOTO_MAP_MIN_MOBILE : PHOTO_MAP_MIN_DESKTOP;
     else if (event.key === 'End') next = splitNarrow ? 0.72 : 0.78;
     else return;
     event.preventDefault();
@@ -483,7 +495,10 @@ export function App({ workerClient }: AppProps) {
   const canPlay = Boolean(state.plan && map && !busy);
   const duration = state.plan
     ? state.plan.durationSec + playbackStops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0)
-    : targetDurationSec;
+    : Math.max(0, targetDurationSec);
+  const durationControlValue = targetDurationSec > 0
+    ? targetDurationSec
+    : state.plan ? roundDurationStep(state.plan.durationSec) : 45;
 
   return (
     <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''} ${state.phase === 'playing' ? 'playback-active' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
@@ -495,6 +510,8 @@ export function App({ workerClient }: AppProps) {
           media={media}
           activeId={state.phase === 'ready' || state.phase === 'planning' ? null : activeMediaId}
           videoMode={videoMode}
+          videoMuted={videoMuted}
+          photoDisplaySec={photoDisplaySec}
           mobilityClass={hud.mobilityClass}
           movementDate={hud.date}
           movementSpeed={hud.speed}
@@ -621,13 +638,18 @@ export function App({ workerClient }: AppProps) {
               <input type="range" min="1.5" max="8" step="0.5" value={photoDisplaySec} onChange={event => setPhotoDisplaySec(Number(event.target.value))} />
             </label>
             <label className="select-field">영상 재생
-              <select value={videoMode} onChange={event => setVideoMode(event.target.value as 'THUMBNAIL' | 'PLAY')}>
-                <option value="THUMBNAIL">대표 장면만</option><option value="PLAY">자동 재생 · 소리 없음</option>
+              <select aria-label="영상 재생" value={videoMode} onChange={event => setVideoMode(event.target.value as 'THUMBNAIL' | 'PLAY')}>
+                <option value="PLAY">자동 재생</option><option value="THUMBNAIL">대표 장면만</option>
               </select>
             </label>
-            {videoMode === 'PLAY' && <label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
-              <input type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => setVideoMaxSec(Number(event.target.value))} />
-            </label>}
+            {videoMode === 'PLAY' && <>
+              <div className="toggle-list">
+                <label><input type="checkbox" aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => setVideoMuted(!event.target.checked)} /><span>영상 소리 재생</span></label>
+              </div>
+              <label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
+                <input type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => setVideoMaxSec(Number(event.target.value))} />
+              </label>
+            </>}
             <p className="privacy-note">사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.</p>
           </section>}
 
@@ -637,13 +659,13 @@ export function App({ workerClient }: AppProps) {
           </div>
 
           <label className="range-field">
-            <span><span>경로 재생 길이</span><output>{formatDuration(targetDurationSec)}</output></span>
+            <span><span>경로 재생 길이</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동 계산'}</output></span>
             <input
               type="range"
               min={state.plan?.durationLimits.minSeconds ?? 45}
               max={state.plan?.durationLimits.maxSeconds ?? 300}
               step="5"
-              value={targetDurationSec}
+              value={durationControlValue}
               onChange={event => setTargetDurationSec(Number(event.target.value))}
             />
           </label>
@@ -740,6 +762,10 @@ function formatDuration(seconds: number): string {
 function formatClock(seconds: number): string {
   const safe = Math.max(0, Math.round(seconds));
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function roundDurationStep(seconds: number): number {
+  return Math.max(5, Math.round((Number(seconds) || 0) / 5) * 5);
 }
 
 function formatSigned(value: number): string {
