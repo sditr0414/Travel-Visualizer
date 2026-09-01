@@ -1,4 +1,4 @@
-import { Film, ImageOff, ImagePlus, MapPin } from 'lucide-react';
+import { Film, ImageOff, ImagePlus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { JourneyMedia, MobilityClass } from '../types';
 
@@ -20,6 +20,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, mo
   const movement = MOVEMENT_VISUALS[mobilityClass];
   const objectUrl = useMemo(() => active?.file ? URL.createObjectURL(active.file) : null, [active]);
   const url = active?.sourceUrl ?? objectUrl;
+  const displayPlace = active ? formatPhotoPlace(placeName, originCity, destinationCity, active.positionSource) : null;
   useEffect(() => () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }, [objectUrl]);
 
   return (
@@ -31,8 +32,8 @@ export function MediaJourneyPane({ media, activeId, videoMode, mobilityClass, mo
             {active.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 대표 장면</span>}
           </div>
           <footer className="media-caption">
+            <span className="media-caption-place">{displayPlace}</span>
             <time className="media-caption-date" dateTime={new Date(active.takenMs).toISOString()}>{formatMediaDate(active.takenMs)}</time>
-            <span className="media-caption-place"><MapPin size={15} aria-hidden="true" /> {placeName ?? (active.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치')}</span>
           </footer>
         </article>
       ) : media.length ? (
@@ -95,6 +96,28 @@ function MediaAsset({ item, url, videoMode }: { item: JourneyMedia; url: string;
         onBlur={() => setShowControls(false)}
         onError={() => setFailed(true)}
       />;
+}
+
+function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null, positionSource: JourneyMedia['positionSource']): string {
+  const city = originCity && destinationCity
+    ? originCity === destinationCity ? originCity : null
+    : originCity ?? destinationCity;
+  const place = placeName?.trim() ?? '';
+  const fallback = city ?? (positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치');
+  if (!place) return fallback;
+
+  if (/(구|区)$/u.test(place)) {
+    if (city && normalizePlace(city) !== normalizePlace(place)) return `${city} ${place}`;
+    return place;
+  }
+  if (/(특별시|광역시|특별자치시|시|市)$/u.test(place)) return place;
+  if (/(동|읍|면|리|가|로|길|町|村|丁目)$/u.test(place)) return fallback;
+
+  return city ?? place;
+}
+
+function normalizePlace(value: string): string {
+  return value.replace(/\s+/g, '').toLocaleLowerCase('ko-KR');
 }
 
 function formatMediaDate(value: number): string {
