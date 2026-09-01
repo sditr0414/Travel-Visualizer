@@ -1,4 +1,4 @@
-/* Layout refinements that depend on the photo-journey composition. */
+/* Layout refinements that depend on the current photo-journey composition. */
 
 /* Keep the Timeline picker visually separated from the independently positioned settings button. */
 .topbar {
@@ -9,84 +9,104 @@
   gap: 10px;
 }
 
-/* Photo captions show only date and place, at a readable size. */
+/* Keep photo metadata as one compact, left-aligned block directly beneath the media. */
 .media-card .media-caption {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 24px;
-  min-height: 72px;
-  padding: 12px 4px 0;
+  grid-template-columns: 1fr;
+  align-content: start;
+  justify-items: start;
+  gap: 4px;
+  min-height: 62px;
+  padding: 10px 4px 0;
 }
 
-.media-caption-item {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
+.media-card .media-caption-date {
+  color: var(--paper);
+  font-size: clamp(16px, 1.25vw, 19px);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -.025em;
 }
 
-.media-caption-item > span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.media-caption-item > strong {
+.media-card .media-caption-place {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  color: var(--paper);
-  font-size: 15px;
-  font-weight: 750;
-  line-height: 1.35;
+  color: #cbc6bf;
+  font-size: clamp(14px, 1.05vw, 16px);
+  font-weight: 650;
+  line-height: 1.3;
 }
 
-.media-caption-place > strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.media-card .media-caption-place svg {
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
-/* Use the media pane horizontally: pictogram on the left, movement facts on the right. */
+/* Keep the movement scene visually compact: icon and mode on the left, facts stacked on the right. */
 .media-transit {
-  grid-template-columns: minmax(140px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(112px, 146px) minmax(0, 1fr);
   align-items: center;
-  justify-items: stretch;
-  column-gap: clamp(32px, 5vw, 76px);
-  width: min(760px, 92%);
+  column-gap: clamp(28px, 4vw, 48px);
+  width: min(640px, 88%);
   text-align: left;
 }
 
-.media-transit > .movement-pictogram {
-  justify-self: end;
-  margin: 0;
-  font-size: clamp(100px, 10vw, 152px);
-}
-
-.movement-details {
+.media-transit .movement-identity {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: 12px 20px;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.movement-details > strong {
-  grid-column: 1;
+.media-transit .movement-pictogram {
+  margin: 0;
+  font-size: clamp(82px, 8vw, 112px);
+  line-height: 1;
 }
 
-.movement-details > .movement-meta {
-  grid-column: 2;
+.media-transit .movement-mode {
+  color: #ece7e0;
+  font-size: clamp(18px, 1.5vw, 22px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+
+.media-transit .movement-details {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.media-transit .movement-date {
+  color: var(--paper);
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-transit .movement-speed {
   margin-top: 0;
+  color: #bdb8b1;
+  font-size: clamp(15px, 1.15vw, 18px);
+  font-weight: 650;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 }
 
-.movement-details > .movement-route {
-  grid-column: 1 / -1;
+.media-transit .movement-route {
   justify-content: flex-start;
-  margin-top: 2px;
-  gap: 12px;
-  font-size: clamp(16px, 1.35vw, 20px);
+  gap: 10px;
+  margin-top: 8px;
+  font-size: clamp(15px, 1.15vw, 18px);
 }
 
 @media (max-width: 720px) {
@@ -99,52 +119,52 @@
   }
 
   .media-card .media-caption {
-    grid-template-columns: 1fr;
-    align-content: center;
-    gap: 8px;
-    min-height: 100%;
-    padding: 10px;
+    gap: 3px;
+    min-height: 50px;
+    padding: 7px 2px 0;
   }
 
-  .media-caption-item > span {
-    font-size: 10px;
+  .media-card .media-caption-date {
+    font-size: 14px;
   }
 
-  .media-caption-item > strong {
-    font-size: 13px;
+  .media-card .media-caption-place {
+    font-size: 12px;
   }
 
   .media-transit {
-    grid-template-columns: minmax(92px, 0.34fr) minmax(0, 1fr);
-    column-gap: 20px;
-    width: min(520px, 94%);
+    grid-template-columns: minmax(82px, 104px) minmax(0, 1fr);
+    column-gap: 16px;
+    width: min(500px, 92%);
   }
 
-  .media-transit > .movement-pictogram {
-    font-size: clamp(70px, 18vw, 96px);
+  .media-transit .movement-identity {
+    gap: 6px;
   }
 
-  .movement-details {
-    grid-template-columns: 1fr;
-    gap: 5px;
+  .media-transit .movement-pictogram {
+    font-size: clamp(58px, 16vw, 76px);
   }
 
-  .movement-details > strong,
-  .movement-details > .movement-meta,
-  .movement-details > .movement-route {
-    grid-column: 1;
+  .media-transit .movement-mode {
+    font-size: 15px;
   }
 
-  .media-transit strong {
-    font-size: 20px;
+  .media-transit .movement-details {
+    gap: 4px;
   }
 
-  .media-transit .movement-meta {
+  .media-transit .movement-date {
+    font-size: clamp(20px, 5.5vw, 26px);
+  }
+
+  .media-transit .movement-speed {
     font-size: 13px;
   }
 
   .media-transit .movement-route {
     gap: 8px;
-    font-size: 14px;
+    margin-top: 6px;
+    font-size: 13px;
   }
 }
