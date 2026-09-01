@@ -9,6 +9,27 @@
   gap: 10px;
 }
 
+/* Match the playback dock: hide top controls while playing and reveal them on hover/focus. */
+.topbar,
+.settings-panel {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.playback-active .topbar,
+.playback-active .settings-panel:not([open]) {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.playback-active .topbar:hover,
+.playback-active .topbar:focus-within,
+.playback-active .settings-panel:hover,
+.playback-active .settings-panel:focus-within,
+.playback-active .settings-panel[open] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* Cross-fade the outgoing and incoming photo/transit scenes in the same space. */
 .media-scene-stack {
   position: relative;
@@ -213,5 +234,13 @@
   .media-transit .movement-route {
     gap: 8px;
     font-size: 15px;
+  }
+}
+
+@media (hover: none) {
+  .playback-active .topbar,
+  .playback-active .settings-panel:not([open]) {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
