@@ -9,37 +9,40 @@
   gap: 10px;
 }
 
-/* Photo captions intentionally show only the capture date and resolved place. */
-.media-card footer {
-  min-height: 68px;
+/* Photo captions show only date and place, at a readable size. */
+.media-card .media-caption {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  min-height: 72px;
   padding: 12px 4px 0;
 }
 
-.media-card footer > div {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.media-caption-item {
+  display: grid;
+  gap: 3px;
   min-width: 0;
 }
 
-.media-card footer .media-date {
+.media-caption-item > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.media-caption-item > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--paper);
   font-size: 15px;
   font-weight: 750;
   line-height: 1.35;
-  white-space: nowrap;
 }
 
-.media-card footer .location-chip {
-  gap: 6px;
-  min-width: 0;
-  color: #d5d0ca;
-  font-size: 14px;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.location-chip span {
+.media-caption-place > strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -47,40 +50,41 @@
 
 /* Use the media pane horizontally: pictogram on the left, movement facts on the right. */
 .media-transit {
-  grid-template-columns: minmax(130px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(140px, 0.42fr) minmax(0, 1fr);
   align-items: center;
   justify-items: stretch;
-  column-gap: clamp(28px, 5vw, 72px);
-  width: min(720px, 92%);
+  column-gap: clamp(32px, 5vw, 76px);
+  width: min(760px, 92%);
   text-align: left;
 }
 
 .media-transit > .movement-pictogram {
   justify-self: end;
   margin: 0;
-  font-size: clamp(96px, 10vw, 148px);
+  font-size: clamp(100px, 10vw, 152px);
 }
 
-.movement-copy {
+.movement-details {
   display: grid;
-  gap: 16px;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px 20px;
   min-width: 0;
 }
 
-.movement-primary {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10px 18px;
+.movement-details > strong {
+  grid-column: 1;
 }
 
-.media-transit .movement-meta,
-.media-transit .movement-route {
+.movement-details > .movement-meta {
+  grid-column: 2;
   margin-top: 0;
 }
 
-.media-transit .movement-route {
+.movement-details > .movement-route {
+  grid-column: 1 / -1;
   justify-content: flex-start;
+  margin-top: 2px;
   gap: 12px;
   font-size: clamp(16px, 1.35vw, 20px);
 }
@@ -94,24 +98,20 @@
     gap: 7px;
   }
 
-  .media-card footer {
+  .media-card .media-caption {
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: 8px;
     min-height: 100%;
     padding: 10px;
   }
 
-  .media-card footer > div {
-    display: grid;
-    gap: 7px;
+  .media-caption-item > span {
+    font-size: 10px;
   }
 
-  .media-card footer .media-date {
+  .media-caption-item > strong {
     font-size: 13px;
-    white-space: normal;
-  }
-
-  .media-card footer .location-chip {
-    display: flex !important;
-    font-size: 12px;
   }
 
   .media-transit {
@@ -124,13 +124,15 @@
     font-size: clamp(70px, 18vw, 96px);
   }
 
-  .movement-copy {
-    gap: 10px;
+  .movement-details {
+    grid-template-columns: 1fr;
+    gap: 5px;
   }
 
-  .movement-primary {
-    display: grid;
-    gap: 5px;
+  .movement-details > strong,
+  .movement-details > .movement-meta,
+  .movement-details > .movement-route {
+    grid-column: 1;
   }
 
   .media-transit strong {
