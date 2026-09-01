@@ -98,7 +98,7 @@ describe('App integration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
     expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
-    expect(screen.getByText('도보 이동')).toBeInTheDocument();
+    expect(screen.getByText('도보')).toBeInTheDocument();
     expect(screen.getByText('12 km/h')).toBeInTheDocument();
     expect(screen.queryByText(/개의 사진·영상이 경로에 연결되었습니다/)).not.toBeInTheDocument();
     expect(screen.queryByText('현재 장면')).not.toBeInTheDocument();
