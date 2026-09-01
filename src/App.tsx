@@ -9,6 +9,7 @@ import { loadLocalMediaManifest } from './media/local-media-library';
 import { MediaJourneyPane } from './media/MediaJourneyPane';
 import { TimelineWorkerClient, type TimelineWorkerPort } from './services/timeline-worker-client';
 import { appReducer, initialAppState } from './state/app-reducer';
+import { usePlaybackChrome } from './ui/playback-chrome';
 import type { CameraMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PacingMode, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
 
 interface AppProps {
@@ -77,6 +78,7 @@ export function App({ workerClient }: AppProps) {
   const [desktopMapShare, setDesktopMapShare] = useState(PHOTO_MAP_MIN_DESKTOP);
   const [mobileMapShare, setMobileMapShare] = useState(PHOTO_MAP_MIN_MOBILE);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
   const playerRef = useRef<PlayerController | null>(null);
   const autoPlanRef = useRef(false);
@@ -93,6 +95,7 @@ export function App({ workerClient }: AppProps) {
   const cityRouteCacheRef = useRef(new Map<number, { originCity: string | null; destinationCity: string | null; lastAttemptMs: number }>());
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<{ name: string; count: number } | null>(null);
   const media = photoViewMode === 'ALL' ? mediaLibrary.all : mediaLibrary.preview;
+  const playbackChrome = usePlaybackChrome({ playing: state.phase === 'playing', keepVisible: settingsOpen });
 
   const mapSource = useMemo<MapSourceConfig>(() => mapKind === 'online'
     ? { kind: 'online', styleUrl: ONLINE_STYLE_URL }
@@ -109,6 +112,14 @@ export function App({ workerClient }: AppProps) {
   const minimizePhotoRoute = useCallback(() => {
     setDesktopMapShare(PHOTO_MAP_MIN_DESKTOP);
     setMobileMapShare(PHOTO_MAP_MIN_MOBILE);
+  }, []);
+
+  const pausePlayback = useCallback(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    const wasPlaying = player.isPlaying();
+    player.pause();
+    if (wasPlaying) dispatch({ type: 'PAUSE' });
   }, []);
 
   const scanSource = useCallback(async (source: TimelineSource, text: string) => {
@@ -168,7 +179,7 @@ export function App({ workerClient }: AppProps) {
     const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
     setMediaProgress({ phase: 'PREPARE', processed: 0, total: files.length, message: '미디어 파일을 준비하고 있습니다.' });
-    playerRef.current?.pause();
+    pausePlayback();
     try {
       const loaded = await loadJourneyMedia(files, plan, progress => {
         if (operation === mediaOperationRef.current) setMediaProgress(progress);
@@ -184,7 +195,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, [minimizePhotoRoute]);
+  }, [minimizePhotoRoute, pausePlayback]);
 
   const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan) => {
     if (lastLocalMediaPlanRef.current === plan) return;
@@ -192,7 +203,7 @@ export function App({ workerClient }: AppProps) {
     const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
     setMediaProgress({ phase: 'BUILD', processed: 0, total: manifest.count, message: '기본 사진 폴더를 여행 경로에 연결하고 있습니다.' });
-    playerRef.current?.pause();
+    pausePlayback();
     try {
       const loaded = await loadLocalMediaManifest(manifest, plan, progress => {
         if (operation === mediaOperationRef.current) setMediaProgress(progress);
@@ -210,7 +221,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, [minimizePhotoRoute]);
+  }, [minimizePhotoRoute, pausePlayback]);
 
   const mapShare = splitNarrow ? mobileMapShare : desktopMapShare;
   const mediaProgressValue = progressValue(mediaProgress);
@@ -372,7 +383,7 @@ export function App({ workerClient }: AppProps) {
       return;
     }
     manualTimelineSelectedRef.current = true;
-    playerRef.current?.pause();
+    pausePlayback();
     setActiveMediaId(null);
     try {
       await scanSource({ kind: 'local-file', name: file.name }, await file.text());
@@ -432,22 +443,21 @@ export function App({ workerClient }: AppProps) {
   };
 
   const changePhotoViewMode = (mode: PhotoViewMode) => {
-    playerRef.current?.pause();
+    pausePlayback();
     activeMediaRef.current = null;
     setActiveMediaId(null);
     setActivePlaceName(null);
     setPhotoViewMode(mode);
-    if (state.phase === 'playing') dispatch({ type: 'PAUSE' });
   };
 
   const changeJourneyMode = (mode: 'ROUTE' | 'PHOTOS') => {
+    if (mode === journeyMode) return;
+    pausePlayback();
     if (mode === 'PHOTOS') minimizePhotoRoute();
     setJourneyMode(mode);
-    if (mode === 'ROUTE') {
-      activeMediaRef.current = null;
-      setActiveMediaId(null);
-      setActivePlaceName(null);
-    }
+    activeMediaRef.current = null;
+    setActiveMediaId(null);
+    setActivePlaceName(null);
   };
 
   const resetPlayback = () => {
@@ -499,9 +509,17 @@ export function App({ workerClient }: AppProps) {
   const durationControlValue = targetDurationSec > 0
     ? targetDurationSec
     : state.plan ? roundDurationStep(state.plan.durationSec) : 45;
+  const playbackChromeClass = state.phase === 'playing'
+    ? playbackChrome.visible ? 'playback-chrome-visible' : 'playback-chrome-hidden'
+    : 'playback-chrome-visible';
 
   return (
-    <main ref={shellRef} className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''} ${state.phase === 'playing' ? 'playback-active' : ''}`} style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}>
+    <main
+      ref={shellRef}
+      className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''} ${state.phase === 'playing' ? 'playback-active' : ''} ${playbackChromeClass}`}
+      data-playback-chrome={playbackChrome.visible ? 'visible' : 'hidden'}
+      style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}
+    >
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
         <MapStage source={mapSource} onReady={onMapReady} onError={onMapError} />
       </Suspense>
@@ -537,7 +555,8 @@ export function App({ workerClient }: AppProps) {
         />
       </>}
 
-      <header className="topbar">
+      {state.plan && state.phase === 'playing' && <div className="topbar-reveal-zone" aria-hidden="true" {...playbackChrome.revealZoneProps} />}
+      <header className="topbar" {...playbackChrome.interactionProps}>
         <div className="brand-lockup">
           <span className="brand-mark" aria-hidden="true"><Route size={18} /></span>
           <div>
@@ -586,13 +605,18 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud" aria-live="polite">
+      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud" aria-live="polite" {...playbackChrome.interactionProps}>
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong>{hud.mobility}</strong>
         <div className="hud-meta"><span>{hud.date}</span><span>{hud.speed}</span></div>
       </section>}
 
-      {state.scan && <details className="settings-panel" data-placement="topbar">
+      {state.scan && <details
+        className="settings-panel"
+        data-placement="topbar"
+        onToggle={event => setSettingsOpen(event.currentTarget.open)}
+        {...playbackChrome.interactionProps}
+      >
         <summary><span><Layers3 size={16} /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" /></summary>
         <div className="settings-content">
           <div className="source-summary">
@@ -703,8 +727,8 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && <div className="player-reveal-zone" aria-hidden="true" />}
-      {state.plan && <footer className="player-dock" aria-label="재생 컨트롤">
+      {state.plan && state.phase === 'playing' && <div className="player-reveal-zone" aria-hidden="true" {...playbackChrome.revealZoneProps} />}
+      {state.plan && <footer className="player-dock" aria-label="재생 컨트롤" {...playbackChrome.interactionProps}>
         <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기"><RotateCcw size={17} /></button>
         <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}>
           {state.phase === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
