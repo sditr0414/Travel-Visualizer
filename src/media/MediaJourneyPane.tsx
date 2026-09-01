@@ -1,6 +1,6 @@
 import { Film, ImageOff, ImagePlus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { sceneTransitionDurationMs } from './scene-transition';
+import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
 
 interface Props {
@@ -23,6 +23,11 @@ type SceneDescriptor =
   | { kind: 'transit'; key: string; mobilityClass: MobilityClass; movementDate: string; movementSpeed: string; originCity: string | null; destinationCity: string | null }
   | { kind: 'empty'; key: 'empty' };
 
+interface SceneTransitionState {
+  previousScene: SceneDescriptor | null;
+  transitionMs: number;
+}
+
 export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
   const active = media.find(item => item.id === activeId) ?? null;
   const scene = useMemo<SceneDescriptor>(() => {
@@ -37,7 +42,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
     if (media.length) {
       return {
         kind: 'transit',
-        key: `transit:${mobilityClass}:${originCity ?? ''}:${destinationCity ?? ''}`,
+        key: `transit:${mobilityClass}`,
         mobilityClass,
         movementDate,
         movementSpeed,
@@ -47,8 +52,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
     }
     return { kind: 'empty', key: 'empty' };
   }, [active, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
-  const transitionMs = sceneTransitionDurationMs(photoDisplaySec);
-  const previousScene = usePreviousScene(scene, transitionMs);
+  const { previousScene, transitionMs } = useSceneTransition(scene, photoDisplaySec);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
 
   return (
@@ -161,26 +165,47 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
       />;
 }
 
-function usePreviousScene(scene: SceneDescriptor, transitionMs: number): SceneDescriptor | null {
+function useSceneTransition(scene: SceneDescriptor, photoDisplaySec: number): SceneTransitionState {
   const latestSceneRef = useRef(scene);
-  const [previousScene, setPreviousScene] = useState<SceneDescriptor | null>(null);
+  const enteredAtRef = useRef<number | null>(null);
+  const initialTransitionMs = scene.kind === 'transit'
+    ? transitSceneTransitionDurationMs(1)
+    : sceneTransitionDurationMs(photoDisplaySec);
+  const [transition, setTransition] = useState<SceneTransitionState>({ previousScene: null, transitionMs: initialTransitionMs });
 
   useLayoutEffect(() => {
     const prior = latestSceneRef.current;
     if (prior.key === scene.key) return;
-    const showFrame = window.requestAnimationFrame(() => setPreviousScene(prior));
-    const hideTimer = window.setTimeout(() => setPreviousScene(null), transitionMs + 60);
+
+    const now = performance.now();
+    const enteredAt = enteredAtRef.current;
+    const measuredDwellSec = enteredAt === null ? 0 : Math.max(0, (now - enteredAt) / 1000);
+    const transitionMs = prior.kind === 'transit'
+      ? transitSceneTransitionDurationMs(measuredDwellSec)
+      : sceneTransitionDurationMs(measuredDwellSec > 0.05 ? measuredDwellSec : photoDisplaySec);
+    enteredAtRef.current = now;
+
+    const showFrame = window.requestAnimationFrame(() => {
+      setTransition({ previousScene: prior, transitionMs });
+    });
+    const hideTimer = window.setTimeout(() => {
+      setTransition(current => current.previousScene?.key === prior.key
+        ? { ...current, previousScene: null }
+        : current);
+    }, transitionMs + 60);
+
     return () => {
       window.cancelAnimationFrame(showFrame);
       window.clearTimeout(hideTimer);
     };
-  }, [scene.key, transitionMs]);
+  }, [photoDisplaySec, scene.key]);
 
   useLayoutEffect(() => {
     latestSceneRef.current = scene;
+    if (enteredAtRef.current === null) enteredAtRef.current = performance.now();
   }, [scene]);
 
-  return previousScene;
+  return transition;
 }
 
 function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null, positionSource: JourneyMedia['positionSource']): string {
