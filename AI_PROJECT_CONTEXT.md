@@ -31,6 +31,7 @@ Local media manifest
 - 앱 상태: `idle/loading/ready/planning/playing/paused/complete/error` reducer
 - Timeline 파싱·계획: Web Worker
 - 프레임 재생: React 밖의 `PlayerController`
+- 발자취/사진 여정 재생 커서: `App`이 모드별 위치를 별도 보관하고 활성 모드 전환 시 해당 위치만 복원
 - playback chrome 표시 상태: `src/ui/playback-chrome.ts`의 React hook이 포인터·키보드·설정 열림 상태와 지연 시간을 조정
 - 지도: 온라인 OpenFreeMap 기본, PMTiles 코드는 선택 시 동적 로드
 - 사진·영상: Takeout sidecar → JPEG EXIF / MP4·MOV·M4V QuickTime → 파일명 → 수정 시각
@@ -65,7 +66,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 - 전체 지도와 여행 경로가 첫 화면의 중심이다.
 - 경로 재생 길이의 기본값은 해당 여행에 계산된 최소·최대 재생 시간의 중간값을 5초 단위로 맞춘 값으로 사용한다. 사용자가 직접 값을 바꾸면 그 값을 우선한다.
-- 발자취와 사진 여정은 하나의 플레이어를 공유하지만 동시에 재생되는 별도 모드처럼 동작해서는 안 된다. `발자취 ↔ 사진 여정` 표시 모드를 바꾸면 현재 재생을 즉시 일시정지하고 같은 경로 진행 위치를 유지한 채 새 모드의 stop 구성을 적용한다.
+- 발자취와 사진 여정은 내부적으로 같은 지도와 `PlayerController`를 재사용할 수 있지만 **재생 상태와 재생 커서는 서로 독립적**이다. 한 모드에서 재생하거나 탐색해도 다른 모드의 커서는 진행하지 않는다. `발자취 ↔ 사진 여정` 전환 시 현재 모드는 즉시 일시정지하고 현재 커서를 저장한 뒤, 새 모드가 마지막으로 저장한 커서를 복원한다. 새 Timeline/계획으로 교체되면 두 모드의 커서를 모두 0으로 초기화한다.
 - 재생 컨트롤은 하단에 두되 사진 여정에서는 지도 영역 안에 배치한다. 데스크톱 재생 중에는 상단 바·접힌 여행 설정·현재 장면 HUD·하단 재생바를 하나의 playback chrome으로 취급해 함께 숨긴다. playback chrome은 CSS `:has()` hover 판정이 아니라 React 상태로 통합 관리한다. 재생을 누른 직후 약 900ms 동안은 보인 뒤 숨김을 시작하고, 상·하단 reveal edge에 포인터가 약 220ms 머물거나 키보드 포커스가 오면 전체 UI를 복원한다. reveal edge 안에서 포인터가 계속 움직이면 대기 시간을 다시 시작해 우연히 스쳐 지나가는 동작에는 UI를 열지 않는다. 포인터가 모든 chrome에서 벗어난 뒤에는 약 650ms 기다렸다 함께 숨긴다. 설정 패널이 열려 있는 동안은 항상 표시하며 터치 화면에서도 항상 표시한다.
 - playback chrome의 숨김·복원은 blur 없이 opacity와 작은 translate/scale을 약 320~360ms easing으로 함께 처리해 상태 변화가 눈에 보이면서도 지도를 방해하지 않게 한다. playback chrome에 적용하는 일회성 입장 keyframe은 종료 뒤 `opacity`나 `transform`을 유지하는 fill mode를 사용하지 않아 React의 visible/hidden 상태가 최종 스타일을 소유하게 한다. 중앙 정렬 상태 카드처럼 기본 transform이 위치를 결정하는 UI는 입장 keyframe에서 그 transform을 덮지 않는다. 버튼·선택·설정 패널·카드형 상태 UI도 hover/focus/press/open 상태에 절제된 이동·색·테두리·그림자 애니메이션을 사용한다. 모든 모션은 `prefers-reduced-motion`을 존중한다.
 - 사진 여정에 들어갈 때 경로 영역은 허용된 최소 크기(데스크톱 38%, 모바일 34%)로 시작하고 사용자가 분할 핸들로 다시 확장할 수 있다.
@@ -90,7 +91,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 2026-09-02 기준으로 v2 핵심 경로를 다시 검토했습니다.
 
-- `App`/reducer: 모드 변경·미디어 재연결 시 재생 상태와 `PlayerController` 상태가 어긋나지 않도록 공통 pause 경로를 사용한다.
+- `App`/reducer: 발자취와 사진 여정은 모드별 재생 커서를 별도 저장하고, 모드 전환 시 현재 재생을 멈춘 뒤 대상 모드의 커서를 복원한다. 한 모드의 재생·탐색이 다른 모드의 진행 위치를 변경하지 않는다.
 - `PlayerController`: 프레임 보간, 항공 안정 줌, stop 스케줄 재매핑과 재생 시간 기준을 검토했고 stop 변경 시 경로 위치 보존 로직을 추가했다.
 - `MediaJourneyPane`/media bridge: 짧은 이동 구간 사진 유지, keyed outgoing scene, 사진/픽토그램 전환 identity와 시간 정책을 검토했다.
 - `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다. playback chrome의 입장 keyframe이 hidden 상태를 덮거나 중앙 오버레이의 centering transform을 깨지 않도록 animation ownership도 분리했다.
