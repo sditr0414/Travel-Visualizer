@@ -1,5 +1,62 @@
 /* Focused settings and final interface refinements. Loaded after ux-polish.css. */
 
+/* Give playback chrome enough time to visibly fade instead of snapping between states. */
+.topbar,
+.settings-panel,
+.journey-hud,
+.player-dock {
+  transition:
+    opacity 480ms cubic-bezier(.25, .7, .18, 1),
+    transform 540ms cubic-bezier(.2, .78, .2, 1);
+}
+
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel {
+  transform: translateY(-10px) scale(.992);
+}
+
+.playback-active.playback-chrome-hidden .player-dock {
+  transform: translate(-50%, 12px) scale(.992);
+}
+
+.settings-panel[open] .settings-content {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(.2, .78, .2, 1);
+}
+
+.local-import-panel,
+.status-card {
+  animation-duration: 360ms;
+  animation-timing-function: cubic-bezier(.2, .72, .2, 1);
+}
+
+/* Keep outgoing and incoming media overlapped long enough for a perceptible dissolve. */
+.media-scene-layer.is-current {
+  animation-name: scene-crossfade-in;
+  animation-duration: var(--scene-transition-ms, 620ms);
+  animation-timing-function: cubic-bezier(.22, .72, .18, 1);
+  animation-fill-mode: both;
+}
+
+.media-scene-layer.is-previous {
+  animation-name: scene-crossfade-out;
+  animation-duration: var(--scene-transition-ms, 620ms);
+  animation-timing-function: cubic-bezier(.35, 0, .24, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes scene-crossfade-in {
+  0% { opacity: 0; transform: scale(1.012); }
+  38% { opacity: .48; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scene-crossfade-out {
+  0% { opacity: 1; transform: scale(1); }
+  58% { opacity: .52; }
+  100% { opacity: 0; transform: scale(.992); }
+}
+
 /*
  * Photo settings needs a scrollbar more often than route settings.
  * Widen only by the classic desktop scrollbar footprint so the usable
@@ -181,18 +238,16 @@
   display: none;
 }
 
-/* Put speed at the visual midpoint between the date and origin/destination row. */
+/* Keep speed in the same text group as the date; do not absolutely position it. */
 .media-transit .movement-primary {
-  position: relative;
-  gap: 0;
+  position: static;
+  gap: 21px;
 }
 
 .media-transit .movement-speed {
-  position: absolute;
-  top: calc(100% + 32px);
-  left: 0;
+  position: static;
   margin: 0;
-  transform: translateY(-50%);
+  transform: none;
 }
 
 @media (max-width: 720px) {
@@ -257,7 +312,7 @@
     height: 30px;
   }
 
-  .media-transit .movement-speed {
-    top: calc(100% + 20px);
+  .media-transit .movement-primary {
+    gap: 14px;
   }
 }
