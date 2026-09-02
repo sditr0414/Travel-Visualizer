@@ -58,9 +58,9 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
 });
 
 test('route and photo journeys keep playback state and cursors separate', async ({ page }) => {
+  await attachLocalPhotoManifest(page);
   await page.goto('/');
   await loadLocalTimeline(page);
-  await attachLocalPhotoManifest(page);
   const play = page.getByRole('button', { name: '재생' });
   const position = page.getByLabel('재생 위치');
 
