@@ -23,9 +23,25 @@ describe('restored camera modes', () => {
     const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');
     let maxVelocity = 0;
     for (let index = 1; index < frames.length; index += 1) maxVelocity = Math.max(maxVelocity, Math.abs(frames[index].zoom - frames[index - 1].zoom) * result.fps);
-    expect(maxVelocity).toBeLessThan(1.1);
+    expect(maxVelocity).toBeLessThan(0.8);
     expect(result.autoCloserBias).toBe(0.28);
     expect(result.autoLockedCloserBias).toBe(0.46);
+  });
+
+  it('does not repeatedly reverse zoom direction over short intervals', () => {
+    const result = plan('AUTO');
+    const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');
+    const stride = Math.max(1, Math.round(result.fps * 0.25));
+    let previousDirection = 0;
+    let directionChanges = 0;
+    for (let index = stride; index < frames.length; index += stride) {
+      const delta = frames[index].zoom - frames[index - stride].zoom;
+      if (Math.abs(delta) < 0.015) continue;
+      const direction = Math.sign(delta);
+      if (previousDirection && direction !== previousDirection) directionChanges += 1;
+      previousDirection = direction;
+    }
+    expect(directionChanges).toBeLessThanOrEqual(2);
   });
 });
 
