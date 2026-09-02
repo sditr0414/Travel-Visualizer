@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MediaJourneyPane } from './MediaJourneyPane';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
@@ -175,7 +175,7 @@ describe('MediaJourneyPane', () => {
         await Promise.resolve();
       });
 
-      expect(view.container.querySelector('.media-scene-layer.is-current .media-card')).toBeInTheDocument();
+      await waitFor(() => expect(view.container.querySelector('.media-scene-layer.is-current .media-card')).toBeInTheDocument());
       expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-media-buffering', 'false');
     } finally {
       vi.stubGlobal('Image', nativeImage);
