@@ -52,17 +52,22 @@
   z-index: 12;
 }
 
+/* Route-only mobility HUD is persistent; only generic playback chrome hides. */
+.route-persistent-hud {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
 .playback-active.playback-chrome-hidden .topbar,
 .playback-active.playback-chrome-hidden .settings-panel,
-.playback-active.playback-chrome-hidden .journey-hud,
 .playback-active.playback-chrome-hidden .player-dock {
   opacity: 0;
   pointer-events: none;
 }
 
 .playback-active.playback-chrome-hidden .topbar,
-.playback-active.playback-chrome-hidden .settings-panel,
-.playback-active.playback-chrome-hidden .journey-hud {
+.playback-active.playback-chrome-hidden .settings-panel {
   transform: translateY(-14px) scale(.985);
 }
 
@@ -71,8 +76,7 @@
 }
 
 .playback-chrome-visible .topbar,
-.playback-chrome-visible .settings-panel,
-.playback-chrome-visible .journey-hud {
+.playback-chrome-visible .settings-panel {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -98,6 +102,8 @@
 .media-import-row label,
 .form-grid input,
 .select-field select,
+.trip-range-control button,
+.trip-range-fields input,
 .photo-split-handle::after {
   transition:
     transform 170ms cubic-bezier(.2, .72, .2, 1),
@@ -123,6 +129,92 @@
   animation: ui-overlay-in 260ms ease-out;
 }
 
+.trip-range-control {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.trip-range-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trip-range-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trip-range-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trip-range-heading strong {
+  color: var(--paper);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.trip-range-presets {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.trip-range-presets button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #ddd8d2;
+  background: rgba(255, 255, 255, .035);
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.trip-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+}
+
+.trip-range-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trip-range-fields input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  background: #23272b;
+  color-scheme: dark;
+}
+
+.trip-range-arrow {
+  padding-bottom: 12px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 @media (hover: hover) {
   .mode-switch button:hover,
   .import-button:hover,
@@ -133,11 +225,13 @@
   .local-import-primary:hover,
   .local-import-secondary:hover,
   .media-import-action:hover,
-  .media-import-row label:hover {
+  .media-import-row label:hover,
+  .trip-range-control button:hover {
     transform: translateY(-1px);
   }
 
-  .settings-group:hover {
+  .settings-group:hover,
+  .trip-range-control:hover {
     border-color: rgba(255, 255, 255, .15);
     background: rgba(255, 255, 255, .038);
   }
@@ -152,12 +246,14 @@
 .local-import-primary:active,
 .local-import-secondary:active,
 .media-import-action:active,
-.media-import-row label:active {
+.media-import-row label:active,
+.trip-range-control button:active {
   transform: translateY(0) scale(.98);
 }
 
 .form-grid input:focus,
-.select-field select:focus {
+.select-field select:focus,
+.trip-range-fields input:focus {
   border-color: rgba(255, 114, 93, .72);
   box-shadow: 0 0 0 3px rgba(255, 114, 93, .10);
 }
@@ -236,7 +332,7 @@
   justify-content: flex-start;
   gap: 22px;
   min-height: 84px;
-  padding: 0 4px;
+  padding: 12px 4px 0;
   flex-wrap: wrap;
 }
 
@@ -354,10 +450,27 @@
     height: 64px;
   }
 
+  .trip-range-heading {
+    display: grid;
+  }
+
+  .trip-range-presets {
+    justify-content: flex-start;
+  }
+
+  .trip-range-fields {
+    gap: 6px;
+  }
+
+  .trip-range-fields input {
+    min-height: 40px;
+    font-size: 14px;
+  }
+
   .media-card .media-caption {
     gap: 14px;
     min-height: 66px;
-    padding: 0 2px;
+    padding: 8px 2px 0;
   }
 
   .media-card .media-caption-place {
@@ -419,14 +532,12 @@
 
   .playback-active.playback-chrome-hidden .topbar,
   .playback-active.playback-chrome-hidden .settings-panel,
-  .playback-active.playback-chrome-hidden .journey-hud,
   .playback-active.playback-chrome-hidden .player-dock {
     opacity: 1;
   }
 
   .playback-active.playback-chrome-hidden .topbar,
-  .playback-active.playback-chrome-hidden .settings-panel,
-  .playback-active.playback-chrome-hidden .journey-hud {
+  .playback-active.playback-chrome-hidden .settings-panel {
     transform: translateY(0) scale(1);
     pointer-events: auto;
   }
