@@ -34,6 +34,7 @@ Local media manifest
 - Timeline 파싱·계획: Web Worker
 - 프레임 재생: React 밖의 `PlayerController`; 발자취와 사진 여정은 같은 MapLibre 지도를 공유하되 서로 다른 controller 인스턴스를 사용
 - 발자취/사진 여정 재생 커서: `App`이 모드별 controller와 위치를 별도 보관하고 활성 모드 전환 시 해당 위치만 복원
+- 재생 길이 계획: `camera-planner.js`가 선택 기간, 실제 이동 거리, 지리적 이동 범위(extent), 활동일 수, 이동 구간 수를 함께 사용해 `DurationLimits`의 최소/추천/최대 길이를 계산한다. 기간은 로그 스케일로 완만하게 반영하고 지리적 범위를 더 강하게 반영해 장기간 좁은 지역 여행도 짧게 압축할 수 있다.
 - playback chrome 표시 상태: `src/ui/playback-chrome.ts`의 React hook이 포인터·키보드·설정 열림 상태와 지연 시간을 조정
 - 지도: 온라인 OpenFreeMap 기본, PMTiles 코드는 선택 시 동적 로드
 - 사진·영상: Takeout sidecar → JPEG EXIF / MP4·MOV·M4V QuickTime → 파일명 → 수정 시각
@@ -53,7 +54,7 @@ Local media manifest
 - 지도: `MapSourceConfig`, `MapStatus`
 - Worker: `WorkerRequest`, `WorkerResponse`
 
-Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플레이어의 핵심 제어는 `loadPlan`, `play`, `pause`, `seek`, `reset`, `dispose`이며 설정 동기화를 위한 `setStops`, `setLockToPosition`, `setTrackingSpeed`가 있습니다. `setStops`는 사진 stop 추가·제거·길이 변경 시 현재 경로 진행 위치를 보존하고, 같은 stop의 길이만 바뀌면 해당 stop 내부의 진행 비율도 보존합니다.
+Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플레이어의 핵심 제어는 `loadPlan`, `play`, `pause`, `seek`, `reset`, `dispose`이며 설정 동기화를 위한 `setStops`, `setLockToPosition`, `setTrackingSpeed`가 있습니다. `setStops`는 사진 stop 추가·제거·길이 변경 시 현재 경로 진행 위치를 보존하고, 같은 stop의 길이만 바뀌면 해당 stop 내부의 진행 비율도 보존합니다. `DurationLimits`는 `minSeconds/recommendedSeconds/maxSeconds` 외에 계산 근거인 `days`, `activeDays`, `distanceKm`, `extentKm`, `movementCount`를 보관합니다.
 
 ## Local API
 
@@ -69,7 +70,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 ## UX invariants
 
 - 전체 지도와 여행 경로가 첫 화면의 중심이다.
-- 경로 재생 길이의 기본값은 해당 여행에 계산된 최소·최대 재생 시간의 중간값을 5초 단위로 맞춘 값으로 사용한다. 사용자가 직접 값을 바꾸면 그 값을 우선한다.
+- **경로 재생 길이의 최소·추천·최대는 고정값이 아니다.** 선택한 여행 기간, 실제 이동 거리, 지리적 이동 범위, 활동일 수와 이동 구간 수를 함께 사용한다. 달력 기간은 로그 스케일로 완만하게 반영하고 지리적 범위를 더 강하게 반영하므로, 예를 들어 2026-07-20~2026-08-05처럼 긴 기간이라도 한 도시권 안에서 반복 이동한 경우 최소 재생 길이는 30~40초대까지 내려갈 수 있다. 반대로 국가/도시를 크게 가로지르는 여행은 최소·추천·최대가 모두 증가한다. 자동 기본값은 최소/최대의 단순 중간값이 아니라 계산된 `recommendedSeconds`를 사용한다. 사용자가 재생 길이 슬라이더를 직접 조정하지 않은 상태에서는 기간을 바꾸고 재계획할 때 추천 길이를 다시 계산하며, 직접 조정한 값은 새 최소·최대 범위 안에서 최대한 유지한다.
 - 발자취와 사진 여정은 같은 지도와 계획 데이터를 공유하지만 **서로 다른 `PlayerController` 재생 세션**이다. 한 모드에서 재생하거나 탐색해도 다른 controller는 일시정지 상태이며 다른 모드의 커서는 진행하지 않는다. `발자취 ↔ 사진 여정` 전환 시 현재 controller를 즉시 일시정지하고 현재 커서를 저장한 뒤, 대상 controller가 마지막으로 저장한 커서를 복원한다. 새 Timeline/계획으로 교체되면 두 controller와 두 커서를 모두 0으로 초기화한다. 단, 사용자가 현재 탭에서 `경로 다시 만들기`를 실행했을 때 미디어 재연결 때문에 다른 탭으로 강제 전환하지 않고 현재 발자취/사진 여정 탭을 유지한다.
 - 재생 컨트롤은 하단에 두되 사진 여정에서는 지도 영역 안에 배치한다. 데스크톱 재생 중에는 상단 바·접힌 여행 설정·하단 재생바를 하나의 playback chrome으로 취급해 함께 숨긴다. **발자취 모드의 현재 이동수단 HUD는 사진 여정에서 대체하기 어려운 정보이므로 playback chrome과 별개로 항상 표시한다.** playback chrome은 CSS `:has()` hover 판정이 아니라 React 상태로 통합 관리한다. 재생을 누른 직후 약 900ms 동안은 보인 뒤 숨김을 시작하고, 하단 재생바의 reveal target은 **숨기기 전 재생바와 같은 위치·폭·높이의 footprint**만 사용한다. 사용자가 재생바가 있던 자리에 포인터를 약 220ms 올리거나 키보드 포커스가 오면 숨겨진 playback chrome을 복원하며, 그 footprint 밖의 넓은 하단 영역은 reveal target으로 사용하지 않는다. reveal target에 들어온 뒤의 미세한 포인터 움직임은 dwell 타이머를 다시 시작하지 않으며, 영역을 벗어날 때만 대기 중 reveal을 취소한다. 포인터가 모든 chrome에서 벗어난 뒤에는 약 650ms 기다렸다 다시 숨긴다. 설정 패널이 열려 있는 동안은 항상 표시하며 터치 화면에서도 항상 표시한다.
 - playback chrome의 숨김·복원은 blur 없이 opacity와 작은 translate/scale을 약 320~360ms easing으로 함께 처리해 상태 변화가 눈에 보이면서도 지도를 방해하지 않게 한다. playback chrome에 적용하는 일회성 입장 keyframe은 종료 뒤 `opacity`나 `transform`을 유지하는 fill mode를 사용하지 않아 React의 visible/hidden 상태가 최종 스타일을 소유하게 한다. 중앙 정렬 상태 카드처럼 기본 transform이 위치를 결정하는 UI는 입장 keyframe에서 그 transform을 덮지 않는다. 버튼·선택·설정 패널·카드형 상태 UI도 hover/focus/press/open 상태에 절제된 이동·색·테두리·그림자 애니메이션을 사용한다. 모든 모션은 `prefers-reduced-motion`을 존중한다.
@@ -85,7 +86,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 - 기본 지도 확대는 사용자 설정 `+0.7`이며, 사진 여정에서는 미디어 표시 여부와 무관하게 더 가까운 줌을 사용하고 30km 이하 이동 구간을 거리별로 추가 확대한다. 항공 구간은 추가 확대하지 않는다.
 - 재생 전·일시정지에는 전체 경로, 재생 중에는 진행 경로를 표시한다.
 - 사진 여정 영역은 그라데이션 없이 균형 잡힌 단색 차콜(`#272b2f`)을 사용한다. 별도 현재 장면 HUD는 표시하지 않고, 사진·영상이 활성화되지 않은 이동 구간에는 이동 수단 픽토그램과 일상적인 수단명(`도보`, `자전거`, `대중교통`, `기차`, `페리`, `비행기`, `차량`)을 함께 표시한다. 픽토그램과 날짜는 같은 윗줄에 두고, 날짜와 속도 사이에는 명확한 세로 간격을 둔다. 이동 수단명과 `출발 → 도착`은 픽토그램 윗줄보다 조금 더 아래의 같은 아랫줄에 놓고 서로 같은 중심선/베이스라인으로 정렬한다. 속도와 출발·도착 텍스트는 보조 정보지만 한눈에 읽을 수 있는 크기를 유지한다. 출발·도착 라벨은 현재 city resolver가 확인한 시/도시급 이름만 사용하고 `군·읍·면·동·리` 또는 좌표는 절대 표시하지 않는다. 따라서 `고촌읍 → 북도면`처럼 지도에서 town으로 분류된 하위 단위가 이동 경로명으로 승격되어서는 안 되며, 유효한 시급 라벨을 찾지 못한 쪽이 있으면 `출발 → 도착` 자체를 생략한다.
-- 사진·영상은 불필요한 중첩 카드 프레임 없이 미디어 영역을 최대한 사용한다. 사진 아래에는 별도 `날짜`·`장소` 필드명이나 장소 아이콘을 두지 않고 `장소 → 촬영 날짜·시각` 순서로 같은 기준선에 가깝게 표시하며 시각은 `11시 11분`처럼 한국어 단위를 쓴다. 장소와 시각은 서로 붙어 보이지 않도록 충분한 가로 간격을 두고, 캡션 글자는 작은 보조 텍스트처럼 보이지 않도록 한 단계 크게 유지한다. 캡션의 세로 중심은 사진 프레임 하단과 패널 최하단 사이의 중앙에 맞춘다. 장소는 사진의 `matchedLat/matchedLng`를 별도 위치 해석 입력으로 사용해 현재 로드된 벡터 타일의 place feature에서 **시/도시 → 구/ward까지만** 보여준다. `군·읍·면·동·리·町·村·丁目`처럼 더 작은 단위는 지도 스타일이 `town`, `municipality`, `suburb` 등으로 분류하더라도 출력하지 않는다. 구/ward 라벨은 사진 좌표에 충분히 가까워 해당 구일 가능성이 높은 경우에만 시와 결합하고, 확신이 없으면 잘못된 구를 추정하지 않고 시까지만 표시한다. 위치를 해석하지 못해도 원시 위도·경도 문자열은 화면에 노출하지 않고 `촬영 위치`/`Timeline 위치`처럼 안전한 fallback을 사용한다. 이 해석을 위해 사진 좌표를 외부 reverse-geocoding API로 전송하지 않는다.
+- 사진·영상은 불필요한 중첩 카드 프레임 없이 미디어 영역을 최대한 사용한다. 사진 아래에는 별도 `날짜`·`장소` 필드명이나 장소 아이콘을 두지 않고 `장소 → 촬영 날짜·시각` 순서로 같은 기준선에 가깝게 표시하며 시각은 `11시 11분`처럼 한국어 단위를 쓴다. 장소와 시각은 서로 붙어 보이지 않도록 충분한 가로 간격을 두고, 캡션 글자는 작은 보조 텍스트처럼 보이지 않도록 한 단계 크게 유지한다. 캡션의 세로 중심은 사진 프레임 하단과 패널 최하단 사이의 중앙에 맞춘다. 장소는 사진의 `matchedLat/matchedLng`를 별도 위치 해석 입력으로 사용해 현재 로드된 벡터 타일의 place feature에서 **시/도시 → 구/ward까지만** 보여준다. `군·읍·면·동·리·町·村·丁目`처럼 더 작은 단위는 지도 스타일이 `town`, `municipality`, `suburb` 등으로 분류하더라도 출력하지 않는다. 구/ward 라벨은 사진 좌표에 충분히 가까워 해당 구일 가능성이 높은 경우에만 시와 결합하고, 확신이 없으면 잘못된 구를 추정하지 않고 시까지만 표시한다. 위치를 해석하지 못하거나 좌표/하위 지명만 얻은 경우에는 원시 좌표나 주변 이동 경로의 도시명을 억지로 대신 사용하지 않고 **`알 수 없음`**으로 표시한다. 이 해석을 위해 사진 좌표를 외부 reverse-geocoding API로 전송하지 않는다.
 - 사진·영상 전환은 이전 장면 DOM과 다음 장면 DOM을 실제로 동시에 유지하는 keyed cross-dissolve로 처리한다. 사진 전환은 위치 이동 없이 opacity와 매우 작은 scale만 사용하고, 사진 표시 시간이 달라도 체감이 크게 흔들리지 않도록 약 420~540ms 범위에서 완만하게 시간 영향을 받는다. 이동 픽토그램은 빠른 수단 변경을 방해하지 않도록 직전 실제 표시 시간의 약 10%를 사용하되 16~320ms 범위로 제한한다. 이동 장면의 identity는 이동 수단 자체만 사용해 출발·도착 텍스트가 늦게 해석되거나 바뀌는 것만으로 cross-fade를 다시 시작하지 않으며, `prefers-reduced-motion`을 존중한다.
 - 사진·영상 장면은 재생 위치가 도달하기 전에 **현재 미디어와 다음 4개를 제한된 사전 로드 창에서 준비**한다. 이미지는 네트워크/파일 load와 `decode()`가 끝나야 ready로 보고, 자동 재생 영상은 첫 프레임을 그릴 수 있는 `loadeddata`, 대표 장면 모드는 metadata 준비를 기준으로 한다. 대상 미디어가 아직 loading이면 현재 사진 또는 이동 픽토그램을 그대로 유지하고 빈 미디어 프레임으로 먼저 전환하지 않는다. 준비가 끝난 시점에 기존 keyed cross-dissolve를 시작한다. 미지원·손상 파일 때문에 화면이 영구 정지하지 않도록 한 자산의 준비 대기는 최대 6초로 제한하며, 이후에는 기존 미디어 오류 UI가 처리할 수 있게 장면 진입을 허용한다. 사전 로드 창에서 벗어난 로컬 `File` object URL과 detached preload element는 즉시 정리한다.
 - 두 미디어 stop 사이의 경로 시간이 짧으면 이동 픽토그램을 잠깐 삽입하지 않고 직전 사진·영상을 그대로 유지하면서 지도 경로 재생은 계속 진행한 뒤 다음 미디어로 직접 전환한다. 짧은 구간 기준은 인접 미디어 표시 시간의 2배이며 2.5~8초 사이로 제한하고, 그보다 긴 구간에서만 이동 픽토그램을 표시한다.
@@ -98,10 +99,11 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 2026-09-02 기준으로 v2 핵심 경로를 다시 검토했습니다.
 
-- `App`/reducer: 발자취와 사진 여정은 별도 `PlayerController` 인스턴스와 별도 재생 커서를 사용한다. 모드 전환 시 현재 controller를 멈춘 뒤 대상 controller의 커서를 복원하며 한 모드의 재생·탐색이 다른 모드의 진행 위치를 변경하지 않는다. 미디어가 이미 연결된 상태에서 같은 Timeline을 재계획할 때는 미디어를 새 계획에 다시 매칭하되 현재 여정 탭을 강제로 바꾸지 않는다.
+- `App`/reducer: 발자취와 사진 여정은 별도 `PlayerController` 인스턴스와 별도 재생 커서를 사용한다. 모드 전환 시 현재 controller를 멈춘 뒤 대상 controller의 커서를 복원하며 한 모드의 재생·탐색이 다른 모드의 진행 위치를 변경하지 않는다. 미디어가 이미 연결된 상태에서 같은 Timeline을 재계획할 때는 미디어를 새 계획에 다시 매칭하되 현재 여정 탭을 강제로 바꾸지 않는다. 경로 재생 길이는 사용자가 슬라이더를 직접 조정했는지 별도 ref로 기억해, 자동 상태에서는 기간 변경 후 재계획 시 새 추천 길이를 다시 적용하고 수동 상태에서는 사용자의 값을 우선한다.
 - `PlayerController`: 프레임 보간, 항공 안정 줌, stop 스케줄 재매핑과 재생 시간 기준을 검토했고 stop 변경 시 경로 위치 보존 로직을 추가했다.
-- `MediaJourneyPane`/media bridge: 짧은 이동 구간 사진 유지, keyed outgoing scene, 사진/픽토그램 전환 identity와 시간 정책을 검토했다. 현재/다음 4개 미디어를 bounded preload window로 준비하고, 이미지 decode 또는 영상 first-frame readiness 전에는 기존 장면을 유지해 빈 사진 프레임이 노출되지 않게 한다. 사진 위치 문자열은 원시 좌표를 노출하지 않으며 coarse place label만 사용한다.
+- `MediaJourneyPane`/media bridge: 짧은 이동 구간 사진 유지, keyed outgoing scene, 사진/픽토그램 전환 identity와 시간 정책을 검토했다. 현재/다음 4개 미디어를 bounded preload window로 준비하고, 이미지 decode 또는 영상 first-frame readiness 전에는 기존 장면을 유지해 빈 사진 프레임이 노출되지 않게 한다. 사진 위치 문자열은 원시 좌표를 노출하지 않으며 coarse place label만 사용하고 해석 실패 시 `알 수 없음`을 표시한다.
 - `city-label`/`photo-place-label`/MapLibre: 위치 출력은 시/도시 → 구/ward를 공통 상한으로 둔다. 이동용 city resolver는 `town`을 도시로 인정하지 않고 이름 변형 중 하나라도 `군·읍·면·동·리·町·村` 계열이면 후보에서 제외한다. 사진 resolver도 같은 하위 단위를 거부하며, source feature의 구 라벨은 사진 좌표에서 보수적인 근거리 범위 안에 있을 때만 시와 결합하고 그렇지 않으면 시까지만 사용한다. 로컬 PMTiles와 온라인 벡터 지도 모두 같은 규칙을 사용한다.
+- `camera-planner`/domain planner: 재생 길이 한계를 기간의 선형 함수로 잡지 않고 선택 기간, 지리적 extent, 총 이동 거리, 활동일 수, movement 수의 조합으로 계산한다. 긴 기간의 좁은 지역 반복 이동은 짧게 압축할 수 있고, 넓은 지역/장거리 이동은 최소·추천·최대가 단계적으로 증가한다. 자동 기본 길이는 `recommendedSeconds`를 사용한다.
 - `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다. playback chrome의 입장 keyframe이 hidden 상태를 덮거나 중앙 오버레이의 centering transform을 깨지 않도록 animation ownership도 분리했다. 하단 reveal target은 숨기기 전 `.player-dock`과 동일한 위치·크기만 차지하도록 CSS와 E2E 계약을 맞추며, target 내부 포인터 이동은 dwell을 재시작하지 않는다. 발자취의 이동 정보 HUD는 playback chrome 숨김 selector에서 제외해 상시 표시한다.
 - Timeline worker/planner, MapStage, bounded JPEG/QuickTime metadata scanner, loopback server/local API를 재검토했으며 기존 privacy·bounded-read·MapLibre 계약을 유지한다.
 
@@ -118,7 +120,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 - WebM 영상의 내부 촬영 시각과 GPS 파싱은 미구현이다.
 - MP4·MOV·M4V는 앞·뒤 제한 범위의 일반적인 QuickTime 메타데이터만 읽으므로 메타데이터가 매우 큰 `moov` 중간에만 있는 특이한 파일은 파일명·수정 시각으로 fallback할 수 있다.
 - JPEG 이외 이미지의 내장 위치 메타데이터는 아직 읽지 않는다.
-- 사진 좌표의 행정구역 라벨은 현재 로드된 지도 벡터 타일 안에서만 해석한다. 구/ward containment polygon을 직접 계산하는 것은 아니므로 구 후보가 충분히 가깝지 않거나 타일에 적절한 city/district feature가 없으면 시 또는 `촬영 위치`/`Timeline 위치`로 보수적으로 fallback한다.
+- 사진 좌표의 행정구역 라벨은 현재 로드된 지도 벡터 타일 안에서만 해석한다. 구/ward containment polygon을 직접 계산하는 것은 아니므로 구 후보가 충분히 가깝지 않거나 타일에 적절한 city/district feature가 없으면 시 또는 `알 수 없음`으로 보수적으로 fallback한다.
 - 미디어 사전 로드는 현재/다음 4개로 제한된다. 매우 느리거나 손상된 미디어는 최대 6초 뒤 기존 오류 처리 경로로 넘겨 영구적인 장면 정지를 피한다.
 - 영상 내보내기, PWA, 네이티브 앱은 범위 밖이다.
 - 로컬 49MB Timeline 검증은 파일을 커밋하지 않고 `REAL_TIMELINE_JSON` 환경 변수로 수행한다.

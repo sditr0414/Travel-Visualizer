@@ -3,17 +3,21 @@ import { applyCameraMode } from '../camera-modes.js';
 import type { AnalysisOptions, Movement, PlaybackPlan, TravelFrame } from '../types';
 
 const AUTO_ZOOM_BIAS = 0.28;
+const DAY_MS = 86_400_000;
 
 export function buildPlaybackPlan(movements: Movement[], options: AnalysisOptions): PlaybackPlan {
+  const selectedDays = inclusiveDays(options.startDate, options.endDate);
+  const durationLimits = durationLimitsForMovements(movements, { selectedDays });
   const requestedDurationSec = options.targetDurationSec > 0
     ? options.targetDurationSec
-    : midpointDuration(durationLimitsForMovements(movements));
+    : durationLimits.recommendedSeconds;
   const basePlan = planPlayback(movements, {
     fps: 60,
     targetTotalSeconds: requestedDurationSec,
     viewportWidth: options.viewportWidth,
     viewportHeight: options.viewportHeight,
-    pacingMode: options.pacingMode
+    pacingMode: options.pacingMode,
+    selectedDays
   }) as PlaybackPlan;
 
   const plan = applyCameraMode(basePlan, {
@@ -37,8 +41,11 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
   return { ...plan, autoCloserBias: AUTO_ZOOM_BIAS, autoLockedCloserBias: AUTO_ZOOM_BIAS + 0.18 };
 }
 
-function midpointDuration(limits: { minSeconds: number; maxSeconds: number }): number {
-  return Math.round(((limits.minSeconds + limits.maxSeconds) / 2) / 5) * 5;
+function inclusiveDays(startDate: string, endDate: string): number {
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return 1;
+  return Math.max(1, Math.floor((endMs - startMs) / DAY_MS) + 1);
 }
 
 function clampZoom(value: number): number {

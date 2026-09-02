@@ -88,6 +88,7 @@ export function App({ workerClient }: AppProps) {
   const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
   const photoPlaybackStopsRef = useRef<PlaybackStop[]>([]);
   const autoPlanRef = useRef(false);
+  const durationCustomizedRef = useRef(false);
   const scanOperationRef = useRef(0);
   const mediaOperationRef = useRef(0);
   const manualTimelineSelectedRef = useRef(false);
@@ -158,6 +159,7 @@ export function App({ workerClient }: AppProps) {
       const preferred = preferredTripRange(scan.startDate, scan.endDate);
       setStartDate(preferred.startDate);
       setEndDate(preferred.endDate);
+      durationCustomizedRef.current = false;
       setTargetDurationSec(0);
       autoPlanRef.current = true;
       dispatch({ type: 'SCAN_SUCCESS', scan });
@@ -176,18 +178,23 @@ export function App({ workerClient }: AppProps) {
     dispatch({ type: 'PLAN_START' });
     try {
       const canvas = map.getCanvas();
+      const requestedDurationSec = durationCustomizedRef.current ? targetDurationSec : 0;
       const result = await client.plan({
         startDate,
         endDate,
         includeFlights,
-        targetDurationSec,
+        targetDurationSec: requestedDurationSec,
         viewportWidth: canvas.clientWidth || 1280,
         viewportHeight: canvas.clientHeight || 720,
         cameraMode,
         zoomOffset,
         pacingMode
       }, reportProgress);
-      if (targetDurationSec <= 0) setTargetDurationSec(roundDurationStep(result.plan.durationSec));
+      const roundedDuration = roundDurationStep(result.plan.durationSec);
+      const limits = result.plan.durationLimits;
+      if (!durationCustomizedRef.current || targetDurationSec < limits.minSeconds || targetDurationSec > limits.maxSeconds) {
+        setTargetDurationSec(roundedDuration);
+      }
       dispatch({ type: 'PLAN_SUCCESS', plan: result.plan });
     } catch (error) {
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '경로를 계산하지 못했습니다.' });
@@ -751,7 +758,10 @@ export function App({ workerClient }: AppProps) {
               max={state.plan?.durationLimits.maxSeconds ?? 300}
               step="5"
               value={durationControlValue}
-              onChange={event => setTargetDurationSec(Number(event.target.value))}
+              onChange={event => {
+                durationCustomizedRef.current = true;
+                setTargetDurationSec(Number(event.target.value));
+              }}
             />
           </label>
 

@@ -80,7 +80,10 @@ export interface DurationLimits {
   recommendedSeconds: number;
   maxSeconds: number;
   days: number;
+  activeDays: number;
   distanceKm: number;
+  extentKm: number;
+  movementCount: number;
 }
 
 export interface PlaybackSegment extends Movement {
