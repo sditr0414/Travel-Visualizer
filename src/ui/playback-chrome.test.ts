@@ -11,7 +11,7 @@ describe('playback chrome visibility', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('waits before hiding and before revealing from a pointer zone', () => {
+  it('waits for pointer dwell before revealing and delays hiding after leave', () => {
     const view = renderHook(() => usePlaybackChrome({ playing: true }));
     expect(view.result.current.visible).toBe(true);
 
@@ -19,6 +19,8 @@ describe('playback chrome visibility', () => {
     expect(view.result.current.visible).toBe(false);
 
     act(() => view.result.current.revealZoneProps.onPointerEnter());
+    act(() => vi.advanceTimersByTime(Math.floor(PLAYBACK_CHROME_REVEAL_DELAY_MS / 2)));
+    act(() => view.result.current.revealZoneProps.onPointerMove());
     act(() => vi.advanceTimersByTime(PLAYBACK_CHROME_REVEAL_DELAY_MS - 1));
     expect(view.result.current.visible).toBe(false);
     act(() => vi.advanceTimersByTime(1));
