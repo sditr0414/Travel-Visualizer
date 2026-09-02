@@ -24,12 +24,15 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   test.skip(isMobile, 'Desktop hover chrome behavior is not applicable to touch layout.');
   await page.goto('/');
   await loadLocalTimeline(page);
+  const mapBox = await page.getByTestId('map-stage').boundingBox();
+  expect(mapBox).not.toBeNull();
+  const outsideChrome = { x: mapBox!.x + mapBox!.width / 2, y: mapBox!.y + mapBox!.height / 2 };
   const play = page.getByRole('button', { name: '재생' });
   await play.click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
   // Pointer and keyboard focus intentionally keep chrome visible; clear both before testing auto-hide.
-  await page.mouse.move(1, 1);
+  await page.mouse.move(outsideChrome.x, outsideChrome.y);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3000 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
@@ -48,7 +51,7 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
-  await page.mouse.move(1, 1);
+  await page.mouse.move(outsideChrome.x, outsideChrome.y);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1800 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
   const inside = { x: revealBox!.x + revealBox!.width / 2, y: revealBox!.y + revealBox!.height / 2 };
