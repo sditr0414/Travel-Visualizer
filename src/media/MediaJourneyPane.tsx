@@ -1,5 +1,5 @@
 import { Film, ImageOff, ImagePlus } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
 
@@ -33,6 +33,11 @@ interface SceneTransitionState {
 interface PreloadHandle {
   signature: string;
   cleanup: () => void;
+}
+
+interface OwnedFileUrl {
+  file: File;
+  url: string;
 }
 
 const MEDIA_PRELOAD_AHEAD = 4;
@@ -183,31 +188,43 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
 }
 
 function useMediaAssetUrls(media: JourneyMedia[]): Map<string, string> {
-  const [fileUrls, setFileUrls] = useState<Map<string, string>>(() => new Map());
-
-  useEffect(() => {
-    if (typeof URL.createObjectURL !== 'function') {
-      setFileUrls(new Map());
-      return;
-    }
-    const created = new Map<string, string>();
+  const ownedUrlsRef = useRef(new Map<string, OwnedFileUrl>());
+  const urls = useMemo(() => {
+    const resolved = new Map<string, string>();
     for (const item of media) {
-      if (!item.sourceUrl && item.file) created.set(item.id, URL.createObjectURL(item.file));
+      if (item.sourceUrl) {
+        resolved.set(item.id, item.sourceUrl);
+        continue;
+      }
+      if (!item.file || typeof URL.createObjectURL !== 'function') continue;
+      const existing = ownedUrlsRef.current.get(item.id);
+      if (existing?.file === item.file) {
+        resolved.set(item.id, existing.url);
+        continue;
+      }
+      if (existing) URL.revokeObjectURL(existing.url);
+      const url = URL.createObjectURL(item.file);
+      ownedUrlsRef.current.set(item.id, { file: item.file, url });
+      resolved.set(item.id, url);
     }
-    setFileUrls(created);
-    return () => {
-      for (const url of created.values()) URL.revokeObjectURL(url);
-    };
+    return resolved;
   }, [media]);
 
-  return useMemo(() => {
-    const urls = new Map<string, string>();
-    for (const item of media) {
-      const url = item.sourceUrl ?? fileUrls.get(item.id);
-      if (url) urls.set(item.id, url);
+  useEffect(() => {
+    const liveIds = new Set(media.filter(item => !item.sourceUrl && item.file).map(item => item.id));
+    for (const [id, owned] of ownedUrlsRef.current) {
+      if (liveIds.has(id)) continue;
+      URL.revokeObjectURL(owned.url);
+      ownedUrlsRef.current.delete(id);
     }
-    return urls;
-  }, [fileUrls, media]);
+  }, [media]);
+
+  useEffect(() => () => {
+    for (const owned of ownedUrlsRef.current.values()) URL.revokeObjectURL(owned.url);
+    ownedUrlsRef.current.clear();
+  }, []);
+
+  return urls;
 }
 
 function useMediaPreload(
@@ -240,11 +257,6 @@ function useMediaPreload(
       handle.cleanup();
       handlesRef.current.delete(id);
     }
-    setStatuses(current => {
-      const entries = Object.entries(current).filter(([id]) => keepIds.has(id));
-      if (entries.length === Object.keys(current).length) return current;
-      return Object.fromEntries(entries) as Record<string, AssetPreloadStatus>;
-    });
 
     for (const item of candidates) {
       const url = assetUrls.get(item.id);
@@ -253,13 +265,24 @@ function useMediaPreload(
       const existing = handlesRef.current.get(item.id);
       if (existing?.signature === signature) continue;
       existing?.cleanup();
-      setAssetPreloadStatus(setStatuses, item.id, 'loading');
+      queueMicrotask(() => setAssetPreloadStatus(setStatuses, item.id, 'loading'));
       const cleanup = preloadMediaAsset(item, url, videoMode, status => {
         setAssetPreloadStatus(setStatuses, item.id, status);
       });
       handlesRef.current.set(item.id, { signature, cleanup });
     }
-  }, [activeId, assetUrls, media, videoMode]);
+
+    if (handlesRef.current.size !== Object.keys(statuses).length) {
+      queueMicrotask(() => {
+        setStatuses(current => {
+          const entries = Object.entries(current).filter(([id]) => keepIds.has(id));
+          return entries.length === Object.keys(current).length
+            ? current
+            : Object.fromEntries(entries) as Record<string, AssetPreloadStatus>;
+        });
+      });
+    }
+  }, [activeId, assetUrls, media, statuses, videoMode]);
 
   useEffect(() => () => {
     for (const handle of handlesRef.current.values()) handle.cleanup();
@@ -270,7 +293,7 @@ function useMediaPreload(
 }
 
 function setAssetPreloadStatus(
-  setStatuses: React.Dispatch<React.SetStateAction<Record<string, AssetPreloadStatus>>>,
+  setStatuses: Dispatch<SetStateAction<Record<string, AssetPreloadStatus>>>,
   id: string,
   status: AssetPreloadStatus
 ): void {
@@ -285,12 +308,14 @@ function preloadMediaAsset(
 ): () => void {
   let cancelled = false;
   let settled = false;
+  let timeout = 0;
   const settle = (status: AssetPreloadStatus) => {
     if (cancelled || settled) return;
     settled = true;
+    window.clearTimeout(timeout);
     onStatus(status);
   };
-  const timeout = window.setTimeout(() => settle('error'), MEDIA_PRELOAD_TIMEOUT_MS);
+  timeout = window.setTimeout(() => settle('error'), MEDIA_PRELOAD_TIMEOUT_MS);
 
   if (item.kind === 'image') {
     const image = new Image();
@@ -334,22 +359,14 @@ function preloadMediaAsset(
 }
 
 function usePreparedScene(desiredScene: SceneDescriptor, statuses: Record<string, AssetPreloadStatus>): SceneDescriptor {
-  const [scene, setScene] = useState(desiredScene);
-
-  useEffect(() => {
-    if (desiredScene.kind !== 'photo') {
-      setScene(desiredScene);
-      return;
-    }
-    if (!desiredScene.url) {
-      setScene(desiredScene);
-      return;
-    }
-    const status = statuses[desiredScene.item.id];
-    if (status === 'ready' || status === 'error') setScene(desiredScene);
-  }, [desiredScene, statuses]);
-
-  return scene;
+  const sceneRef = useRef(desiredScene);
+  const status = desiredScene.kind === 'photo' ? statuses[desiredScene.item.id] : null;
+  const canCommit = desiredScene.kind !== 'photo'
+    || !desiredScene.url
+    || status === 'ready'
+    || status === 'error';
+  if (canCommit) sceneRef.current = desiredScene;
+  return sceneRef.current;
 }
 
 function useSceneTransition(scene: SceneDescriptor, photoDisplaySec: number): SceneTransitionState {
