@@ -82,6 +82,17 @@ describe('App integration', () => {
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
     await waitFor(() => expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'visible'));
+
+    fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByText('여행 기간')).toBeInTheDocument();
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
+    fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+    fireEvent.click(screen.getByRole('button', { name: '추천 기간' }));
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
   });
 
   it('pauses playback whenever the journey presentation mode changes', async () => {
@@ -137,10 +148,10 @@ describe('App integration', () => {
     await waitFor(() => expect(position).toHaveValue('1'));
   });
 
-  it('starts photo journeys with a minimized route pane and video playback enabled', async () => {
+  it('starts photo journeys with preview media and keeps the route tab after replanning', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
-      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }), cancel: vi.fn(), dispose: vi.fn()
+      plan: vi.fn().mockImplementation(() => Promise.resolve({ trip: {}, plan: simplePlan() })), cancel: vi.fn(), dispose: vi.fn()
     };
     render(<App workerClient={worker} />);
     fireEvent.change(screen.getByLabelText('시작할 사진 폴더 선택'), {
@@ -170,11 +181,18 @@ describe('App integration', () => {
     expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
     expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('ALL');
+    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
     expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
-    fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'PREVIEW' } });
-    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
+    fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });
+    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('ALL');
+
+    fireEvent.click(screen.getByRole('button', { name: '발자취' }));
+    expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
+    fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
+    await waitFor(() => expect(worker.plan).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
   });
 });
 
