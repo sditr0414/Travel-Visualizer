@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent } from 'react';
 
-export const PLAYBACK_CHROME_REVEAL_DELAY_MS = 140;
+export const PLAYBACK_CHROME_REVEAL_DELAY_MS = 220;
 export const PLAYBACK_CHROME_HIDE_DELAY_MS = 650;
 export const PLAYBACK_CHROME_INITIAL_VISIBLE_MS = 900;
 
