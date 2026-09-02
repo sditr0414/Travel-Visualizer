@@ -1,4 +1,4 @@
-import { organizeJourneyMedia, parseFilenameTimestamp, playbackSecondFor } from './media-library';
+import { organizeJourneyMedia, parseFilenameTimestamp, playbackSecondFor, positionAtPlaybackSecond } from './media-library';
 import { loadLocalMediaManifest } from './local-media-library';
 import { buildPlaybackPlan } from '../domain/planner';
 import { simplePlan } from '../test/fixtures';
@@ -85,6 +85,24 @@ describe('local media matching', () => {
     const plan = simplePlan();
     const middle = (plan.segments[0].startMs + plan.segments[0].endMs) / 2;
     expect(playbackSecondFor(middle, null, plan)).toBeCloseTo(0.25, 4);
+  });
+
+  it('uses the last travel frame when the exact route end rounds into the outro', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    const destination = { lat: 37.61, lng: 127.21 };
+    plan.fps = 2;
+    plan.travelDurationSec = 1;
+    plan.durationSec = 1.5;
+    plan.frames = [
+      first,
+      { ...first, timeSec: 0.5, progress: 1, position: destination, center: destination },
+      { ...outro, timeSec: 1, position: destination, center: destination }
+    ];
+
+    expect(positionAtPlaybackSecond(1, plan)).toEqual(destination);
   });
 
   it('matches photos against a plan produced by the camera planner', () => {
