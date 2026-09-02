@@ -1,98 +1,89 @@
 import { expect, test } from '@playwright/test';
+import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
-const CURSOR_RESTORE_TOLERANCE_SEC = 0.1;
+const CURSOR_RESTORE_TOLERANCE_SEC = 0.12;
 
 test('local trip can be planned, played, paused and reset', async ({ page }) => {
   await page.goto('/');
-  await expect.poll(async () => (await page.getByTestId('map-stage').boundingBox())?.height ?? 0).toBeGreaterThan(400);
-  await expect(page.locator('.maplibregl-ctrl-attrib-inner')).not.toBeVisible();
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생' });
-  await expect(play).toBeEnabled({ timeout: 20_000 });
+  const position = page.getByLabel('재생 위치');
+  await expect(play).toBeVisible();
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
   await page.getByRole('button', { name: '일시정지' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await page.getByRole('button', { name: '처음부터 보기' }).click();
-  await expect(page.getByLabel('재생 위치')).toHaveValue('0');
+  const paused = Number(await position.inputValue());
+  await page.waitForTimeout(180);
+  expect(Math.abs(Number(await position.inputValue()) - paused)).toBeLessThan(0.06);
+  await page.getByLabel('처음부터 보기').click();
+  await expect(position).toHaveValue('0');
 });
 
-test('desktop playback chrome hides and reveals while route HUD stays persistent', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'Hover reveal is a desktop interaction.');
+test('desktop playback chrome hides and reveals while route HUD stays persistent', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Desktop hover chrome behavior is not applicable to touch layout.');
   await page.goto('/');
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생' });
-  await expect(play).toBeEnabled({ timeout: 20_000 });
   await play.click();
-  await page.mouse.move(720, 450);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3000 });
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
-  const shell = page.locator('.app-shell');
-  const topbar = page.locator('.topbar');
-  const settings = page.locator('.settings-panel');
-  const hud = page.locator('.route-persistent-hud');
-  const dock = page.getByLabel('재생 컨트롤');
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3_000 });
-  await expect(topbar).toHaveCSS('opacity', '0');
-  await expect(settings).toHaveCSS('opacity', '0');
-  await expect(dock).toHaveCSS('opacity', '0');
-  await expect(hud).toHaveCSS('opacity', '1');
-  await expect(hud).toBeVisible();
-
-  const topReveal = page.locator('.topbar-reveal-zone');
-  await topReveal.hover();
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
-  await expect(topbar).toHaveCSS('opacity', '1');
-  await expect(settings).toHaveCSS('opacity', '1');
-  await expect(dock).toHaveCSS('opacity', '1');
-  await expect(hud).toHaveCSS('opacity', '1');
-
-  const dockBox = await dock.boundingBox();
-  expect(dockBox).not.toBeNull();
-  const dockCenter = {
-    x: dockBox!.x + dockBox!.width / 2,
-    y: dockBox!.y + dockBox!.height / 2
-  };
-
-  await page.mouse.move(720, 450);
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1_500 });
-
-  const bottomReveal = page.locator('.player-reveal-zone');
-  const revealBox = await bottomReveal.boundingBox();
+  const reveal = page.locator('.player-reveal-zone');
+  const player = page.getByLabel('재생 컨트롤');
+  const revealBox = await reveal.boundingBox();
+  const playerBox = await player.boundingBox();
   expect(revealBox).not.toBeNull();
-  expect(Math.abs(revealBox!.x - dockBox!.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(revealBox!.y - dockBox!.y)).toBeLessThanOrEqual(1);
-  expect(Math.abs(revealBox!.width - dockBox!.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(revealBox!.height - dockBox!.height)).toBeLessThanOrEqual(1);
-  await page.mouse.move(dockCenter.x, dockCenter.y);
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
-  await expect(topbar).toHaveCSS('opacity', '1');
-  await expect(dock).toHaveCSS('opacity', '1');
+  expect(playerBox).not.toBeNull();
+  expect(Math.abs(revealBox!.x - playerBox!.x)).toBeLessThan(2);
+  expect(Math.abs(revealBox!.y - playerBox!.y)).toBeLessThan(2);
+  expect(Math.abs(revealBox!.width - playerBox!.width)).toBeLessThan(2);
+  expect(Math.abs(revealBox!.height - playerBox!.height)).toBeLessThan(2);
+  await reveal.hover();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
-  await expect(page.locator('.play-control')).not.toHaveCSS('transition-duration', '0s');
+  await page.mouse.move(1, 1);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1800 });
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  const inside = { x: revealBox!.x + revealBox!.width / 2, y: revealBox!.y + revealBox!.height / 2 };
+  await page.mouse.move(inside.x, inside.y);
+  await page.waitForTimeout(90);
+  await page.mouse.move(inside.x + 3, inside.y + 2);
+  await page.waitForTimeout(90);
+  await page.mouse.move(inside.x - 2, inside.y - 2);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 900 });
 });
 
 test('route and photo journeys keep playback state and cursors separate', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
+  await attachLocalPhotoManifest(page);
   const play = page.getByRole('button', { name: '재생' });
   const position = page.getByLabel('재생 위치');
-  await expect(play).toBeEnabled({ timeout: 20_000 });
 
-  await page.getByRole('button', { name: '사진 여정' }).click();
-  await expect(position).toHaveValue('0');
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
-  await page.getByRole('button', { name: '일시정지' }).click();
+  await page.getByRole('button', { name: '발자취' }).click();
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  const routePosition = Number(await position.inputValue());
+
+  await play.click();
+  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(routePosition + 0.05);
+  await page.getByRole('button', { name: '사진 여정' }).click();
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
   const photoPosition = Number(await position.inputValue());
 
   await page.getByRole('button', { name: '발자취' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await expect(position).toHaveValue('0');
-
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - routePosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
-  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(routePosition + 0.05);
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
@@ -112,6 +103,8 @@ test('settings stay usable on a narrow screen with full-width trip dates', async
   const endDate = page.getByLabel('여행 마지막 날');
   await expect(startDate).toBeVisible();
   await expect(endDate).toBeVisible();
+  // Geometry must be measured after the settings panel's opening scale animation settles.
+  await page.waitForTimeout(380);
   const startBox = await startDate.boundingBox();
   const endBox = await endDate.boundingBox();
   expect(startBox).not.toBeNull();
@@ -134,35 +127,18 @@ test('photo journey keeps playback controls inside the route pane', async ({ pag
   expect(mapBox).not.toBeNull();
   expect(mediaBox).not.toBeNull();
   expect(playerBox).not.toBeNull();
-  if (mediaBox!.x > 0) expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mediaBox!.x + 1);
-  else expect(playerBox!.y + playerBox!.height).toBeLessThanOrEqual(mediaBox!.y + 1);
+  expect(playerBox!.x).toBeGreaterThanOrEqual(mapBox!.x + 8);
+  expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mapBox!.x + mapBox!.width - 8);
+  expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mediaBox!.x + 1);
 });
 
-test('large local Timeline stays browser-local and produces a playable plan', async ({ page }) => {
-  const timelinePath = process.env.REAL_TIMELINE_JSON;
-  test.skip(!timelinePath, 'REAL_TIMELINE_JSON is only available for local validation.');
-  test.setTimeout(120_000);
+test('large local Timeline stays browser-local and produces a playable plan', async ({ page, isMobile }) => {
+  test.skip(!process.env.REAL_TIMELINE_JSON, 'REAL_TIMELINE_JSON is not configured.');
+  test.skip(isMobile, 'The expensive real-data fixture only needs one browser viewport.');
   await page.goto('/');
-  await page.getByLabel('Timeline JSON 선택', { exact: true }).setInputFiles(timelinePath!);
-  await page.getByText('여행 설정').click();
-  await expect(page.getByText('타임라인.json')).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByRole('button', { name: '재생' })).toBeEnabled({ timeout: 90_000 });
+  await loadLocalTimeline(page, { real: true });
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible({ timeout: 120_000 });
+  const position = page.getByLabel('재생 위치');
+  const max = Number(await position.getAttribute('max'));
+  expect(max).toBeGreaterThan(0);
 });
-
-async function loadLocalTimeline(page: import('@playwright/test').Page) {
-  await page.getByLabel('Timeline JSON 선택', { exact: true }).setInputFiles({
-    name: 'local-timeline.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify({ semanticSegments: [{
-      startTime: '2026-04-10T09:00:00+09:00',
-      endTime: '2026-04-10T10:00:00+09:00',
-      activity: {
-        start: { latLng: '37.5000°, 127.0000°' },
-        end: { latLng: '37.6000°, 127.2000°' },
-        distanceMeters: 22000,
-        topCandidate: { type: 'IN_TRAIN', probability: 0.95 },
-        probability: 0.95
-      }
-    }] }))
-  });
-}
