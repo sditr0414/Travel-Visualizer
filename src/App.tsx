@@ -26,6 +26,8 @@ interface HudState {
   destinationCity: string | null;
 }
 
+type JourneyMode = 'ROUTE' | 'PHOTOS';
+
 const MOBILITY_LABELS: Record<string, string> = {
   WALK: '도보', BIKE: '자전거', URBAN_TRANSIT: '대중교통', FAST_GROUND: '기차',
   FERRY: '페리', FLIGHT: '비행기', ROAD: '차량', UNKNOWN: '기타'
@@ -63,7 +65,7 @@ export function App({ workerClient }: AppProps) {
   const [pacingMode, setPacingMode] = useState<PacingMode>('LOCAL_DAYS');
   const [lockToPosition, setLockToPosition] = useState(true);
   const [trackingSpeed, setTrackingSpeed] = useState(1);
-  const [journeyMode, setJourneyMode] = useState<'ROUTE' | 'PHOTOS'>('ROUTE');
+  const [journeyMode, setJourneyMode] = useState<JourneyMode>('ROUTE');
   const [mediaLibrary, setMediaLibrary] = useState<{ preview: JourneyMedia[]; all: JourneyMedia[] }>({ preview: [], all: [] });
   const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('ALL');
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
@@ -81,6 +83,9 @@ export function App({ workerClient }: AppProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
   const playerRef = useRef<PlayerController | null>(null);
+  const journeyModeRef = useRef<JourneyMode>('ROUTE');
+  const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
+  const pendingPlaybackRestoreRef = useRef<{ mode: JourneyMode; timeSec: number } | null>(null);
   const autoPlanRef = useRef(false);
   const scanOperationRef = useRef(0);
   const mediaOperationRef = useRef(0);
@@ -121,6 +126,22 @@ export function App({ workerClient }: AppProps) {
     player.pause();
     if (wasPlaying) dispatch({ type: 'PAUSE' });
   }, []);
+
+  const changeJourneyMode = useCallback((mode: JourneyMode, resetTarget = false) => {
+    const currentMode = journeyModeRef.current;
+    if (mode === currentMode && !resetTarget) return;
+    pausePlayback();
+    if (resetTarget) playbackPositionsRef.current[mode] = 0;
+    const targetTimeSec = playbackPositionsRef.current[mode];
+    pendingPlaybackRestoreRef.current = { mode, timeSec: targetTimeSec };
+    journeyModeRef.current = mode;
+    if (mode === 'PHOTOS') minimizePhotoRoute();
+    setJourneyMode(mode);
+    activeMediaRef.current = null;
+    setActiveMediaId(null);
+    setActivePlaceName(null);
+    if (state.plan) dispatch(targetTimeSec > 0 ? { type: 'PAUSE' } : { type: 'RESET' });
+  }, [minimizePhotoRoute, pausePlayback, state.plan]);
 
   const scanSource = useCallback(async (source: TimelineSource, text: string) => {
     const operation = ++scanOperationRef.current;
@@ -186,8 +207,7 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
-      minimizePhotoRoute();
-      setJourneyMode('PHOTOS');
+      changeJourneyMode('PHOTOS', true);
       dispatch({ type: 'NOTICE', message: `${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
       if (operation !== mediaOperationRef.current) return;
@@ -195,7 +215,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, [minimizePhotoRoute, pausePlayback]);
+  }, [changeJourneyMode, pausePlayback]);
 
   const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan) => {
     if (lastLocalMediaPlanRef.current === plan) return;
@@ -210,8 +230,7 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
-      minimizePhotoRoute();
-      setJourneyMode('PHOTOS');
+      changeJourneyMode('PHOTOS', true);
       setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 로컬 사진·영상을 연결했습니다.` });
       dispatch({ type: 'NOTICE', message: `${manifest.rootName}에서 ${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
@@ -221,7 +240,7 @@ export function App({ workerClient }: AppProps) {
     } finally {
       if (operation === mediaOperationRef.current) setMediaLoading(false);
     }
-  }, [minimizePhotoRoute, pausePlayback]);
+  }, [changeJourneyMode, pausePlayback]);
 
   const mapShare = splitNarrow ? mobileMapShare : desktopMapShare;
   const mediaProgressValue = progressValue(mediaProgress);
@@ -285,11 +304,14 @@ export function App({ workerClient }: AppProps) {
   useLayoutEffect(() => {
     playerRef.current?.dispose();
     playerRef.current = null;
+    playbackPositionsRef.current = { ROUTE: 0, PHOTOS: 0 };
+    pendingPlaybackRestoreRef.current = null;
     activeMediaRef.current = '__controller-reset__';
     cityRouteCacheRef.current.clear();
     if (!map || !state.plan) return;
     const controller = new PlayerController(map, {
       onFrame: (frame, _frameIndex, timeSec, stopId) => {
+        playbackPositionsRef.current[journeyModeRef.current] = timeSec;
         if (stopId !== activeMediaRef.current) {
           activeMediaRef.current = stopId;
           setActiveMediaId(stopId);
@@ -351,8 +373,13 @@ export function App({ workerClient }: AppProps) {
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
+    const pendingRestore = pendingPlaybackRestoreRef.current;
     player.setStops(playbackStops);
-  }, [playbackStops]);
+    if (pendingRestore?.mode === journeyMode) {
+      pendingPlaybackRestoreRef.current = null;
+      player.seek(pendingRestore.timeSec);
+    }
+  }, [journeyMode, playbackStops]);
 
   useEffect(() => {
     const onResize = () => setSplitNarrow(window.innerWidth <= 820);
@@ -448,16 +475,6 @@ export function App({ workerClient }: AppProps) {
     setActiveMediaId(null);
     setActivePlaceName(null);
     setPhotoViewMode(mode);
-  };
-
-  const changeJourneyMode = (mode: 'ROUTE' | 'PHOTOS') => {
-    if (mode === journeyMode) return;
-    pausePlayback();
-    if (mode === 'PHOTOS') minimizePhotoRoute();
-    setJourneyMode(mode);
-    activeMediaRef.current = null;
-    setActiveMediaId(null);
-    setActivePlaceName(null);
   };
 
   const resetPlayback = () => {
