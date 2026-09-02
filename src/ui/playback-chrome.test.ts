@@ -19,8 +19,6 @@ describe('playback chrome visibility', () => {
     expect(view.result.current.visible).toBe(false);
 
     act(() => view.result.current.revealZoneProps.onPointerEnter());
-    act(() => vi.advanceTimersByTime(Math.floor(PLAYBACK_CHROME_REVEAL_DELAY_MS / 2)));
-    act(() => view.result.current.revealZoneProps.onPointerMove());
     act(() => vi.advanceTimersByTime(PLAYBACK_CHROME_REVEAL_DELAY_MS - 1));
     expect(view.result.current.visible).toBe(false);
     act(() => vi.advanceTimersByTime(1));
@@ -31,6 +29,18 @@ describe('playback chrome visibility', () => {
     expect(view.result.current.visible).toBe(true);
     act(() => vi.advanceTimersByTime(1));
     expect(view.result.current.visible).toBe(false);
+  });
+
+  it('does not require a perfectly still pointer after entering the reveal surface', () => {
+    const view = renderHook(() => usePlaybackChrome({ playing: true }));
+    act(() => vi.advanceTimersByTime(PLAYBACK_CHROME_INITIAL_VISIBLE_MS));
+    expect(view.result.current.visible).toBe(false);
+
+    act(() => view.result.current.revealZoneProps.onPointerEnter());
+    act(() => vi.advanceTimersByTime(Math.floor(PLAYBACK_CHROME_REVEAL_DELAY_MS / 2)));
+    expect(view.result.current.visible).toBe(false);
+    act(() => vi.advanceTimersByTime(Math.ceil(PLAYBACK_CHROME_REVEAL_DELAY_MS / 2)));
+    expect(view.result.current.visible).toBe(true);
   });
 
   it('keeps chrome visible while a panel requests it or keyboard focus is inside', () => {
