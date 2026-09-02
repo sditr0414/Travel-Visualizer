@@ -1,10 +1,11 @@
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
+import { isDayMarkerId } from '../media/day-markers';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 import { heldMediaStopId } from './media-bridge';
 
 const TILE_SIZE = 512;
-const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.28;
+const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.42;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -34,6 +35,12 @@ interface StopSchedule {
   totalDurationSec: number;
 }
 
+interface ScheduledJourneyTime {
+  routeTimeSec: number;
+  activeStopId: string | null;
+  activeStopProgress: number;
+}
+
 export class PlayerController {
   private plan: PlaybackPlan | null = null;
   private playing = false;
@@ -46,7 +53,7 @@ export class PlayerController {
   private trackingSpeed = 1;
   private trackedCenter: Coordinate | null = null;
   private displayedZoom: number | null = null;
-  private displayedZoomRouteSec = 0;
+  private displayedZoomTimelineSec = 0;
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
   private stopDurationSec = 0;
@@ -64,7 +71,7 @@ export class PlayerController {
     this.framePosition = -1;
     this.trackedCenter = null;
     this.displayedZoom = null;
-    this.displayedZoomRouteSec = 0;
+    this.displayedZoomTimelineSec = 0;
     this.replaceStops(stops);
     this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
@@ -121,6 +128,7 @@ export class PlayerController {
     this.startedAt = performance.now() - this.timeSec * 1000;
     this.trackedCenter = null;
     this.displayedZoom = null;
+    this.displayedZoomTimelineSec = this.timeSec;
     this.renderForTime(true);
   }
 
@@ -131,7 +139,7 @@ export class PlayerController {
     this.framePosition = -1;
     this.trackedCenter = null;
     this.displayedZoom = null;
-    this.displayedZoomRouteSec = 0;
+    this.displayedZoomTimelineSec = 0;
     this.lastStopId = null;
     this.render(0, true);
   }
@@ -144,7 +152,7 @@ export class PlayerController {
     this.stopDurationSec = 0;
     this.fullRouteData = emptyCollection();
     this.displayedZoom = null;
-    this.displayedZoomRouteSec = 0;
+    this.displayedZoomTimelineSec = 0;
     this.stableFlightZooms.clear();
   }
 
@@ -168,16 +176,22 @@ export class PlayerController {
     if (!this.plan) return;
     const mapped = mapScheduledJourneyTime(this.timeSec, this.stopSchedule, this.plan.durationSec);
     const displayStopId = mapped.activeStopId ?? heldMediaStopId(mapped.routeTimeSec, this.stops);
+    const activeMediaStop = Boolean(mapped.activeStopId && !isDayMarkerId(mapped.activeStopId));
     const stopChanged = displayStopId !== this.lastStopId;
     this.lastStopId = displayStopId;
-    this.renderAtPosition(mapped.routeTimeSec * this.plan.fps, force || stopChanged, displayStopId);
+    this.renderAtPosition(
+      mapped.routeTimeSec * this.plan.fps,
+      force || stopChanged || activeMediaStop,
+      displayStopId,
+      activeMediaStop ? mapped.activeStopProgress : 0
+    );
   }
 
   private render(index: number, force = false, activeStopId: string | null = null): void {
-    this.renderAtPosition(index, force, activeStopId);
+    this.renderAtPosition(index, force, activeStopId, 0);
   }
 
-  private renderAtPosition(framePosition: number, force = false, activeStopId: string | null = null): void {
+  private renderAtPosition(framePosition: number, force = false, activeStopId: string | null = null, activeMediaProgress = 0): void {
     if (!this.plan?.frames.length) return;
     const clampedPosition = clamp(framePosition, 0, this.plan.frames.length - 1);
     if (!force && Math.abs(clampedPosition - this.framePosition) < 0.001) return;
@@ -188,6 +202,7 @@ export class PlayerController {
     const frame = interpolatePlaybackFrame(baseFrame, this.plan.frames[nextIndex], mix);
     let center: Coordinate;
     let zoom = frame.zoom;
+    let photoDistanceMeters = 0;
     if (frame.kind !== 'TRAVEL') {
       center = frame.center;
       this.trackedCenter = null;
@@ -203,13 +218,13 @@ export class PlayerController {
     }
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
-      zoom = photoJourneyZoom(
-        zoom,
-        segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0,
-        frame.mobilityClass
-      );
+      photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
+      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+      if (activeMediaProgress > 0) {
+        zoom += photoStopZoomBoost(photoDistanceMeters, activeMediaProgress, frame.mobilityClass);
+      }
     }
-    zoom = this.stabilizeZoom(zoom, clampedPosition / Math.max(1, this.plan.fps));
+    zoom = this.stabilizeZoom(zoom, this.timeSec);
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
@@ -224,16 +239,16 @@ export class PlayerController {
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
   }
 
-  private stabilizeZoom(targetZoom: number, routeTimeSec: number): number {
+  private stabilizeZoom(targetZoom: number, timelineSec: number): number {
     const target = clamp(Number(targetZoom) || 0, 4, 17.3);
-    if (this.displayedZoom === null || routeTimeSec + 0.001 < this.displayedZoomRouteSec) {
+    if (this.displayedZoom === null || timelineSec + 0.001 < this.displayedZoomTimelineSec) {
       this.displayedZoom = target;
-      this.displayedZoomRouteSec = routeTimeSec;
+      this.displayedZoomTimelineSec = timelineSec;
       return target;
     }
 
-    const elapsed = routeTimeSec - this.displayedZoomRouteSec;
-    this.displayedZoomRouteSec = routeTimeSec;
+    const elapsed = timelineSec - this.displayedZoomTimelineSec;
+    this.displayedZoomTimelineSec = timelineSec;
     if (!(elapsed > 0)) return this.displayedZoom;
 
     const dt = clamp(elapsed, 1 / 240, 0.25);
@@ -244,8 +259,8 @@ export class PlayerController {
     }
 
     const zoomingOut = delta < 0;
-    const tauSec = zoomingOut ? 0.70 : 1.45;
-    const maxRate = zoomingOut ? 0.78 : 0.55;
+    const tauSec = zoomingOut ? 0.70 : 1.25;
+    const maxRate = zoomingOut ? 0.78 : 0.62;
     const easedStep = delta * (1 - Math.exp(-dt / tauSec));
     const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
     this.displayedZoom = clamp(this.displayedZoom + step, 4, 17.3);
@@ -284,8 +299,18 @@ export class PlayerController {
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
   if (mobilityClass === 'FLIGHT') return baseZoom;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
-  const shortRouteBoost = 0.66 * Math.exp(-distanceKm / 28);
+  const shortRouteBoost = 0.96 * Math.exp(-distanceKm / 20);
   return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
+}
+
+export function photoStopZoomBoost(distanceMeters: number, progress: number, mobilityClass: MobilityClass): number {
+  if (mobilityClass === 'FLIGHT') return 0;
+  const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
+  const shortRouteFactor = Math.exp(-distanceKm / 18);
+  const maxBoost = 0.14 + 0.30 * shortRouteFactor;
+  const normalized = clamp(Number(progress) || 0, 0, 1);
+  const eased = 1 - Math.pow(1 - normalized, 2.2);
+  return maxBoost * eased;
 }
 
 function interpolatePlaybackFrame(frame: PlaybackFrame, next: PlaybackFrame, mix: number): PlaybackFrame {
@@ -352,7 +377,11 @@ function flightZoomKey(frame: TravelFrame): string {
 }
 
 function buildStopSchedule(stops: PlaybackStop[], routeDurationSec: number): StopSchedule {
-  const sorted = [...stops].sort((a, b) => a.atSec - b.atSec);
+  const sorted = [...stops].sort((a, b) => {
+    const time = a.atSec - b.atSec;
+    if (Math.abs(time) > 1e-9) return time;
+    return Number(isDayMarkerId(b.id)) - Number(isDayMarkerId(a.id));
+  });
   let added = 0;
   const schedule = sorted.map(stop => {
     const duration = Math.max(0, Number(stop.durationSec) || 0);
@@ -364,7 +393,7 @@ function buildStopSchedule(stops: PlaybackStop[], routeDurationSec: number): Sto
   return { stops: sorted, schedule, totalDurationSec: added };
 }
 
-function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
+function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], routeDurationSec: number): ScheduledJourneyTime {
   let low = 0;
   let high = schedule.length - 1;
   let index = -1;
@@ -375,12 +404,17 @@ function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], rou
       low = middle + 1;
     } else high = middle - 1;
   }
-  if (index < 0) return { routeTimeSec: clamp(timeSec, 0, routeDurationSec), activeStopId: null };
+  if (index < 0) return { routeTimeSec: clamp(timeSec, 0, routeDurationSec), activeStopId: null, activeStopProgress: 0 };
   const stop = schedule[index];
   if (timeSec < stop.journeyEndSec) {
-    return { routeTimeSec: clamp(stop.atSec, 0, routeDurationSec), activeStopId: stop.id };
+    const duration = Math.max(stop.journeyEndSec - stop.journeyStartSec, 1e-9);
+    return {
+      routeTimeSec: clamp(stop.atSec, 0, routeDurationSec),
+      activeStopId: stop.id,
+      activeStopProgress: clamp((timeSec - stop.journeyStartSec) / duration, 0, 1)
+    };
   }
-  return { routeTimeSec: clamp(timeSec - stop.addedThroughSec, 0, routeDurationSec), activeStopId: null };
+  return { routeTimeSec: clamp(timeSec - stop.addedThroughSec, 0, routeDurationSec), activeStopId: null, activeStopProgress: 0 };
 }
 
 function journeyTimeForRouteTime(routeTimeSec: number, schedule: ScheduledStop[], routeDurationSec: number): number {
