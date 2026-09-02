@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops } from './player-controller';
+import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -45,10 +45,10 @@ describe('photo journey stops', () => {
     const medium = photoJourneyZoom(12, 12_000, 'ROAD');
     const long = photoJourneyZoom(12, 60_000, 'ROAD');
 
-    expect(short).toBeGreaterThan(13);
+    expect(short).toBeGreaterThan(13.5);
     expect(short).toBeGreaterThan(medium);
     expect(medium).toBeGreaterThan(long);
-    expect(long).toBeGreaterThan(12);
+    expect(long).toBeGreaterThan(12.6);
     expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
   });
 
@@ -61,6 +61,65 @@ describe('photo journey stops', () => {
     expect(late).toBeGreaterThan(early);
     expect(late).toBeGreaterThan(longRoute);
     expect(photoStopZoomBoost(1_500, 0.85, 'FLIGHT')).toBe(0);
+  });
+
+  it('releases a photo zoom boost slowly instead of snapping out between nearby photos', () => {
+    const peak = photoStopZoomBoost(1_500, 1, 'WALK');
+    const afterFirstRelease = smoothPhotoStopZoomBoost(peak, 0, 0.1);
+    const afterSecondRelease = smoothPhotoStopZoomBoost(afterFirstRelease, 0, 0.1);
+
+    expect(peak - afterFirstRelease).toBeLessThan(0.02);
+    expect(afterSecondRelease).toBeLessThan(afterFirstRelease);
+    expect(afterSecondRelease).toBeGreaterThan(peak - 0.03);
+
+    const nextPhotoTarget = Math.max(afterSecondRelease, photoStopZoomBoost(1_500, 0.15, 'WALK'));
+    const resumed = smoothPhotoStopZoomBoost(afterSecondRelease, nextPhotoTarget, 0.1);
+    expect(resumed).toBeGreaterThanOrEqual(afterSecondRelease);
+  });
+
+  it('centers current-position tracking on the interpolated route head instead of an offset locked center', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    plan.fps = 4;
+    plan.frames = [
+      {
+        ...first,
+        mobilityClass: 'ROAD',
+        position: { lat: 37.5, lng: 127 },
+        center: { lat: 37.5, lng: 127 },
+        lockedCenter: { lat: 37.8, lng: 127.4 },
+        zoom: 11,
+        lockedZoom: 11
+      },
+      {
+        ...first,
+        timeSec: 0.25,
+        progress: 0.5,
+        mobilityClass: 'ROAD',
+        position: { lat: 37.51, lng: 127.01 },
+        center: { lat: 37.51, lng: 127.01 },
+        lockedCenter: { lat: 37.81, lng: 127.41 },
+        zoom: 11,
+        lockedZoom: 11
+      },
+      outro
+    ];
+
+    const jumpTo = vi.fn();
+    const map = {
+      getSource: () => ({ setData: vi.fn() }),
+      jumpTo
+    } as unknown as Map;
+    const controller = new PlayerController(map);
+    controller.loadPlan(plan);
+    controller.seek(0.125);
+
+    const camera = jumpTo.mock.calls.at(-1)?.[0] as { center: [number, number]; zoom: number };
+    expect(camera.center[0]).toBeCloseTo(127.005, 3);
+    expect(camera.center[1]).toBeCloseTo(37.505, 3);
+    expect(camera.zoom).toBe(11);
   });
 
   it('interpolates camera position between planned frames and keeps one flight zoom stable', () => {
