@@ -48,6 +48,15 @@ describe('resolvePhotoPlaceLabel', () => {
 
     expect(resolvePhotoPlaceLabel(map, { lat: 51.508, lng: -0.12 })).toBe('London');
   });
+
+  it('returns unresolved when the nearest city feature is too far from the photo', () => {
+    const map = placeMap([
+      point(127.58, 37.31, { place: 'city', name: '멀리 있는 도시' }),
+      point(126.44, 37.46, { place: 'town', name: '북도면' })
+    ]);
+
+    expect(resolvePhotoPlaceLabel(map, { lat: 37.46, lng: 126.44 })).toBeNull();
+  });
 });
 
 function point(lng: number, lat: number, properties: Record<string, unknown>): FeatureFixture {
