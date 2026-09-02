@@ -81,9 +81,10 @@ function isCityFeature(feature: MapFeature): boolean {
 function isDistrictFeature(feature: MapFeature): boolean {
   const name = featureName(feature) ?? '';
   if (/[읍면동리]$/.test(name)) return false;
+  if (/구$|区$/.test(name)) return true;
   const hint = featureHint(feature);
   if (/neighbou?rhood|suburb|quarter|village|hamlet|locality|poi|address|road/.test(hint)) return false;
-  return /district|ward|borough/.test(hint) || /구$|区$/.test(name);
+  return /district|ward|borough/.test(hint);
 }
 
 function featureHint(feature: MapFeature): string {
