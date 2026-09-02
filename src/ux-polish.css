@@ -433,17 +433,16 @@
   white-space: nowrap;
 }
 
-/* Date, speed and route form three distinct vertical levels; speed occupies the middle. */
+/* Keep date and speed grouped so speed sits naturally below the date. */
 .media-transit {
   grid-template-columns: minmax(132px, 166px) minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto;
   grid-template-areas:
-    "pictogram date"
-    "pictogram speed"
+    "pictogram primary"
     "mode route";
   align-items: center;
   column-gap: clamp(54px, 6vw, 88px);
-  row-gap: 17px;
+  row-gap: 30px;
   width: min(720px, 90%);
   text-align: left;
 }
@@ -458,7 +457,12 @@
 }
 
 .media-transit .movement-primary {
-  display: contents;
+  grid-area: primary;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 21px;
+  min-width: 0;
 }
 
 .media-transit .movement-mode {
@@ -474,8 +478,6 @@
 }
 
 .media-transit .movement-date {
-  grid-area: date;
-  align-self: end;
   color: var(--paper);
   font-size: clamp(26px, 2.4vw, 34px);
   font-weight: 850;
@@ -485,8 +487,6 @@
 }
 
 .media-transit .movement-speed {
-  grid-area: speed;
-  align-self: center;
   margin-top: 0;
   color: #c7c1ba;
   font-size: clamp(18px, 1.35vw, 21px);
@@ -582,12 +582,16 @@
   .media-transit {
     grid-template-columns: minmax(84px, 106px) minmax(0, 1fr);
     column-gap: 24px;
-    row-gap: 12px;
+    row-gap: 20px;
     width: min(520px, 94%);
   }
 
   .media-transit .movement-pictogram {
     font-size: clamp(58px, 16vw, 76px);
+  }
+
+  .media-transit .movement-primary {
+    gap: 14px;
   }
 
   .media-transit .movement-mode {
