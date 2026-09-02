@@ -1,5 +1,6 @@
 import { Film, ImageOff, ImagePlus } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { dayMarkerCueFromId } from './day-markers';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
 
@@ -20,6 +21,7 @@ interface Props {
 
 type SceneDescriptor =
   | { kind: 'photo'; key: string; item: JourneyMedia; place: string; url: string | null }
+  | { kind: 'day'; key: string; dayKey: string; dayNumber: number }
   | { kind: 'transit'; key: string; mobilityClass: MobilityClass; movementDate: string; movementSpeed: string; originCity: string | null; destinationCity: string | null }
   | { kind: 'empty'; key: 'empty' };
 
@@ -45,10 +47,19 @@ const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
 export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
-  const active = media.find(item => item.id === activeId) ?? null;
+  const dayCue = dayMarkerCueFromId(activeId);
+  const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
   const activeAsset = active ? preloadedAssets[active.id] : undefined;
   const desiredScene = useMemo<SceneDescriptor>(() => {
+    if (dayCue && activeId) {
+      return {
+        kind: 'day',
+        key: activeId,
+        dayKey: dayCue.dayKey,
+        dayNumber: dayCue.dayNumber
+      };
+    }
     if (active) {
       return {
         kind: 'photo',
@@ -70,7 +81,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
       };
     }
     return { kind: 'empty', key: 'empty' };
-  }, [active, activeAsset?.url, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
+  }, [active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
   const canEnterScene = desiredScene.kind !== 'photo' || !activeAsset || activeAsset.status !== 'loading';
   const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
@@ -101,6 +112,16 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
 function SceneContent({ scene, videoMode, videoMuted, onFiles }: { scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
   if (scene.kind === 'photo') {
     return <PhotoScene item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
+  }
+  if (scene.kind === 'day') {
+    const formatted = formatDayMarker(scene.dayKey);
+    return (
+      <div className="media-day-marker" data-day-number={scene.dayNumber}>
+        <span>여행 {scene.dayNumber}일차</span>
+        <time dateTime={scene.dayKey}>{formatted.date}</time>
+        <strong>{formatted.weekday}</strong>
+      </div>
+    );
   }
   if (scene.kind === 'transit') {
     const movement = MOVEMENT_VISUALS[scene.mobilityClass];
@@ -392,6 +413,22 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
   }, []);
 
   return transition;
+}
+
+function formatDayMarker(dayKey: string): { date: string; weekday: string } {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  const value = Date.UTC(year, Math.max(0, month - 1), day, 12);
+  const date = new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Seoul'
+  }).format(value);
+  const weekday = new Intl.DateTimeFormat('ko-KR', {
+    weekday: 'long',
+    timeZone: 'Asia/Seoul'
+  }).format(value);
+  return { date, weekday };
 }
 
 function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null): string {
