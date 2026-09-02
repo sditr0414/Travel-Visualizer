@@ -141,8 +141,50 @@ function smoothZoomTrajectory(values, fps, mode, totalSeconds) {
   out = kinematicZoomOutEnvelope(out, fps, config.maxVelocity, config.previewAllowance);
   out = asymmetricSmooth(out, fps, config.zoomOutTau, config.zoomInTau);
   out = limitKinematics(out, fps, config.maxVelocity, config.maxAcceleration);
+  out = suppressZoomReversals(out, fps, config.reversalHoldSec, config.reversalThreshold);
   out = smoothEma(out, config.finalTau, fps);
+  out = limitKinematics(out, fps, config.maxVelocity * 0.82, config.maxAcceleration * 0.72);
   return out.map(value => clamp(value, 4, 17.3));
+}
+
+function suppressZoomReversals(values, fps, holdSec, threshold) {
+  if (values.length < 3) return [...values];
+  const out = [...values];
+  const holdFrames = Math.max(1, Math.round(Math.max(0, holdSec) * Math.max(1, fps)));
+  let direction = 0;
+  let pendingDirection = 0;
+  let pendingStart = -1;
+
+  for (let index = 1; index < values.length; index += 1) {
+    const delta = values[index] - out[index - 1];
+    const requestedDirection = Math.abs(delta) < 0.0001 ? 0 : Math.sign(delta);
+    if (requestedDirection === 0) {
+      out[index] = out[index - 1];
+      continue;
+    }
+    if (direction === 0 || requestedDirection === direction) {
+      direction = requestedDirection;
+      pendingDirection = 0;
+      pendingStart = -1;
+      out[index] = values[index];
+      continue;
+    }
+    if (pendingDirection !== requestedDirection) {
+      pendingDirection = requestedDirection;
+      pendingStart = index;
+    }
+    const persistent = index - pendingStart >= holdFrames;
+    const decisive = Math.abs(values[index] - out[index - 1]) >= threshold;
+    if (persistent || decisive) {
+      direction = requestedDirection;
+      pendingDirection = 0;
+      pendingStart = -1;
+      out[index] = values[index];
+    } else {
+      out[index] = out[index - 1];
+    }
+  }
+  return out;
 }
 
 function kinematicZoomOutEnvelope(values, fps, maxVelocity, allowance) {
@@ -155,11 +197,11 @@ function kinematicZoomOutEnvelope(values, fps, maxVelocity, allowance) {
 function zoomMotionConfig(mode, totalSeconds) {
   const short = totalSeconds <= 90;
   if (mode === CameraMode.SEGMENT) return short
-    ? { previewSec: 2.2, previewAllowance: 0.18, zoomOutTau: 0.72, zoomInTau: 1.35, maxVelocity: 1.15, maxAcceleration: 1.55, finalTau: 0.13 }
-    : { previewSec: 1.5, previewAllowance: 0.22, zoomOutTau: 0.58, zoomInTau: 1.15, maxVelocity: 1.35, maxAcceleration: 1.9, finalTau: 0.10 };
-  if (short) return { previewSec: 3.8, previewAllowance: 0.16, zoomOutTau: 0.92, zoomInTau: 1.75, maxVelocity: 1.02, maxAcceleration: 1.30, finalTau: 0.16 };
-  if (totalSeconds <= 180) return { previewSec: 2.8, previewAllowance: 0.18, zoomOutTau: 0.78, zoomInTau: 1.55, maxVelocity: 0.92, maxAcceleration: 1.25, finalTau: 0.14 };
-  return { previewSec: 2.0, previewAllowance: 0.20, zoomOutTau: 0.68, zoomInTau: 1.35, maxVelocity: 1.08, maxAcceleration: 1.5, finalTau: 0.12 };
+    ? { previewSec: 3.0, previewAllowance: 0.15, zoomOutTau: 0.95, zoomInTau: 1.85, maxVelocity: 0.88, maxAcceleration: 1.02, finalTau: 0.20, reversalHoldSec: 0.80, reversalThreshold: 0.16 }
+    : { previewSec: 2.2, previewAllowance: 0.18, zoomOutTau: 0.82, zoomInTau: 1.60, maxVelocity: 0.98, maxAcceleration: 1.18, finalTau: 0.17, reversalHoldSec: 0.72, reversalThreshold: 0.18 };
+  if (short) return { previewSec: 4.6, previewAllowance: 0.13, zoomOutTau: 1.12, zoomInTau: 2.30, maxVelocity: 0.72, maxAcceleration: 0.78, finalTau: 0.25, reversalHoldSec: 1.0, reversalThreshold: 0.16 };
+  if (totalSeconds <= 180) return { previewSec: 3.6, previewAllowance: 0.15, zoomOutTau: 0.98, zoomInTau: 2.0, maxVelocity: 0.78, maxAcceleration: 0.88, finalTau: 0.22, reversalHoldSec: 0.90, reversalThreshold: 0.17 };
+  return { previewSec: 3.0, previewAllowance: 0.17, zoomOutTau: 0.88, zoomInTau: 1.80, maxVelocity: 0.85, maxAcceleration: 1.0, finalTau: 0.19, reversalHoldSec: 0.82, reversalThreshold: 0.18 };
 }
 
 function reconnectOutroZoom(frames, startZoom, fps) {
