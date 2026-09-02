@@ -28,8 +28,9 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   await play.click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
-  // Clicking Play leaves the pointer over playback chrome, which intentionally keeps it visible.
+  // Pointer and keyboard focus intentionally keep chrome visible; clear both before testing auto-hide.
   await page.mouse.move(1, 1);
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3000 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
@@ -64,38 +65,43 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await page.goto('/');
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생' });
+  const pause = page.getByRole('button', { name: '일시정지' });
   const position = page.getByLabel('재생 위치');
 
   await expect(page.getByRole('button', { name: '사진 여정' })).toHaveClass(/active/);
   await play.click();
-  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect(pause).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
+  await pause.click();
   const firstPhotoPosition = Number(await position.inputValue());
   await page.getByRole('button', { name: '발자취' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect(play).toBeVisible();
   const initialRoutePosition = Number(await position.inputValue());
 
   await play.click();
-  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect(pause).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(initialRoutePosition + 0.05);
+  await pause.click();
   const firstRoutePosition = Number(await position.inputValue());
   await page.getByRole('button', { name: '사진 여정' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect(play).toBeVisible();
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - firstPhotoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 
   await play.click();
-  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect(pause).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(firstPhotoPosition + 0.05);
+  await pause.click();
   const secondPhotoPosition = Number(await position.inputValue());
   await page.getByRole('button', { name: '발자취' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect(play).toBeVisible();
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - firstRoutePosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 
   await play.click();
-  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect(pause).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(firstRoutePosition + 0.05);
+  await pause.click();
   await page.getByRole('button', { name: '사진 여정' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect(play).toBeVisible();
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - secondPhotoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 });
 
