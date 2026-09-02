@@ -1,0 +1,127 @@
+/* Focused settings-panel layout refinements. Loaded after ux-polish.css. */
+
+/*
+ * Photo settings needs a scrollbar more often than route settings.
+ * Widen only by the classic desktop scrollbar footprint so the usable
+ * content width remains visually the same as the route settings panel.
+ */
+@media (min-width: 721px) {
+  .photo-mode .settings-content {
+    width: min(396px, calc(100vw - 32px));
+    scrollbar-gutter: stable;
+  }
+}
+
+/* Treat the trip dates as one compact range control instead of two cramped columns. */
+.trip-range-control {
+  gap: 12px;
+  padding: 14px;
+}
+
+.trip-range-heading {
+  display: grid;
+  gap: 10px;
+}
+
+.trip-range-heading > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.trip-range-heading span {
+  font-size: 12px;
+}
+
+.trip-range-heading strong {
+  min-width: 0;
+  color: #e8e3dc;
+  font-size: 13px;
+  font-weight: 760;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trip-range-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.trip-range-presets button {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.trip-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.trip-range-fields label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 6px 7px 6px 12px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.trip-range-fields label > span {
+  color: #c8c3bc;
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+.trip-range-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: #202428;
+}
+
+.trip-range-fields input:focus {
+  border: 0;
+}
+
+.trip-range-arrow {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .photo-mode .settings-content {
+    width: min(330px, calc(100vw - 20px));
+  }
+
+  .trip-range-control {
+    padding: 12px;
+  }
+
+  .trip-range-heading > div:first-child {
+    display: grid;
+    gap: 3px;
+  }
+
+  .trip-range-heading strong {
+    text-align: left;
+  }
+
+  .trip-range-fields label {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 8px;
+    padding-left: 10px;
+  }
+}
