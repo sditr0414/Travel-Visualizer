@@ -9,21 +9,32 @@ interface FeatureFixture {
 }
 
 describe('resolvePhotoPlaceLabel', () => {
-  it('uses city and gu while ignoring township-level labels in Korea', () => {
+  it('falls back to the city instead of showing eup or myeon township labels', () => {
     const map = placeMap([
-      point(126.452, 37.495, { place: 'village', name: '북도면' }),
+      point(126.452, 37.495, { place: 'town', 'name:ko': '북도면', name: 'Bukdo' }),
       point(126.621, 37.473, { place: 'suburb', name: '중구' }),
       point(126.705, 37.456, { place: 'city', name: '인천광역시' })
     ]);
 
-    expect(resolvePhotoPlaceLabel(map, { lat: 37.46, lng: 126.44 })).toBe('인천광역시 중구');
+    expect(resolvePhotoPlaceLabel(map, { lat: 37.46, lng: 126.44 })).toBe('인천광역시');
   });
 
-  it('uses city and ward-level labels in Japan', () => {
+  it('uses a district only when its label is close enough to the photo coordinate', () => {
+    const map = placeMap([
+      point(126.621, 37.473, { place: 'suburb', name: '중구' }),
+      point(126.705, 37.456, { place: 'city', name: '인천광역시' }),
+      point(126.63, 37.48, { place: 'town', name: '고촌읍' })
+    ]);
+
+    expect(resolvePhotoPlaceLabel(map, { lat: 37.475, lng: 126.62 })).toBe('인천광역시 중구');
+  });
+
+  it('uses city and ward-level labels in Japan while rejecting cho and mura', () => {
     const map = placeMap([
       point(130.873, 33.885, { place: 'city', name: '北九州市' }),
       point(130.961, 33.947, { place: 'suburb', name: '門司区' }),
-      point(130.955, 33.944, { place: 'suburb', name: '港町' })
+      point(130.955, 33.944, { place: 'suburb', name: '港町' }),
+      point(130.957, 33.946, { place: 'village', name: '旧門司村' })
     ]);
 
     expect(resolvePhotoPlaceLabel(map, { lat: 33.945, lng: 130.96 })).toBe('北九州市 門司区');
