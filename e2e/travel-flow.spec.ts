@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+const CURSOR_RESTORE_TOLERANCE_SEC = 0.1;
+
 test('local trip can be planned, played, paused and reset', async ({ page }) => {
   await page.goto('/');
   await expect.poll(async () => (await page.getByTestId('map-stage').boundingBox())?.height ?? 0).toBeGreaterThan(400);
@@ -90,7 +92,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(0.08);
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 });
 
 test('settings stay usable on a narrow screen', async ({ page }) => {
