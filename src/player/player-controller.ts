@@ -5,7 +5,7 @@ import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackSt
 import { heldMediaStopId } from './media-bridge';
 
 const TILE_SIZE = 512;
-const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.42;
+const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -54,6 +54,8 @@ export class PlayerController {
   private trackedCenter: Coordinate | null = null;
   private displayedZoom: number | null = null;
   private displayedZoomTimelineSec = 0;
+  private displayedPhotoStopBoost: number | null = null;
+  private displayedPhotoStopBoostTimelineSec = 0;
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
   private stopDurationSec = 0;
@@ -72,6 +74,8 @@ export class PlayerController {
     this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedPhotoStopBoost = null;
+    this.displayedPhotoStopBoostTimelineSec = 0;
     this.replaceStops(stops);
     this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
@@ -129,6 +133,8 @@ export class PlayerController {
     this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = this.timeSec;
+    this.displayedPhotoStopBoost = null;
+    this.displayedPhotoStopBoostTimelineSec = this.timeSec;
     this.renderForTime(true);
   }
 
@@ -140,6 +146,8 @@ export class PlayerController {
     this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedPhotoStopBoost = null;
+    this.displayedPhotoStopBoostTimelineSec = 0;
     this.lastStopId = null;
     this.render(0, true);
   }
@@ -153,6 +161,8 @@ export class PlayerController {
     this.fullRouteData = emptyCollection();
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedPhotoStopBoost = null;
+    this.displayedPhotoStopBoostTimelineSec = 0;
     this.stableFlightZooms.clear();
   }
 
@@ -183,15 +193,22 @@ export class PlayerController {
       mapped.routeTimeSec * this.plan.fps,
       force || stopChanged || activeMediaStop,
       displayStopId,
-      activeMediaStop ? mapped.activeStopProgress : 0
+      activeMediaStop ? mapped.activeStopProgress : 0,
+      activeMediaStop
     );
   }
 
   private render(index: number, force = false, activeStopId: string | null = null): void {
-    this.renderAtPosition(index, force, activeStopId, 0);
+    this.renderAtPosition(index, force, activeStopId, 0, false);
   }
 
-  private renderAtPosition(framePosition: number, force = false, activeStopId: string | null = null, activeMediaProgress = 0): void {
+  private renderAtPosition(
+    framePosition: number,
+    force = false,
+    activeStopId: string | null = null,
+    activeMediaProgress = 0,
+    activeMediaStop = false
+  ): void {
     if (!this.plan?.frames.length) return;
     const clampedPosition = clamp(framePosition, 0, this.plan.frames.length - 1);
     if (!force && Math.abs(clampedPosition - this.framePosition) < 0.001) return;
@@ -206,9 +223,9 @@ export class PlayerController {
       center = frame.center;
       this.trackedCenter = null;
     } else if (this.lockToPosition) {
-      center = frame.lockedCenter ?? frame.position;
+      center = frame.position;
       zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
-      this.trackedCenter = { ...center };
+      this.trackedCenter = { ...frame.position };
     } else {
       center = this.followCamera(frame, baseIndex, force || frame.sceneBreak);
     }
@@ -219,8 +236,17 @@ export class PlayerController {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
       zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
-      if (activeMediaProgress > 0) {
-        zoom += photoStopZoomBoost(photoDistanceMeters, activeMediaProgress, frame.mobilityClass);
+      if (frame.mobilityClass === 'FLIGHT') {
+        this.displayedPhotoStopBoost = 0;
+        this.displayedPhotoStopBoostTimelineSec = this.timeSec;
+      } else {
+        const rawStopBoost = activeMediaStop
+          ? photoStopZoomBoost(photoDistanceMeters, activeMediaProgress, frame.mobilityClass)
+          : 0;
+        const stopBoostTarget = activeMediaStop && this.displayedPhotoStopBoost !== null
+          ? Math.max(rawStopBoost, this.displayedPhotoStopBoost)
+          : rawStopBoost;
+        zoom += this.stabilizePhotoStopZoomBoost(stopBoostTarget, this.timeSec);
       }
     }
     zoom = this.stabilizeZoom(zoom, this.timeSec);
@@ -236,6 +262,22 @@ export class PlayerController {
       this.setSource('route-head', emptyCollection());
     }
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
+  }
+
+  private stabilizePhotoStopZoomBoost(targetBoost: number, timelineSec: number): number {
+    const target = clamp(Number(targetBoost) || 0, 0, 0.5);
+    if (this.displayedPhotoStopBoost === null || timelineSec + 0.001 < this.displayedPhotoStopBoostTimelineSec) {
+      this.displayedPhotoStopBoost = target;
+      this.displayedPhotoStopBoostTimelineSec = timelineSec;
+      return target;
+    }
+
+    const elapsed = timelineSec - this.displayedPhotoStopBoostTimelineSec;
+    this.displayedPhotoStopBoostTimelineSec = timelineSec;
+    if (!(elapsed > 0)) return this.displayedPhotoStopBoost;
+
+    this.displayedPhotoStopBoost = smoothPhotoStopZoomBoost(this.displayedPhotoStopBoost, target, elapsed);
+    return this.displayedPhotoStopBoost;
   }
 
   private stabilizeZoom(targetZoom: number, timelineSec: number): number {
@@ -292,13 +334,17 @@ export class PlayerController {
     this.stops = next.stops;
     this.stopSchedule = next.schedule;
     this.stopDurationSec = next.totalDurationSec;
+    if (!next.stops.length) {
+      this.displayedPhotoStopBoost = null;
+      this.displayedPhotoStopBoostTimelineSec = this.timeSec;
+    }
   }
 }
 
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
   if (mobilityClass === 'FLIGHT') return baseZoom;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
-  const shortRouteBoost = 0.96 * Math.exp(-distanceKm / 20);
+  const shortRouteBoost = 1.08 * Math.exp(-distanceKm / 20);
   return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
 }
 
@@ -306,10 +352,25 @@ export function photoStopZoomBoost(distanceMeters: number, progress: number, mob
   if (mobilityClass === 'FLIGHT') return 0;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
   const shortRouteFactor = Math.exp(-distanceKm / 18);
-  const maxBoost = 0.14 + 0.30 * shortRouteFactor;
+  const maxBoost = 0.08 + 0.18 * shortRouteFactor;
   const normalized = clamp(Number(progress) || 0, 0, 1);
-  const eased = 1 - Math.pow(1 - normalized, 2.2);
+  const eased = 1 - Math.pow(1 - normalized, 2.0);
   return maxBoost * eased;
+}
+
+export function smoothPhotoStopZoomBoost(currentBoost: number, targetBoost: number, elapsedSec: number): number {
+  const current = clamp(Number(currentBoost) || 0, 0, 0.5);
+  const target = clamp(Number(targetBoost) || 0, 0, 0.5);
+  const dt = clamp(Number(elapsedSec) || 0, 0, 0.25);
+  if (!(dt > 0) || Math.abs(target - current) < 0.0005) return target;
+
+  const releasing = target < current;
+  const tauSec = releasing ? 4.8 : 0.75;
+  const maxRate = releasing ? 0.09 : 0.34;
+  const delta = target - current;
+  const easedStep = delta * (1 - Math.exp(-dt / tauSec));
+  const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
+  return clamp(current + step, 0, 0.5);
 }
 
 function interpolatePlaybackFrame(frame: PlaybackFrame, next: PlaybackFrame, mix: number): PlaybackFrame {
