@@ -1,9 +1,10 @@
-const MEDIA_MIN_MS = 420;
-const MEDIA_MAX_MS = 540;
+const MEDIA_MIN_MS = 560;
+const MEDIA_MAX_MS = 700;
 const MEDIA_REFERENCE_MIN_SEC = 1.5;
 const MEDIA_REFERENCE_MAX_SEC = 8;
-const TRANSIT_MIN_MS = 16;
-const TRANSIT_MAX_MS = 320;
+const TRANSIT_MIN_MS = 180;
+const TRANSIT_MAX_MS = 420;
+const TRANSIT_RATIO_MS_PER_SEC = 140;
 
 export function sceneTransitionDurationMs(displaySec: number): number {
   const seconds = positiveSeconds(displaySec, 3);
@@ -13,7 +14,7 @@ export function sceneTransitionDurationMs(displaySec: number): number {
 
 export function transitSceneTransitionDurationMs(displaySec: number): number {
   const seconds = positiveSeconds(displaySec, 1);
-  return Math.round(Math.min(TRANSIT_MAX_MS, Math.max(TRANSIT_MIN_MS, seconds * 100)));
+  return Math.round(Math.min(TRANSIT_MAX_MS, Math.max(TRANSIT_MIN_MS, seconds * TRANSIT_RATIO_MS_PER_SEC)));
 }
 
 function positiveSeconds(value: number, fallback: number): number {
