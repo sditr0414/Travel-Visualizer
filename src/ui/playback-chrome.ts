@@ -56,6 +56,11 @@ export function usePlaybackChrome({ playing, keepVisible = false }: PlaybackChro
     reveal();
   }, [reveal]);
 
+  const onRevealPointerMove = useCallback(() => {
+    if (!pointerInsideRef.current) return;
+    reveal();
+  }, [reveal]);
+
   const onPointerLeave = useCallback(() => {
     pointerInsideRef.current = false;
     scheduleHide();
@@ -92,7 +97,7 @@ export function usePlaybackChrome({ playing, keepVisible = false }: PlaybackChro
   return {
     visible: !playing || keepVisible || requestedVisible,
     interactionProps: { onPointerEnter, onPointerLeave, onFocusCapture, onBlurCapture },
-    revealZoneProps: { onPointerEnter, onPointerLeave },
+    revealZoneProps: { onPointerEnter, onPointerMove: onRevealPointerMove, onPointerLeave },
     revealNow: () => reveal(0),
     scheduleHide
   };
