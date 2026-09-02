@@ -68,7 +68,7 @@ export function App({ workerClient }: AppProps) {
   const [trackingSpeed, setTrackingSpeed] = useState(1);
   const [journeyMode, setJourneyMode] = useState<JourneyMode>('ROUTE');
   const [mediaLibrary, setMediaLibrary] = useState<{ preview: JourneyMedia[]; all: JourneyMedia[] }>({ preview: [], all: [] });
-  const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('ALL');
+  const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('PREVIEW');
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [photoDisplaySec, setPhotoDisplaySec] = useState(3);
   const [videoMode, setVideoMode] = useState<'THUMBNAIL' | 'PLAY'>('PLAY');
@@ -94,6 +94,7 @@ export function App({ workerClient }: AppProps) {
   const manualMediaSelectedRef = useRef(false);
   const selectedMediaFilesRef = useRef<File[]>([]);
   const lastLocalMediaPlanRef = useRef<PlaybackPlan | null>(null);
+  const mediaLibraryLoadedRef = useRef(false);
   const mediaRef = useRef<JourneyMedia[]>([]);
   const activeMediaRef = useRef<string | null>(null);
   const shellRef = useRef<HTMLElement>(null);
@@ -199,7 +200,7 @@ export function App({ workerClient }: AppProps) {
     durationSec: item.kind === 'video' && videoMode === 'PLAY' ? videoMaxSec : photoDisplaySec
   })), [media, photoDisplaySec, videoMaxSec, videoMode]);
 
-  const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan) => {
+  const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan, activatePhotoJourney = true) => {
     const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
     setMediaProgress({ phase: 'PREPARE', processed: 0, total: files.length, message: '미디어 파일을 준비하고 있습니다.' });
@@ -210,7 +211,8 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
-      changeJourneyMode('PHOTOS', true);
+      mediaLibraryLoadedRef.current = true;
+      if (activatePhotoJourney) changeJourneyMode('PHOTOS', true);
       dispatch({ type: 'NOTICE', message: `${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
       if (operation !== mediaOperationRef.current) return;
@@ -220,7 +222,7 @@ export function App({ workerClient }: AppProps) {
     }
   }, [changeJourneyMode, pausePlayback]);
 
-  const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan) => {
+  const attachLocalMedia = useCallback(async (manifest: LocalMediaManifest, plan: PlaybackPlan, activatePhotoJourney = true) => {
     if (lastLocalMediaPlanRef.current === plan) return;
     lastLocalMediaPlanRef.current = plan;
     const operation = ++mediaOperationRef.current;
@@ -233,7 +235,8 @@ export function App({ workerClient }: AppProps) {
       });
       if (operation !== mediaOperationRef.current) return;
       setMediaLibrary(loaded);
-      changeJourneyMode('PHOTOS', true);
+      mediaLibraryLoadedRef.current = true;
+      if (activatePhotoJourney) changeJourneyMode('PHOTOS', true);
       setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 로컬 사진·영상을 연결했습니다.` });
       dispatch({ type: 'NOTICE', message: `${manifest.rootName}에서 ${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
@@ -305,8 +308,9 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     if (!state.plan) return;
-    if (selectedMediaFilesRef.current.length) void attachMediaFiles(selectedMediaFilesRef.current, state.plan);
-    else if (localMediaManifest) void attachLocalMedia(localMediaManifest, state.plan);
+    const activatePhotoJourney = !mediaLibraryLoadedRef.current;
+    if (selectedMediaFilesRef.current.length) void attachMediaFiles(selectedMediaFilesRef.current, state.plan, activatePhotoJourney);
+    else if (localMediaManifest) void attachLocalMedia(localMediaManifest, state.plan, activatePhotoJourney);
   }, [attachLocalMedia, attachMediaFiles, localMediaManifest, state.plan]);
 
   useLayoutEffect(() => {
@@ -645,7 +649,7 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud" aria-live="polite" {...playbackChrome.interactionProps}>
+      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud route-persistent-hud" aria-live="polite">
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong>{hud.mobility}</strong>
         <div className="hud-meta"><span>{hud.date}</span><span>{hud.speed}</span></div>
@@ -694,8 +698,8 @@ export function App({ workerClient }: AppProps) {
             </div>}
             <label className="select-field">사진 표시 범위
               <select aria-label="사진 표시 범위" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
-                <option value="ALL">전체 보기 · {mediaLibrary.all.length}개</option>
                 <option value="PREVIEW">미리보기 · 대표 {mediaLibrary.preview.length}개</option>
+                <option value="ALL">전체 보기 · {mediaLibrary.all.length}개</option>
               </select>
             </label>
             <label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
@@ -717,10 +721,27 @@ export function App({ workerClient }: AppProps) {
             <p className="privacy-note">사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.</p>
           </section>}
 
-          <div className="form-grid">
-            <label>여행 시작<input type="date" value={startDate} min={state.scan?.startDate} max={endDate || state.scan?.endDate} onChange={event => setStartDate(event.target.value)} /></label>
-            <label>여행 마지막 날<input type="date" value={endDate} min={startDate || state.scan?.startDate} max={state.scan?.endDate} onChange={event => setEndDate(event.target.value)} /></label>
-          </div>
+          <section className="trip-range-control" aria-labelledby="trip-range-title">
+            <div className="trip-range-heading">
+              <div><span id="trip-range-title">여행 기간</span><strong>{formatTripRange(startDate, endDate)}</strong></div>
+              <div className="trip-range-presets">
+                <button type="button" onClick={() => {
+                  const recommended = preferredTripRange(state.scan!.startDate, state.scan!.endDate);
+                  setStartDate(recommended.startDate);
+                  setEndDate(recommended.endDate);
+                }}>추천 기간</button>
+                <button type="button" onClick={() => {
+                  setStartDate(state.scan!.startDate);
+                  setEndDate(state.scan!.endDate);
+                }}>전체 기간</button>
+              </div>
+            </div>
+            <div className="trip-range-fields">
+              <label><span>시작</span><input aria-label="여행 시작" type="date" value={startDate} min={state.scan.startDate} max={endDate || state.scan.endDate} onChange={event => setStartDate(event.target.value)} /></label>
+              <span className="trip-range-arrow" aria-hidden="true">→</span>
+              <label><span>마지막</span><input aria-label="여행 마지막 날" type="date" value={endDate} min={startDate || state.scan.startDate} max={state.scan.endDate} onChange={event => setEndDate(event.target.value)} /></label>
+            </div>
+          </section>
 
           <label className="range-field">
             <span><span>경로 재생 길이</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동 계산'}</output></span>
@@ -837,6 +858,16 @@ function roundDurationStep(seconds: number): number {
 function formatSigned(value: number): string {
   if (Math.abs(value) < 0.05) return '기본';
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
+}
+
+function formatTripRange(startDate: string, endDate: string): string {
+  if (!startDate || !endDate) return '기간을 선택하세요';
+  return `${formatTripDay(startDate)} → ${formatTripDay(endDate)}`;
+}
+
+function formatTripDay(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  return `${year}. ${month}. ${day}.`;
 }
 
 function preferredTripRange(availableStart: string, availableEnd: string): { startDate: string; endDate: string } {
