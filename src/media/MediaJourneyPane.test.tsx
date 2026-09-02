@@ -52,7 +52,7 @@ describe('MediaJourneyPane', () => {
     expect(footer).not.toHaveTextContent('IMG_111122');
   });
 
-  it('replaces overly detailed Korean place labels with the surrounding city', () => {
+  it('shows unknown instead of borrowing a city for an overly detailed place label', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
@@ -63,11 +63,12 @@ describe('MediaJourneyPane', () => {
     />);
 
     const place = container.querySelector('.media-caption-place');
-    expect(place).toHaveTextContent('인천');
+    expect(place).toHaveTextContent('알 수 없음');
+    expect(place).not.toHaveTextContent('인천');
     expect(place).not.toHaveTextContent('북도면');
   });
 
-  it('never exposes raw coordinates as a photo place label', () => {
+  it('never exposes raw coordinates and shows unknown instead of a nearby city', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
       activeId={media.id}
@@ -78,7 +79,8 @@ describe('MediaJourneyPane', () => {
     />);
 
     const place = container.querySelector('.media-caption-place');
-    expect(place).toHaveTextContent('인천');
+    expect(place).toHaveTextContent('알 수 없음');
+    expect(place).not.toHaveTextContent('인천');
     expect(place).not.toHaveTextContent('37.456');
     expect(place).not.toHaveTextContent('126.440');
   });
