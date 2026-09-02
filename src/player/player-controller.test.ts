@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime, photoJourneyZoom, remapJourneyTimeForStops } from './player-controller';
+import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -45,10 +45,22 @@ describe('photo journey stops', () => {
     const medium = photoJourneyZoom(12, 12_000, 'ROAD');
     const long = photoJourneyZoom(12, 60_000, 'ROAD');
 
+    expect(short).toBeGreaterThan(13);
     expect(short).toBeGreaterThan(medium);
     expect(medium).toBeGreaterThan(long);
     expect(long).toBeGreaterThan(12);
     expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
+  });
+
+  it('continues easing closer while a short-route photo is on screen', () => {
+    const early = photoStopZoomBoost(1_500, 0.25, 'WALK');
+    const late = photoStopZoomBoost(1_500, 0.85, 'WALK');
+    const longRoute = photoStopZoomBoost(60_000, 0.85, 'ROAD');
+
+    expect(early).toBeGreaterThan(0);
+    expect(late).toBeGreaterThan(early);
+    expect(late).toBeGreaterThan(longRoute);
+    expect(photoStopZoomBoost(1_500, 0.85, 'FLIGHT')).toBe(0);
   });
 
   it('interpolates camera position between planned frames and keeps one flight zoom stable', () => {
