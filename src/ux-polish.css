@@ -45,11 +45,26 @@
 
 .photo-mode .player-reveal-zone {
   left: calc(var(--photo-map-share, 60%) / 2);
+  bottom: max(13px, env(safe-area-inset-bottom));
   width: min(760px, calc(var(--photo-map-share, 60%) - 32px));
 }
 
 .player-dock {
   z-index: 12;
+}
+
+/* Photo playback shifts as a whole; its dimensions stay unchanged. */
+.photo-mode .player-dock {
+  bottom: max(13px, env(safe-area-inset-bottom));
+}
+
+.timeline-meta {
+  transform: translateY(2px);
+  font-size: 14px;
+}
+
+.player-status {
+  font-size: 12px;
 }
 
 /* Route-only mobility HUD is persistent; only generic playback chrome hides. */
@@ -521,6 +536,10 @@
     bottom: calc(100% - var(--photo-map-share, 52%) + 10px);
     width: calc(100vw - 20px);
     height: 64px;
+  }
+
+  .photo-mode .player-dock {
+    bottom: calc(100% - var(--photo-map-share, 52%) + 10px);
   }
 }
 
