@@ -14,11 +14,29 @@ describe('resolveCityLabel', () => {
     expect(resolveCityLabel(map, { lat: 37.49, lng: 127.02 })).toBeNull();
   });
 
+  it('rejects eup and myeon even when vector tiles classify them as towns', () => {
+    const map = fakeMap([
+      { geometry: { type: 'Point', coordinates: [126.77, 37.60] }, properties: { place: 'town', 'name:ko': '고촌읍', name: 'Gochon' } },
+      { geometry: { type: 'Point', coordinates: [126.45, 37.49] }, properties: { place: 'town', 'name:ko': '북도면', name: 'Bukdo' } }
+    ]);
+    expect(resolveCityLabel(map, { lat: 37.55, lng: 126.70 })).toBeNull();
+  });
+
   it('uses a nearby loaded city source when its rendered label is outside the viewport', () => {
     const map = fakeMap([]);
     map.getStyle = () => ({ layers: [{ id: 'place-city-label', source: 'openmaptiles', 'source-layer': 'place' }] });
     map.querySourceFeatures = () => [{ geometry: { type: 'Point', coordinates: [127.03, 37.28] }, properties: { class: 'city', name: '수원' } }];
     expect(resolveCityLabel(map, { lat: 37.27, lng: 127.02 })).toBe('수원');
+  });
+
+  it('skips township labels and falls back to the nearest true city', () => {
+    const map = fakeMap([{ geometry: { type: 'Point', coordinates: [126.78, 37.60] }, properties: { class: 'town', name: '고촌읍' } }]);
+    map.getStyle = () => ({ layers: [{ id: 'place-city-label', source: 'region', 'source-layer': 'places' }] });
+    map.querySourceFeatures = () => [
+      { geometry: { type: 'Point', coordinates: [126.72, 37.62] }, properties: { class: 'city', name: '김포시' } },
+      { geometry: { type: 'Point', coordinates: [126.78, 37.60] }, properties: { class: 'town', name: '고촌읍' } }
+    ];
+    expect(resolveCityLabel(map, { lat: 37.60, lng: 126.77 })).toBe('김포시');
   });
 });
 
