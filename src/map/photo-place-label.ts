@@ -10,15 +10,17 @@ interface MapFeature {
 }
 
 const CITY_DISTANCE_KM = 100;
-const DISTRICT_DISTANCE_KM = 35;
+const DISTRICT_DISTANCE_KM = 12;
 
 /**
  * Resolves a coarse administrative label for a photo coordinate without
  * sending the coordinate to an external reverse-geocoding service.
  *
  * The lookup uses already loaded vector-tile place data so it works with the
- * local PMTiles map as well as compatible online styles. Fine-grained
- * 읍/면/동/리, neighbourhood, suburb and POI labels are deliberately ignored.
+ * local PMTiles map as well as compatible online styles. Output is limited to
+ * city and district/ward level. 읍/면/동/리/군, villages and smaller locality
+ * labels are deliberately rejected even when a map style classifies them as
+ * town, municipality or suburb.
  */
 export function resolvePhotoPlaceLabel(map: CityLabelMap, coordinate: Coordinate): string | null {
   try {
@@ -49,7 +51,7 @@ function collectPlaceFeatures(map: CityLabelMap, coordinate: Coordinate): MapFea
     const source = typeof layer?.source === 'string' ? layer.source : '';
     const sourceLayer = typeof layer?.['source-layer'] === 'string' ? layer['source-layer'] : '';
     const id = String(layer?.id ?? '');
-    if (!source || !sourceLayer || !/place|city|town|municipal|district|ward|borough/i.test(`${id} ${sourceLayer}`)) continue;
+    if (!source || !sourceLayer || !/place|city|municipal|district|ward|borough/i.test(`${id} ${sourceLayer}`)) continue;
     const key = `${source}\0${sourceLayer}`;
     if (pairs.has(key)) continue;
     pairs.add(key);
@@ -72,18 +74,19 @@ function nearestNamedFeature(
 }
 
 function isCityFeature(feature: MapFeature): boolean {
+  if (hasFineAdministrativeName(feature)) return false;
   const hint = featureHint(feature);
-  if (/district|ward|borough|neighbou?rhood|suburb|quarter|village|hamlet/.test(hint)) return false;
-  return /(^|\s)(city|town|municipality)(\s|$)/.test(hint)
-    || /(city|town|municipal).*label|label.*(city|town|municipal)/.test(hint);
+  if (/district|ward|borough|neighbou?rhood|suburb|quarter|village|hamlet|town|county/.test(hint)) return false;
+  return /(^|\s)city(\s|$)/.test(hint)
+    || /city.*label|label.*city/.test(hint);
 }
 
 function isDistrictFeature(feature: MapFeature): boolean {
+  if (hasFineAdministrativeName(feature)) return false;
   const name = featureName(feature) ?? '';
-  if (/[읍면동리]$/.test(name)) return false;
   if (/구$|区$/.test(name)) return true;
   const hint = featureHint(feature);
-  if (/neighbou?rhood|suburb|quarter|village|hamlet|locality|poi|address|road/.test(hint)) return false;
+  if (/neighbou?rhood|suburb|quarter|village|hamlet|town|locality|poi|address|road|county|region|province|prefecture|state/.test(hint)) return false;
   return /district|ward|borough/.test(hint);
 }
 
@@ -104,6 +107,16 @@ function featureName(feature: MapFeature): string | null {
   const properties = feature.properties ?? {};
   const name = properties['name:ko'] ?? properties.name_ko ?? properties['name:en'] ?? properties.name_en ?? properties.name;
   return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+function hasFineAdministrativeName(feature: MapFeature): boolean {
+  const properties = feature.properties ?? {};
+  return [properties['name:ko'], properties.name_ko, properties['name:ja'], properties.name_ja, properties.name]
+    .some(value => typeof value === 'string' && isFineAdministrativeName(value.trim()));
+}
+
+function isFineAdministrativeName(name: string): boolean {
+  return /(?:군|읍|면|동|리|가|로|길|마을|町|村|丁目)$/.test(name);
 }
 
 function featureDistanceKm(feature: MapFeature, coordinate: Coordinate): number | null {
