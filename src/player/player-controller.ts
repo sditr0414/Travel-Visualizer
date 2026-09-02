@@ -202,7 +202,6 @@ export class PlayerController {
     const frame = interpolatePlaybackFrame(baseFrame, this.plan.frames[nextIndex], mix);
     let center: Coordinate;
     let zoom = frame.zoom;
-    let photoDistanceMeters = 0;
     if (frame.kind !== 'TRAVEL') {
       center = frame.center;
       this.trackedCenter = null;
@@ -218,7 +217,7 @@ export class PlayerController {
     }
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
-      photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
+      const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
       zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
       if (activeMediaProgress > 0) {
         zoom += photoStopZoomBoost(photoDistanceMeters, activeMediaProgress, frame.mobilityClass);
