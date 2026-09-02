@@ -40,16 +40,17 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   const reveal = page.locator('.player-reveal-zone');
   const player = page.getByLabel('재생 컨트롤');
   const revealBox = await reveal.boundingBox();
-  const playerBox = await player.boundingBox();
   expect(revealBox).not.toBeNull();
+  await reveal.hover();
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  // Compare geometry only after the dock's hidden scale/translate transition has been removed.
+  const playerBox = await player.boundingBox();
   expect(playerBox).not.toBeNull();
   expect(Math.abs(revealBox!.x - playerBox!.x)).toBeLessThan(2);
   expect(Math.abs(revealBox!.y - playerBox!.y)).toBeLessThan(2);
   expect(Math.abs(revealBox!.width - playerBox!.width)).toBeLessThan(2);
   expect(Math.abs(revealBox!.height - playerBox!.height)).toBeLessThan(2);
-  await reveal.hover();
-  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
-  await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
   await page.mouse.move(outsideChrome.x, outsideChrome.y);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1800 });
