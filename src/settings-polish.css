@@ -13,12 +13,12 @@
 
   /* Keep the photo caption and the full playback box on the same visual centerline. */
   .media-card .media-caption {
-    transform: translateY(4px);
+    transform: translateY(2px);
   }
 
   .photo-mode .player-dock,
   .photo-mode .player-reveal-zone {
-    bottom: max(26px, env(safe-area-inset-bottom));
+    bottom: max(22px, env(safe-area-inset-bottom));
   }
 }
 
@@ -181,7 +181,7 @@
   display: none;
 }
 
-/* Put speed precisely in the vertical gap between date and origin/destination. */
+/* Put speed at the visual midpoint between the date and origin/destination row. */
 .media-transit .movement-primary {
   position: relative;
   gap: 0;
@@ -189,7 +189,7 @@
 
 .media-transit .movement-speed {
   position: absolute;
-  top: calc(100% + 15px);
+  top: calc(100% + 32px);
   left: 0;
   margin: 0;
   transform: translateY(-50%);
@@ -258,6 +258,6 @@
   }
 
   .media-transit .movement-speed {
-    top: calc(100% + 10px);
+    top: calc(100% + 20px);
   }
 }
