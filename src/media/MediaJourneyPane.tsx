@@ -214,9 +214,10 @@ function formatPhotoPlace(placeName: string | null, originCity: string | null, d
     : originCity ?? destinationCity;
   const place = placeName?.trim() ?? '';
   const fallback = city ?? (positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치');
-  if (!place) return fallback;
+  if (!place || looksLikeCoordinates(place)) return fallback;
 
   if (/(구|区)$/u.test(place)) {
+    if (/\s/u.test(place)) return place;
     if (city && normalizePlace(city) !== normalizePlace(place)) return `${city} ${place}`;
     return place;
   }
@@ -224,6 +225,10 @@ function formatPhotoPlace(placeName: string | null, originCity: string | null, d
   if (/(동|읍|면|리|가|로|길|町|村|丁目)$/u.test(place)) return fallback;
 
   return city ?? place;
+}
+
+function looksLikeCoordinates(value: string): boolean {
+  return /^-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$/.test(value);
 }
 
 function normalizePlace(value: string): string {
