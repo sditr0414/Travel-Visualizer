@@ -8,26 +8,67 @@ const DAY_MS = 86_400_000;
 
 export { PlaybackPacing };
 
-export function durationLimitsForMovements(movements) {
+export function durationLimitsForMovements(movements, { selectedDays = null } = {}) {
   if (!movements?.length) {
-    return { minSeconds: 45, recommendedSeconds: 90, maxSeconds: 240, days: 1, distanceKm: 0 };
+    const days = positiveDays(selectedDays, 1);
+    return {
+      minSeconds: 25,
+      recommendedSeconds: 45,
+      maxSeconds: 120,
+      days,
+      activeDays: 0,
+      distanceKm: 0,
+      extentKm: 0,
+      movementCount: 0
+    };
   }
-  const stats = movementStats(movements);
+
+  const stats = movementStats(movements, selectedDays);
+  const extentScore = Math.log2(1 + stats.extentKm);
+  const distanceScore = Math.log2(1 + stats.distanceKm);
+  const periodScore = Math.log2(1 + stats.days);
+  const activeDayScore = Math.log2(1 + stats.activeDays);
+  const movementScore = Math.log2(1 + stats.movementCount);
+
+  // Playback length should follow what the viewer must visually traverse, not
+  // calendar span alone. Repeated movement inside one city therefore stays
+  // compressible even when the selected trip lasts several weeks.
   const minSeconds = round5(clamp(
-    35 + stats.days * 1.1 + Math.log2(1 + stats.distanceKm) * 0.5,
-    45,
-    120
+    18
+      + extentScore * 4.3
+      + distanceScore * 0.8
+      + activeDayScore * 1.2
+      + movementScore * 0.7,
+    25,
+    180
   ));
+
   const recommendedSeconds = round5(clamp(
-    Math.max(minSeconds * 1.8, 70 + stats.days * 4.5 + Math.log2(1 + stats.distanceKm) * 4),
-    minSeconds + 30,
-    600
+    minSeconds
+      + 12
+      + extentScore * 2.6
+      + distanceScore * 1.2
+      + periodScore * 0.8
+      + activeDayScore * 0.8,
+    minSeconds + 15,
+    480
   ));
+
+  // Keep a generous detailed end of the slider for large or complex trips,
+  // while narrow-range trips no longer inherit a huge maximum just because
+  // their calendar span is long.
   const maxSeconds = round5(clamp(
-    Math.max(recommendedSeconds * 2, minSeconds + stats.days * 15),
-    recommendedSeconds + 60,
+    recommendedSeconds
+      + 35
+      + extentScore * 8
+      + distanceScore * 3.5
+      + periodScore * 6
+      + activeDayScore * 4
+      + movementScore * 2,
+    recommendedSeconds + 40,
     900
   ));
+
   return { minSeconds, recommendedSeconds, maxSeconds, ...stats };
 }
 
@@ -37,7 +78,8 @@ export function planPlayback(movements, {
   maxTotalSeconds = null,
   viewportWidth = 1100,
   viewportHeight = 700,
-  pacingMode = PlaybackPacing.LOCAL_DAYS
+  pacingMode = PlaybackPacing.LOCAL_DAYS,
+  selectedDays = null
 } = {}) {
   const safeFps = clamp(Math.round(Number(fps) || 60), 24, 120);
   const resolvedPacingMode = pacingMode === PlaybackPacing.GLOBAL
@@ -46,14 +88,14 @@ export function planPlayback(movements, {
   if (!movements?.length) {
     return {
       frames: [], segments: [], fps: safeFps, durationSec: 0,
-      durationLimits: durationLimitsForMovements([]), outroStartSec: 0,
+      durationLimits: durationLimitsForMovements([], { selectedDays }), outroStartSec: 0,
       outroSec: 0, routeRenderPoints: [], pacingMode: resolvedPacingMode
     };
   }
 
   const width = clamp(Number(viewportWidth) || 1100, 320, 3840);
   const height = clamp(Number(viewportHeight) || 700, 240, 2160);
-  const durationLimits = durationLimitsForMovements(movements);
+  const durationLimits = durationLimitsForMovements(movements, { selectedDays });
   const requested = Number.isFinite(Number(targetTotalSeconds))
     ? Number(targetTotalSeconds)
     : Number.isFinite(Number(maxTotalSeconds))
@@ -233,20 +275,57 @@ export function asymmetricSmooth(values, fps, { zoomOutTau = 0.55, zoomInTau = 1
   return out;
 }
 
-function movementStats(movements) {
+function movementStats(movements, selectedDays) {
   const starts = movements.map(m => m.startMs).filter(Number.isFinite);
   const ends = movements.map(m => m.endMs).filter(Number.isFinite);
   const startMs = starts.length ? Math.min(...starts) : NaN;
   const endMs = ends.length ? Math.max(...ends) : NaN;
-  const days = Number.isFinite(startMs) && Number.isFinite(endMs)
+  const movementSpanDays = Number.isFinite(startMs) && Number.isFinite(endMs)
     ? Math.max(1, Math.floor((endMs - startMs) / DAY_MS) + 1)
     : 1;
+  const days = positiveDays(selectedDays, movementSpanDays);
+  const activeDayKeys = new Set();
   let distanceKm = 0;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let pointCount = 0;
+
   for (const movement of movements) {
+    if (Number.isFinite(movement.startMs)) activeDayKeys.add(localDayKey(movement.startMs));
+    if (Number.isFinite(movement.endMs)) activeDayKeys.add(localDayKey(movement.endMs));
     const path = buildPathMetrics(movement.points?.length ? movement.points : [movement.start, movement.end]);
     distanceKm += Math.max(Number(movement.distanceMeters) || 0, path.totalMeters) / 1000;
+    for (const point of path.points) {
+      minLat = Math.min(minLat, point.lat);
+      maxLat = Math.max(maxLat, point.lat);
+      minLng = Math.min(minLng, point.lng);
+      maxLng = Math.max(maxLng, point.lng);
+      pointCount += 1;
+    }
   }
-  return { days, distanceKm };
+
+  const extentKm = pointCount > 1
+    ? haversineMeters({ lat: minLat, lng: minLng }, { lat: maxLat, lng: maxLng }) / 1000
+    : 0;
+
+  return {
+    days,
+    activeDays: Math.max(1, activeDayKeys.size),
+    distanceKm,
+    extentKm,
+    movementCount: movements.length
+  };
+}
+
+function positiveDays(value, fallback) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.max(1, Math.round(numeric)) : Math.max(1, fallback);
+}
+
+function localDayKey(timeMs) {
+  return new Date(timeMs + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function playbackWeight(inference, distanceKm, inferred) {
