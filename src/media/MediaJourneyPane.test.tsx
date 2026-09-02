@@ -67,6 +67,22 @@ describe('MediaJourneyPane', () => {
     expect(place).not.toHaveTextContent('북도면');
   });
 
+  it('never exposes raw coordinates as a photo place label', () => {
+    const { container } = render(<MediaJourneyPane
+      media={[media]}
+      activeId={media.id}
+      {...baseProps}
+      originCity="인천"
+      destinationCity="인천"
+      placeName="37.456, 126.440"
+    />);
+
+    const place = container.querySelector('.media-caption-place');
+    expect(place).toHaveTextContent('인천');
+    expect(place).not.toHaveTextContent('37.456');
+    expect(place).not.toHaveTextContent('126.440');
+  });
+
   it('combines a district-level label with its surrounding city', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
@@ -78,6 +94,20 @@ describe('MediaJourneyPane', () => {
     />);
 
     expect(container.querySelector('.media-caption-place')).toHaveTextContent('인천 중구');
+  });
+
+  it('keeps an already combined coarse place label intact', () => {
+    const { container } = render(<MediaJourneyPane
+      media={[media]}
+      activeId={media.id}
+      {...baseProps}
+      originCity="인천"
+      destinationCity="인천"
+      placeName="인천광역시 중구"
+    />);
+
+    expect(container.querySelector('.media-caption-place')).toHaveTextContent('인천광역시 중구');
+    expect(container.querySelector('.media-caption-place')).not.toHaveTextContent('인천 인천광역시');
   });
 
   it('aligns pictogram/date and transport/route into matching rows', () => {
