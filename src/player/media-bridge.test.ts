@@ -17,6 +17,16 @@ describe('media gap bridging', () => {
     expect(heldMediaStopId(24, stops)).toBeNull();
   });
 
+  it('does not bridge a photo across a day marker', () => {
+    const withDayMarker = [
+      { id: 'photo-a', atSec: 10, durationSec: 3 },
+      { id: '__day__:2:2026-04-11', atSec: 12, durationSec: 1.8 },
+      { id: 'photo-b', atSec: 14, durationSec: 3 }
+    ];
+    expect(heldMediaStopId(11, withDayMarker)).toBeNull();
+    expect(heldMediaStopId(12.5, withDayMarker)).toBeNull();
+  });
+
   it('derives a bounded threshold from the neighboring media display times', () => {
     expect(mediaBridgeThresholdSec(stops[0], stops[1])).toBe(6);
     expect(mediaBridgeThresholdSec(
