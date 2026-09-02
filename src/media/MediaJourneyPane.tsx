@@ -1,5 +1,5 @@
 import { Film, ImageOff, ImagePlus } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
 
@@ -25,7 +25,13 @@ type SceneDescriptor =
 
 type AssetPreloadStatus = 'loading' | 'ready' | 'error';
 
+interface PreloadedAsset {
+  status: AssetPreloadStatus;
+  url: string;
+}
+
 interface SceneTransitionState {
+  currentScene: SceneDescriptor;
   previousScene: SceneDescriptor | null;
   transitionMs: number;
 }
@@ -35,18 +41,13 @@ interface PreloadHandle {
   cleanup: () => void;
 }
 
-interface OwnedFileUrl {
-  file: File;
-  url: string;
-}
-
 const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
 export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
   const active = media.find(item => item.id === activeId) ?? null;
-  const assetUrls = useMediaAssetUrls(media);
-  const preloadStatus = useMediaPreload(media, activeId, assetUrls, videoMode);
+  const preloadedAssets = useMediaPreload(media, activeId, videoMode);
+  const activeAsset = active ? preloadedAssets[active.id] : undefined;
   const desiredScene = useMemo<SceneDescriptor>(() => {
     if (active) {
       return {
@@ -54,7 +55,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
         key: `photo:${active.id}`,
         item: active,
         place: formatPhotoPlace(placeName, originCity, destinationCity, active.positionSource),
-        url: assetUrls.get(active.id) ?? null
+        url: activeAsset?.url ?? active.sourceUrl ?? null
       };
     }
     if (media.length) {
@@ -69,11 +70,11 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
       };
     }
     return { kind: 'empty', key: 'empty' };
-  }, [active, assetUrls, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
-  const scene = usePreparedScene(desiredScene, preloadStatus);
-  const { previousScene, transitionMs } = useSceneTransition(scene, photoDisplaySec);
+  }, [active, activeAsset?.url, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
+  const canEnterScene = desiredScene.kind !== 'photo' || !activeAsset || activeAsset.status !== 'loading';
+  const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
-  const buffering = desiredScene.kind === 'photo' && desiredScene.key !== scene.key;
+  const buffering = desiredScene.kind === 'photo' && desiredScene.key !== currentScene.key;
 
   return (
     <aside className="media-journey-pane" aria-label="사진 여정">
@@ -89,8 +90,8 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
             <SceneContent scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} />
           </div>
         )}
-        <div key={scene.key} className="media-scene-layer is-current">
-          <SceneContent scene={scene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} />
+        <div key={currentScene.key} className="media-scene-layer is-current">
+          <SceneContent scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} />
         </div>
       </div>
     </aside>
@@ -99,7 +100,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
 
 function SceneContent({ scene, videoMode, videoMuted, onFiles }: { scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
   if (scene.kind === 'photo') {
-    return <PhotoScene item={scene.item} place={scene.place} url={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
+    return <PhotoScene item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
   }
   if (scene.kind === 'transit') {
     const movement = MOVEMENT_VISUALS[scene.mobilityClass];
@@ -129,7 +130,17 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles }: { scene: SceneD
   );
 }
 
-function PhotoScene({ item, place, url, videoMode, videoMuted }: { item: JourneyMedia; place: string; url: string | null; videoMode: Props['videoMode']; videoMuted: boolean }) {
+function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted }: { item: JourneyMedia; place: string; preloadedUrl: string | null; videoMode: Props['videoMode']; videoMuted: boolean }) {
+  const fallbackObjectUrl = useMemo(() => {
+    if (preloadedUrl || item.sourceUrl || !item.file || typeof URL.createObjectURL !== 'function') return null;
+    return URL.createObjectURL(item.file);
+  }, [item.file, item.sourceUrl, preloadedUrl]);
+  const url = preloadedUrl ?? item.sourceUrl ?? fallbackObjectUrl;
+
+  useEffect(() => () => {
+    if (fallbackObjectUrl) URL.revokeObjectURL(fallbackObjectUrl);
+  }, [fallbackObjectUrl]);
+
   return (
     <article className="media-card">
       <div className="media-frame">
@@ -187,53 +198,12 @@ function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; 
       />;
 }
 
-function useMediaAssetUrls(media: JourneyMedia[]): Map<string, string> {
-  const ownedUrlsRef = useRef(new Map<string, OwnedFileUrl>());
-  const urls = useMemo(() => {
-    const resolved = new Map<string, string>();
-    for (const item of media) {
-      if (item.sourceUrl) {
-        resolved.set(item.id, item.sourceUrl);
-        continue;
-      }
-      if (!item.file || typeof URL.createObjectURL !== 'function') continue;
-      const existing = ownedUrlsRef.current.get(item.id);
-      if (existing?.file === item.file) {
-        resolved.set(item.id, existing.url);
-        continue;
-      }
-      if (existing) URL.revokeObjectURL(existing.url);
-      const url = URL.createObjectURL(item.file);
-      ownedUrlsRef.current.set(item.id, { file: item.file, url });
-      resolved.set(item.id, url);
-    }
-    return resolved;
-  }, [media]);
-
-  useEffect(() => {
-    const liveIds = new Set(media.filter(item => !item.sourceUrl && item.file).map(item => item.id));
-    for (const [id, owned] of ownedUrlsRef.current) {
-      if (liveIds.has(id)) continue;
-      URL.revokeObjectURL(owned.url);
-      ownedUrlsRef.current.delete(id);
-    }
-  }, [media]);
-
-  useEffect(() => () => {
-    for (const owned of ownedUrlsRef.current.values()) URL.revokeObjectURL(owned.url);
-    ownedUrlsRef.current.clear();
-  }, []);
-
-  return urls;
-}
-
 function useMediaPreload(
   media: JourneyMedia[],
   activeId: string | null,
-  assetUrls: Map<string, string>,
   videoMode: Props['videoMode']
-): Record<string, AssetPreloadStatus> {
-  const [statuses, setStatuses] = useState<Record<string, AssetPreloadStatus>>({});
+): Record<string, PreloadedAsset> {
+  const [assets, setAssets] = useState<Record<string, PreloadedAsset>>({});
   const handlesRef = useRef(new Map<string, PreloadHandle>());
   const lastActiveIdRef = useRef<string | null>(null);
 
@@ -257,47 +227,57 @@ function useMediaPreload(
       handle.cleanup();
       handlesRef.current.delete(id);
     }
+    queueMicrotask(() => {
+      setAssets(current => {
+        const entries = Object.entries(current).filter(([id]) => keepIds.has(id));
+        return entries.length === Object.keys(current).length
+          ? current
+          : Object.fromEntries(entries) as Record<string, PreloadedAsset>;
+      });
+    });
 
     for (const item of candidates) {
-      const url = assetUrls.get(item.id);
-      if (!url) continue;
-      const signature = `${url}\0${item.kind}\0${videoMode}`;
+      const signature = mediaAssetSignature(item, videoMode);
       const existing = handlesRef.current.get(item.id);
       if (existing?.signature === signature) continue;
       existing?.cleanup();
-      queueMicrotask(() => setAssetPreloadStatus(setStatuses, item.id, 'loading'));
-      const cleanup = preloadMediaAsset(item, url, videoMode, status => {
-        setAssetPreloadStatus(setStatuses, item.id, status);
-      });
-      handlesRef.current.set(item.id, { signature, cleanup });
-    }
 
-    if (handlesRef.current.size !== Object.keys(statuses).length) {
+      const resolved = mediaAssetUrl(item);
+      if (!resolved) continue;
       queueMicrotask(() => {
-        setStatuses(current => {
-          const entries = Object.entries(current).filter(([id]) => keepIds.has(id));
-          return entries.length === Object.keys(current).length
-            ? current
-            : Object.fromEntries(entries) as Record<string, AssetPreloadStatus>;
-        });
+        setAssets(current => ({ ...current, [item.id]: { status: 'loading', url: resolved.url } }));
+      });
+      const preloadCleanup = preloadMediaAsset(item, resolved.url, videoMode, status => {
+        setAssets(current => ({ ...current, [item.id]: { status, url: resolved.url } }));
+      });
+      handlesRef.current.set(item.id, {
+        signature,
+        cleanup: () => {
+          preloadCleanup();
+          if (resolved.owned && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(resolved.url);
+        }
       });
     }
-  }, [activeId, assetUrls, media, statuses, videoMode]);
+  }, [activeId, media, videoMode]);
 
   useEffect(() => () => {
     for (const handle of handlesRef.current.values()) handle.cleanup();
     handlesRef.current.clear();
   }, []);
 
-  return statuses;
+  return assets;
 }
 
-function setAssetPreloadStatus(
-  setStatuses: Dispatch<SetStateAction<Record<string, AssetPreloadStatus>>>,
-  id: string,
-  status: AssetPreloadStatus
-): void {
-  setStatuses(current => current[id] === status ? current : { ...current, [id]: status });
+function mediaAssetSignature(item: JourneyMedia, videoMode: Props['videoMode']): string {
+  if (item.sourceUrl) return `${item.id}\0${item.sourceUrl}\0${item.kind}\0${videoMode}`;
+  if (item.file) return `${item.id}\0${item.file.name}\0${item.file.size}\0${item.file.lastModified}\0${item.kind}\0${videoMode}`;
+  return `${item.id}\0missing\0${item.kind}\0${videoMode}`;
+}
+
+function mediaAssetUrl(item: JourneyMedia): { url: string; owned: boolean } | null {
+  if (item.sourceUrl) return { url: item.sourceUrl, owned: false };
+  if (item.file && typeof URL.createObjectURL === 'function') return { url: URL.createObjectURL(item.file), owned: true };
+  return null;
 }
 
 function preloadMediaAsset(
@@ -358,28 +338,30 @@ function preloadMediaAsset(
   };
 }
 
-function usePreparedScene(desiredScene: SceneDescriptor, statuses: Record<string, AssetPreloadStatus>): SceneDescriptor {
-  const sceneRef = useRef(desiredScene);
-  const status = desiredScene.kind === 'photo' ? statuses[desiredScene.item.id] : null;
-  const canCommit = desiredScene.kind !== 'photo'
-    || !desiredScene.url
-    || status === 'ready'
-    || status === 'error';
-  if (canCommit) sceneRef.current = desiredScene;
-  return sceneRef.current;
-}
-
-function useSceneTransition(scene: SceneDescriptor, photoDisplaySec: number): SceneTransitionState {
-  const latestSceneRef = useRef(scene);
+function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: number, canEnterScene: boolean): SceneTransitionState {
+  const latestSceneRef = useRef(desiredScene);
   const enteredAtRef = useRef<number | null>(null);
-  const initialTransitionMs = scene.kind === 'transit'
+  const initialTransitionMs = desiredScene.kind === 'transit'
     ? transitSceneTransitionDurationMs(1)
     : sceneTransitionDurationMs(photoDisplaySec);
-  const [transition, setTransition] = useState<SceneTransitionState>({ previousScene: null, transitionMs: initialTransitionMs });
+  const [transition, setTransition] = useState<SceneTransitionState>({
+    currentScene: desiredScene,
+    previousScene: null,
+    transitionMs: initialTransitionMs
+  });
 
   useLayoutEffect(() => {
+    if (!canEnterScene) return;
     const prior = latestSceneRef.current;
-    if (prior.key === scene.key) return;
+    if (prior.key === desiredScene.key) {
+      latestSceneRef.current = desiredScene;
+      const updateFrame = window.requestAnimationFrame(() => {
+        setTransition(current => current.currentScene === desiredScene
+          ? current
+          : { ...current, currentScene: desiredScene });
+      });
+      return () => window.cancelAnimationFrame(updateFrame);
+    }
 
     const now = performance.now();
     const enteredAt = enteredAtRef.current;
@@ -388,9 +370,10 @@ function useSceneTransition(scene: SceneDescriptor, photoDisplaySec: number): Sc
       ? transitSceneTransitionDurationMs(measuredDwellSec)
       : sceneTransitionDurationMs(measuredDwellSec > 0.05 ? measuredDwellSec : photoDisplaySec);
     enteredAtRef.current = now;
+    latestSceneRef.current = desiredScene;
 
     const showFrame = window.requestAnimationFrame(() => {
-      setTransition({ previousScene: prior, transitionMs });
+      setTransition({ currentScene: desiredScene, previousScene: prior, transitionMs });
     });
     const hideTimer = window.setTimeout(() => {
       setTransition(current => current.previousScene?.key === prior.key
@@ -402,12 +385,11 @@ function useSceneTransition(scene: SceneDescriptor, photoDisplaySec: number): Sc
       window.cancelAnimationFrame(showFrame);
       window.clearTimeout(hideTimer);
     };
-  }, [photoDisplaySec, scene.key]);
+  }, [canEnterScene, desiredScene, photoDisplaySec]);
 
   useLayoutEffect(() => {
-    latestSceneRef.current = scene;
     if (enteredAtRef.current === null) enteredAtRef.current = performance.now();
-  }, [scene]);
+  }, []);
 
   return transition;
 }
