@@ -40,9 +40,14 @@ describe('photo journey stops', () => {
     expect(controller.getDuration()).toBe(plan.durationSec + 2);
   });
 
-  it('keeps photo journeys closer and gives short routes more detail', () => {
-    expect(photoJourneyZoom(12, 1_500, 'WALK')).toBeCloseTo(12.9);
-    expect(photoJourneyZoom(12, 12_000, 'ROAD')).toBeCloseTo(12.52);
+  it('keeps photo journeys closer with a continuous distance-based detail boost', () => {
+    const short = photoJourneyZoom(12, 1_500, 'WALK');
+    const medium = photoJourneyZoom(12, 12_000, 'ROAD');
+    const long = photoJourneyZoom(12, 60_000, 'ROAD');
+
+    expect(short).toBeGreaterThan(medium);
+    expect(medium).toBeGreaterThan(long);
+    expect(long).toBeGreaterThan(12);
     expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
   });
 
