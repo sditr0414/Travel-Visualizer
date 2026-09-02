@@ -1,5 +1,5 @@
 import type { Coordinate } from '../types';
-import { resolveCityLabel, type CityLabelMap } from './city-label';
+import type { CityLabelMap } from './city-label';
 
 interface MapFeature {
   geometry?: { type?: string; coordinates?: unknown };
@@ -9,7 +9,7 @@ interface MapFeature {
   sourceLayer?: string;
 }
 
-const CITY_DISTANCE_KM = 100;
+const CITY_DISTANCE_KM = 45;
 const DISTRICT_DISTANCE_KM = 12;
 
 /**
@@ -20,20 +20,21 @@ const DISTRICT_DISTANCE_KM = 12;
  * local PMTiles map as well as compatible online styles. Output is limited to
  * city and district/ward level. 읍/면/동/리/군, villages and smaller locality
  * labels are deliberately rejected even when a map style classifies them as
- * town, municipality or suburb.
+ * town, municipality or suburb. If a city-level feature is not close enough
+ * to the photo coordinate, resolution intentionally fails instead of borrowing
+ * a potentially unrelated nearby city.
  */
 export function resolvePhotoPlaceLabel(map: CityLabelMap, coordinate: Coordinate): string | null {
   try {
     const features = collectPlaceFeatures(map, coordinate);
-    const city = nearestNamedFeature(features, coordinate, isCityFeature, CITY_DISTANCE_KM)
-      ?? resolveCityLabel(map, coordinate);
+    const city = nearestNamedFeature(features, coordinate, isCityFeature, CITY_DISTANCE_KM);
     if (!city) return null;
 
     const district = nearestNamedFeature(features, coordinate, isDistrictFeature, DISTRICT_DISTANCE_KM);
     if (!district || district === city || city.includes(district) || district.includes(city)) return city;
     return `${city} ${district}`;
   } catch {
-    return resolveCityLabel(map, coordinate);
+    return null;
   }
 }
 
