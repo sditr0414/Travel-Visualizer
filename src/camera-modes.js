@@ -174,8 +174,8 @@ function suppressZoomReversals(values, fps, holdSec, threshold) {
       pendingStart = index;
     }
     const persistent = index - pendingStart >= holdFrames;
-    const decisive = Math.abs(values[index] - out[index - 1]) >= threshold;
-    if (persistent || decisive) {
+    const decisiveZoomOut = requestedDirection < 0 && Math.abs(values[index] - out[index - 1]) >= threshold;
+    if (persistent || decisiveZoomOut) {
       direction = requestedDirection;
       pendingDirection = 0;
       pendingStart = -1;
