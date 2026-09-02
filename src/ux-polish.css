@@ -45,7 +45,7 @@
 
 .photo-mode .player-reveal-zone {
   left: calc(var(--photo-map-share, 60%) / 2);
-  bottom: max(22px, env(safe-area-inset-bottom));
+  bottom: max(18px, env(safe-area-inset-bottom));
   width: min(760px, calc(var(--photo-map-share, 60%) - 32px));
 }
 
@@ -55,7 +55,7 @@
 
 /* Align the photo caption line with the vertical center of the full playback box. */
 .photo-mode .player-dock {
-  bottom: max(22px, env(safe-area-inset-bottom));
+  bottom: max(18px, env(safe-area-inset-bottom));
 }
 
 .timeline-meta {
@@ -144,10 +144,61 @@
   animation: ui-overlay-in 260ms ease-out;
 }
 
+/* Reserve scrollbar space in both journey modes so the usable settings width does not change. */
+.settings-content {
+  scrollbar-gutter: stable;
+}
+
+.settings-group-title {
+  font-size: 14px;
+}
+
+.settings-group-title output,
+.source-summary span {
+  font-size: 13px;
+}
+
+.source-summary strong {
+  font-size: 15px;
+}
+
+.form-grid label,
+.select-field {
+  font-size: 13px;
+}
+
+.form-grid input,
+.select-field select {
+  font-size: 14px;
+}
+
+.range-field > span,
+.toggle-list label {
+  font-size: 14px;
+}
+
+.media-import-row label,
+.privacy-note {
+  font-size: 13px;
+}
+
+.media-progress > div,
+.media-progress p {
+  font-size: 12px;
+}
+
+.media-progress strong {
+  font-size: 13px;
+}
+
+.plan-button {
+  font-size: 15px;
+}
+
 .trip-range-control {
   display: grid;
-  gap: 12px;
-  padding: 13px;
+  gap: 13px;
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, .10);
   border-radius: 10px;
   background: rgba(255, 255, 255, .025);
@@ -168,13 +219,13 @@
 
 .trip-range-heading span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .trip-range-heading strong {
   color: var(--paper);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: -.02em;
 }
@@ -186,48 +237,59 @@
 }
 
 .trip-range-presets button {
-  min-height: 30px;
-  padding: 0 9px;
+  min-height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
   color: #ddd8d2;
   background: rgba(255, 255, 255, .035);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
 
+/* Start/end use full-width rows; the old narrow three-column arrow layout is intentionally removed. */
 .trip-range-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px;
 }
 
 .trip-range-fields label {
   display: grid;
   gap: 6px;
+  min-width: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
 }
 
 .trip-range-fields input {
   width: 100%;
-  min-height: 42px;
-  padding: 0 9px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 44px 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--paper);
   background: #23272b;
   color-scheme: dark;
+  font-size: 14px;
+  cursor: text;
+}
+
+.trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: .9;
 }
 
 .trip-range-arrow {
-  padding-bottom: 12px;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 800;
+  display: none;
 }
 
 @media (hover: hover) {
@@ -348,7 +410,7 @@
   gap: 22px;
   min-height: 84px;
   padding: 12px 18px 0;
-  transform: translateY(8px);
+  transform: translateY(2px);
   flex-wrap: wrap;
 }
 
@@ -371,16 +433,17 @@
   white-space: nowrap;
 }
 
-/* Put pictogram/date on one row and transport/route on a shared aligned row below. */
+/* Date, speed and route form three distinct vertical levels; speed occupies the middle. */
 .media-transit {
   grid-template-columns: minmax(132px, 166px) minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   grid-template-areas:
-    "pictogram primary"
+    "pictogram date"
+    "pictogram speed"
     "mode route";
   align-items: center;
   column-gap: clamp(54px, 6vw, 88px);
-  row-gap: 30px;
+  row-gap: 17px;
   width: min(720px, 90%);
   text-align: left;
 }
@@ -395,12 +458,7 @@
 }
 
 .media-transit .movement-primary {
-  grid-area: primary;
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 21px;
-  min-width: 0;
+  display: contents;
 }
 
 .media-transit .movement-mode {
@@ -416,6 +474,8 @@
 }
 
 .media-transit .movement-date {
+  grid-area: date;
+  align-self: end;
   color: var(--paper);
   font-size: clamp(26px, 2.4vw, 34px);
   font-weight: 850;
@@ -425,6 +485,8 @@
 }
 
 .media-transit .movement-speed {
+  grid-area: speed;
+  align-self: center;
   margin-top: 0;
   color: #c7c1ba;
   font-size: clamp(18px, 1.35vw, 21px);
@@ -475,12 +537,31 @@
   }
 
   .trip-range-fields {
-    gap: 6px;
+    gap: 9px;
   }
 
   .trip-range-fields input {
-    min-height: 40px;
+    min-height: 42px;
     font-size: 14px;
+  }
+
+  .settings-group-title {
+    font-size: 13px;
+  }
+
+  .settings-group-title output,
+  .source-summary span,
+  .form-grid label,
+  .select-field,
+  .privacy-note {
+    font-size: 12px;
+  }
+
+  .source-summary strong,
+  .range-field > span,
+  .toggle-list label,
+  .plan-button {
+    font-size: 13px;
   }
 
   .media-card .media-caption {
@@ -501,16 +582,12 @@
   .media-transit {
     grid-template-columns: minmax(84px, 106px) minmax(0, 1fr);
     column-gap: 24px;
-    row-gap: 20px;
+    row-gap: 12px;
     width: min(520px, 94%);
   }
 
   .media-transit .movement-pictogram {
     font-size: clamp(58px, 16vw, 76px);
-  }
-
-  .media-transit .movement-primary {
-    gap: 14px;
   }
 
   .media-transit .movement-mode {
