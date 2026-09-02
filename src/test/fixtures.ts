@@ -7,7 +7,16 @@ export function simplePlan(): PlaybackPlan {
     travelDurationSec: 0.5,
     outroStartSec: 0.5,
     outroSec: 0.5,
-    durationLimits: { minSeconds: 45, recommendedSeconds: 90, maxSeconds: 300, days: 1, distanceKm: 2 },
+    durationLimits: {
+      minSeconds: 45,
+      recommendedSeconds: 90,
+      maxSeconds: 300,
+      days: 1,
+      activeDays: 1,
+      distanceKm: 2,
+      extentKm: 2,
+      movementCount: 1
+    },
     routeRenderPoints: [],
     pacingMode: 'LOCAL_DAYS',
     cameraMode: 'AUTO',
