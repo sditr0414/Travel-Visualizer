@@ -162,7 +162,7 @@ describe('App integration', () => {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
-    await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '4'));
+    await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '5.8'));
     expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
     expect(screen.getByText('도보')).toBeInTheDocument();
     expect(screen.getByText('12 km/h')).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe('App integration', () => {
     const playerStatus = screen.getByLabelText('재생 컨트롤').querySelector('.player-status');
     expect(playerStatus).toBeEmptyDOMElement();
     expect(playerStatus?.previousElementSibling).toHaveTextContent('0:00');
-    expect(playerStatus?.nextElementSibling).toHaveTextContent('0:04');
+    expect(playerStatus?.nextElementSibling).toHaveTextContent('0:06');
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
     expect(separator).toHaveAttribute('aria-valuenow', '38');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
@@ -182,6 +182,8 @@ describe('App integration', () => {
     expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
+    expect(screen.getByLabelText('날짜 변경 표시')).toBeChecked();
+    expect(screen.getByLabelText('날짜 표시 시간')).toHaveValue('1.8');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
     expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });
