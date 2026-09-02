@@ -24,24 +24,28 @@
 .player-reveal-zone {
   position: absolute;
   z-index: 9;
-  left: 0;
-  width: 100%;
   pointer-events: auto;
 }
 
 .topbar-reveal-zone {
   top: 0;
+  left: 0;
+  width: 100%;
   height: 68px;
 }
 
+/* When hidden, the invisible reveal target occupies the same footprint as the player dock. */
 .player-reveal-zone {
-  top: auto;
-  bottom: 0;
-  height: 100px;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: min(760px, calc(100vw - 32px));
+  height: 64px;
+  transform: translateX(-50%);
 }
 
 .photo-mode .player-reveal-zone {
-  width: var(--photo-map-share, 60%);
+  left: calc(var(--photo-map-share, 60%) / 2);
+  width: min(760px, calc(var(--photo-map-share, 60%) - 32px));
 }
 
 .player-dock {
@@ -344,7 +348,10 @@
   }
 
   .player-reveal-zone {
-    height: 88px;
+    left: 50%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+    height: 64px;
   }
 
   .media-card .media-caption {
@@ -396,10 +403,11 @@
   }
 
   .photo-mode .player-reveal-zone {
-    top: calc(var(--photo-map-share, 52%) - 88px);
-    bottom: auto;
-    width: 100%;
-    height: 88px;
+    left: 50%;
+    top: auto;
+    bottom: calc(100% - var(--photo-map-share, 52%) + 10px);
+    width: calc(100vw - 20px);
+    height: 64px;
   }
 }
 
