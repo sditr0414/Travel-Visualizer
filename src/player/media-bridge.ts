@@ -1,4 +1,5 @@
 import type { PlaybackStop } from '../types';
+import { isDayMarkerId } from '../media/day-markers';
 
 const BRIDGE_MIN_SECONDS = 2.5;
 const BRIDGE_MAX_SECONDS = 8;
@@ -23,6 +24,7 @@ export function heldMediaStopId(routeTimeSec: number, stops: PlaybackStop[]): st
   if (previousIndex < 0 || previousIndex >= stops.length - 1) return null;
   const previous = stops[previousIndex];
   const next = stops[previousIndex + 1];
+  if (isDayMarkerId(previous.id) || isDayMarkerId(next.id)) return null;
   if (routeTimeSec < previous.atSec || routeTimeSec >= next.atSec) return null;
 
   const gapSec = Math.max(0, next.atSec - previous.atSec);
