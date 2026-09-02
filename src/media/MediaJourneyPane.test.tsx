@@ -52,6 +52,21 @@ describe('MediaJourneyPane', () => {
     expect(footer).not.toHaveTextContent('IMG_111122');
   });
 
+  it('shows a large day card when a photo journey day marker is active', () => {
+    const { container } = render(<MediaJourneyPane
+      media={[media]}
+      activeId="__day__:2:2026-03-19"
+      {...baseProps}
+    />);
+
+    const marker = container.querySelector('.media-day-marker');
+    expect(marker).toHaveTextContent('여행 2일차');
+    expect(marker).toHaveTextContent('2026년 3월 19일');
+    expect(marker).toHaveTextContent('목요일');
+    expect(marker?.querySelector('time')).toHaveAttribute('datetime', '2026-03-19');
+    expect(container.querySelector('.media-card')).not.toBeInTheDocument();
+  });
+
   it('shows unknown instead of borrowing a city for an overly detailed place label', () => {
     const { container } = render(<MediaJourneyPane
       media={[media]}
