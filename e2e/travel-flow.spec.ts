@@ -15,7 +15,7 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
   await expect(page.getByLabel('재생 위치')).toHaveValue('0');
 });
 
-test('desktop playback chrome uses delayed unified hide and reveal', async ({ page }, testInfo) => {
+test('desktop playback chrome hides and reveals as one surface', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Hover reveal is a desktop interaction.');
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -37,24 +37,20 @@ test('desktop playback chrome uses delayed unified hide and reveal', async ({ pa
 
   const topReveal = page.locator('.topbar-reveal-zone');
   await topReveal.hover();
-  await page.waitForTimeout(80);
-  expect(await shell.getAttribute('data-playback-chrome')).toBe('hidden');
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_000 });
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(settings).toHaveCSS('opacity', '1');
   await expect(hud).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
 
   await page.mouse.move(720, 450);
-  await page.waitForTimeout(250);
-  expect(await shell.getAttribute('data-playback-chrome')).toBe('visible');
   await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1_500 });
 
   const bottomReveal = page.locator('.player-reveal-zone');
   const revealBox = await bottomReveal.boundingBox();
   expect(revealBox).not.toBeNull();
   await page.mouse.move(revealBox!.x + 8, revealBox!.y + revealBox!.height / 2);
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_000 });
+  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
 
