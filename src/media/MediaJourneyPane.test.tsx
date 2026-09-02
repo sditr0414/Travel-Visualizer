@@ -199,7 +199,7 @@ describe('MediaJourneyPane', () => {
     vi.useRealTimers();
   });
 
-  it('shortens pictogram transitions when transport modes change quickly', () => {
+  it('keeps quick pictogram changes smooth without letting the dissolve dominate the scene', () => {
     vi.useFakeTimers();
     const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" />);
     act(() => vi.advanceTimersByTime(400));
@@ -209,7 +209,7 @@ describe('MediaJourneyPane', () => {
 
     expect(view.container.querySelector('.media-scene-layer.is-previous .movement-pictogram')).toHaveTextContent('🚶');
     expect(view.container.querySelector('.media-scene-layer.is-current .movement-pictogram')).toHaveTextContent('🚗');
-    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '40');
+    expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '180');
     vi.useRealTimers();
   });
 
@@ -227,12 +227,12 @@ describe('MediaJourneyPane', () => {
   });
 
   it('keeps photo dissolves stable while pictograms remain dwell-adaptive', () => {
-    expect(sceneTransitionDurationMs(1.5)).toBe(420);
-    expect(sceneTransitionDurationMs(3)).toBe(448);
-    expect(sceneTransitionDurationMs(8)).toBe(540);
-    expect(transitSceneTransitionDurationMs(0.4)).toBe(40);
-    expect(transitSceneTransitionDurationMs(2)).toBe(200);
-    expect(transitSceneTransitionDurationMs(8)).toBe(320);
+    expect(sceneTransitionDurationMs(1.5)).toBe(560);
+    expect(sceneTransitionDurationMs(3)).toBe(592);
+    expect(sceneTransitionDurationMs(8)).toBe(700);
+    expect(transitSceneTransitionDurationMs(0.4)).toBe(180);
+    expect(transitSceneTransitionDurationMs(2)).toBe(280);
+    expect(transitSceneTransitionDurationMs(8)).toBe(420);
   });
 });
 
