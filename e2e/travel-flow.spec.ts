@@ -43,13 +43,22 @@ test('desktop playback chrome hides and reveals as one surface', async ({ page }
   await expect(hud).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
 
+  const dockBox = await dock.boundingBox();
+  expect(dockBox).not.toBeNull();
+  const dockCenter = {
+    x: dockBox!.x + dockBox!.width / 2,
+    y: dockBox!.y + dockBox!.height / 2
+  };
+
   await page.mouse.move(720, 450);
   await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1_500 });
 
   const bottomReveal = page.locator('.player-reveal-zone');
   const revealBox = await bottomReveal.boundingBox();
   expect(revealBox).not.toBeNull();
-  await page.mouse.move(revealBox!.x + 8, revealBox!.y + revealBox!.height / 2);
+  expect(dockCenter.y).toBeGreaterThanOrEqual(revealBox!.y);
+  expect(dockCenter.y).toBeLessThanOrEqual(revealBox!.y + revealBox!.height);
+  await page.mouse.move(dockCenter.x, dockCenter.y);
   await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
