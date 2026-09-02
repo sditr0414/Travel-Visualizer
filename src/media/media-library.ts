@@ -130,6 +130,14 @@ export function positionAtPlaybackSecond(seconds: number, plan: PlaybackPlan): {
   const index = Math.max(0, Math.min(plan.frames.length - 1, Math.round(safeSeconds * safeFps)));
   const candidate = plan.frames[index];
   if (candidate?.kind === 'TRAVEL') return { ...candidate.position };
+
+  // At the exact end of travel, rounding can land on the first OUTRO frame.
+  // Use the nearest preceding route frame so a GPS-less end-of-trip photo is
+  // matched to the destination rather than falling back to the trip origin.
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const frame = plan.frames[cursor];
+    if (frame.kind === 'TRAVEL') return { ...frame.position };
+  }
   const first = plan.frames.find((frame): frame is TravelFrame => frame.kind === 'TRAVEL');
   return { ...(first?.position ?? fallback) };
 }
