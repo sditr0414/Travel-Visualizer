@@ -70,9 +70,11 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 - 전체 지도와 여행 경로가 첫 화면의 중심이다.
 - 경로 재생 길이의 기본값은 해당 여행에 계산된 최소·최대 재생 시간의 중간값을 5초 단위로 맞춘 값으로 사용한다. 사용자가 직접 값을 바꾸면 그 값을 우선한다.
-- 발자취와 사진 여정은 같은 지도와 계획 데이터를 공유하지만 **서로 다른 `PlayerController` 재생 세션**이다. 한 모드에서 재생하거나 탐색해도 다른 controller는 일시정지 상태이며 다른 모드의 커서는 진행하지 않는다. `발자취 ↔ 사진 여정` 전환 시 현재 controller를 즉시 일시정지하고 현재 커서를 저장한 뒤, 대상 controller가 마지막으로 저장한 커서를 복원한다. 새 Timeline/계획으로 교체되면 두 controller와 두 커서를 모두 0으로 초기화한다.
-- 재생 컨트롤은 하단에 두되 사진 여정에서는 지도 영역 안에 배치한다. 데스크톱 재생 중에는 상단 바·접힌 여행 설정·현재 장면 HUD·하단 재생바를 하나의 playback chrome으로 취급해 함께 숨긴다. playback chrome은 CSS `:has()` hover 판정이 아니라 React 상태로 통합 관리한다. 재생을 누른 직후 약 900ms 동안은 보인 뒤 숨김을 시작하고, 하단 재생바의 reveal target은 **숨기기 전 재생바와 같은 위치·폭·높이의 footprint**만 사용한다. 사용자가 재생바가 있던 자리에 포인터를 약 220ms 올리거나 키보드 포커스가 오면 전체 UI를 복원하며, 그 footprint 밖의 넓은 하단 영역은 reveal target으로 사용하지 않는다. reveal target에 들어온 뒤의 미세한 포인터 움직임은 dwell 타이머를 다시 시작하지 않으며, 영역을 벗어날 때만 대기 중 reveal을 취소한다. 포인터가 모든 chrome에서 벗어난 뒤에는 약 650ms 기다렸다 함께 숨긴다. 설정 패널이 열려 있는 동안은 항상 표시하며 터치 화면에서도 항상 표시한다.
+- 발자취와 사진 여정은 같은 지도와 계획 데이터를 공유하지만 **서로 다른 `PlayerController` 재생 세션**이다. 한 모드에서 재생하거나 탐색해도 다른 controller는 일시정지 상태이며 다른 모드의 커서는 진행하지 않는다. `발자취 ↔ 사진 여정` 전환 시 현재 controller를 즉시 일시정지하고 현재 커서를 저장한 뒤, 대상 controller가 마지막으로 저장한 커서를 복원한다. 새 Timeline/계획으로 교체되면 두 controller와 두 커서를 모두 0으로 초기화한다. 단, 사용자가 현재 탭에서 `경로 다시 만들기`를 실행했을 때 미디어 재연결 때문에 다른 탭으로 강제 전환하지 않고 현재 발자취/사진 여정 탭을 유지한다.
+- 재생 컨트롤은 하단에 두되 사진 여정에서는 지도 영역 안에 배치한다. 데스크톱 재생 중에는 상단 바·접힌 여행 설정·하단 재생바를 하나의 playback chrome으로 취급해 함께 숨긴다. **발자취 모드의 현재 이동수단 HUD는 사진 여정에서 대체하기 어려운 정보이므로 playback chrome과 별개로 항상 표시한다.** playback chrome은 CSS `:has()` hover 판정이 아니라 React 상태로 통합 관리한다. 재생을 누른 직후 약 900ms 동안은 보인 뒤 숨김을 시작하고, 하단 재생바의 reveal target은 **숨기기 전 재생바와 같은 위치·폭·높이의 footprint**만 사용한다. 사용자가 재생바가 있던 자리에 포인터를 약 220ms 올리거나 키보드 포커스가 오면 숨겨진 playback chrome을 복원하며, 그 footprint 밖의 넓은 하단 영역은 reveal target으로 사용하지 않는다. reveal target에 들어온 뒤의 미세한 포인터 움직임은 dwell 타이머를 다시 시작하지 않으며, 영역을 벗어날 때만 대기 중 reveal을 취소한다. 포인터가 모든 chrome에서 벗어난 뒤에는 약 650ms 기다렸다 다시 숨긴다. 설정 패널이 열려 있는 동안은 항상 표시하며 터치 화면에서도 항상 표시한다.
 - playback chrome의 숨김·복원은 blur 없이 opacity와 작은 translate/scale을 약 320~360ms easing으로 함께 처리해 상태 변화가 눈에 보이면서도 지도를 방해하지 않게 한다. playback chrome에 적용하는 일회성 입장 keyframe은 종료 뒤 `opacity`나 `transform`을 유지하는 fill mode를 사용하지 않아 React의 visible/hidden 상태가 최종 스타일을 소유하게 한다. 중앙 정렬 상태 카드처럼 기본 transform이 위치를 결정하는 UI는 입장 keyframe에서 그 transform을 덮지 않는다. 버튼·선택·설정 패널·카드형 상태 UI도 hover/focus/press/open 상태에 절제된 이동·색·테두리·그림자 애니메이션을 사용한다. 모든 모션은 `prefers-reduced-motion`을 존중한다.
+- 여행 기간 설정은 시작/종료 입력 두 개를 떨어뜨려 두는 대신 하나의 `여행 기간` 그룹으로 묶고, 현재 선택 범위를 한 줄로 보여준다. `추천 기간`과 Timeline 전체 범위를 즉시 선택하는 `전체 기간` 프리셋을 제공하며, 필요할 때 같은 그룹 안에서 시작/마지막 날짜를 직접 조정할 수 있다.
+- 사진 여정의 `사진 표시 범위` 기본값은 **미리보기**이며 사용자가 필요할 때 전체 보기로 바꾼다.
 - 사진 여정에 들어갈 때 경로 영역은 허용된 최소 크기(데스크톱 38%, 모바일 34%)로 시작하고 사용자가 분할 핸들로 다시 확장할 수 있다.
 - 접힌 여행 설정 버튼은 사진을 가리지 않도록 상단 바 높이에 두고, Timeline 선택 버튼과 시각적으로 분리된 간격을 유지한다.
 - 모바일에서도 지도와 핵심 조작을 우선한다.
@@ -96,11 +98,11 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 
 2026-09-02 기준으로 v2 핵심 경로를 다시 검토했습니다.
 
-- `App`/reducer: 발자취와 사진 여정은 별도 `PlayerController` 인스턴스와 별도 재생 커서를 사용한다. 모드 전환 시 현재 controller를 멈춘 뒤 대상 controller의 커서를 복원하며 한 모드의 재생·탐색이 다른 모드의 진행 위치를 변경하지 않는다.
+- `App`/reducer: 발자취와 사진 여정은 별도 `PlayerController` 인스턴스와 별도 재생 커서를 사용한다. 모드 전환 시 현재 controller를 멈춘 뒤 대상 controller의 커서를 복원하며 한 모드의 재생·탐색이 다른 모드의 진행 위치를 변경하지 않는다. 미디어가 이미 연결된 상태에서 같은 Timeline을 재계획할 때는 미디어를 새 계획에 다시 매칭하되 현재 여정 탭을 강제로 바꾸지 않는다.
 - `PlayerController`: 프레임 보간, 항공 안정 줌, stop 스케줄 재매핑과 재생 시간 기준을 검토했고 stop 변경 시 경로 위치 보존 로직을 추가했다.
 - `MediaJourneyPane`/media bridge: 짧은 이동 구간 사진 유지, keyed outgoing scene, 사진/픽토그램 전환 identity와 시간 정책을 검토했다. 현재/다음 4개 미디어를 bounded preload window로 준비하고, 이미지 decode 또는 영상 first-frame readiness 전에는 기존 장면을 유지해 빈 사진 프레임이 노출되지 않게 한다. 사진 위치 문자열은 원시 좌표를 노출하지 않으며 coarse place label만 사용한다.
 - `city-label`/`photo-place-label`/MapLibre: 위치 출력은 시/도시 → 구/ward를 공통 상한으로 둔다. 이동용 city resolver는 `town`을 도시로 인정하지 않고 이름 변형 중 하나라도 `군·읍·면·동·리·町·村` 계열이면 후보에서 제외한다. 사진 resolver도 같은 하위 단위를 거부하며, source feature의 구 라벨은 사진 좌표에서 보수적인 근거리 범위 안에 있을 때만 시와 결합하고 그렇지 않으면 시까지만 사용한다. 로컬 PMTiles와 온라인 벡터 지도 모두 같은 규칙을 사용한다.
-- `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다. playback chrome의 입장 keyframe이 hidden 상태를 덮거나 중앙 오버레이의 centering transform을 깨지 않도록 animation ownership도 분리했다. 하단 reveal target은 숨기기 전 `.player-dock`과 동일한 위치·크기만 차지하도록 CSS와 E2E 계약을 맞추며, target 내부 포인터 이동은 dwell을 재시작하지 않는다.
+- `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다. playback chrome의 입장 keyframe이 hidden 상태를 덮거나 중앙 오버레이의 centering transform을 깨지 않도록 animation ownership도 분리했다. 하단 reveal target은 숨기기 전 `.player-dock`과 동일한 위치·크기만 차지하도록 CSS와 E2E 계약을 맞추며, target 내부 포인터 이동은 dwell을 재시작하지 않는다. 발자취의 이동 정보 HUD는 playback chrome 숨김 selector에서 제외해 상시 표시한다.
 - Timeline worker/planner, MapStage, bounded JPEG/QuickTime metadata scanner, loopback server/local API를 재검토했으며 기존 privacy·bounded-read·MapLibre 계약을 유지한다.
 
 ## Privacy and repository rules
