@@ -318,7 +318,7 @@ export function App({ workerClient }: AppProps) {
           const item = stopId ? mediaRef.current.find(candidate => candidate.id === stopId) : null;
           setActivePlaceName(item ? resolvePlaceName(map, item) : null);
         }
-        if (timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
+        if (playerRef.current?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
         lastHudUpdateRef.current = performance.now();
         const nextHud = hudForFrame(frame, state.plan!, timeSec);
         if (frame.kind === 'TRAVEL') {
