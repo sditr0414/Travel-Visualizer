@@ -3,6 +3,7 @@ import { Camera, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, 
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { ONLINE_STYLE_URL } from './map/map-style';
 import { resolveCityLabel } from './map/city-label';
+import { resolvePhotoPlaceLabel } from './map/photo-place-label';
 import { PlayerController } from './player/player-controller';
 import { loadJourneyMedia } from './media/media-library';
 import { loadLocalMediaManifest } from './media/local-media-library';
@@ -82,10 +83,10 @@ export function App({ workerClient }: AppProps) {
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
-  const playerRef = useRef<PlayerController | null>(null);
+  const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
   const journeyModeRef = useRef<JourneyMode>('ROUTE');
   const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
-  const pendingPlaybackRestoreRef = useRef<{ mode: JourneyMode; timeSec: number } | null>(null);
+  const photoPlaybackStopsRef = useRef<PlaybackStop[]>([]);
   const autoPlanRef = useRef(false);
   const scanOperationRef = useRef(0);
   const mediaOperationRef = useRef(0);
@@ -119,27 +120,31 @@ export function App({ workerClient }: AppProps) {
     setMobileMapShare(PHOTO_MAP_MIN_MOBILE);
   }, []);
 
-  const pausePlayback = useCallback(() => {
-    const player = playerRef.current;
+  const pausePlayback = useCallback((mode: JourneyMode = journeyModeRef.current) => {
+    const player = playersRef.current[mode];
     if (!player) return;
     const wasPlaying = player.isPlaying();
     player.pause();
-    if (wasPlaying) dispatch({ type: 'PAUSE' });
+    if (wasPlaying && mode === journeyModeRef.current) dispatch({ type: 'PAUSE' });
   }, []);
 
   const changeJourneyMode = useCallback((mode: JourneyMode, resetTarget = false) => {
     const currentMode = journeyModeRef.current;
     if (mode === currentMode && !resetTarget) return;
-    pausePlayback();
+    pausePlayback(currentMode);
     if (resetTarget) playbackPositionsRef.current[mode] = 0;
     const targetTimeSec = playbackPositionsRef.current[mode];
-    pendingPlaybackRestoreRef.current = { mode, timeSec: targetTimeSec };
     journeyModeRef.current = mode;
     if (mode === 'PHOTOS') minimizePhotoRoute();
     setJourneyMode(mode);
     activeMediaRef.current = null;
     setActiveMediaId(null);
     setActivePlaceName(null);
+    const targetPlayer = playersRef.current[mode];
+    if (targetPlayer) {
+      if (mode === 'PHOTOS') targetPlayer.setStops(photoPlaybackStopsRef.current);
+      targetPlayer.seek(targetTimeSec);
+    }
     if (state.plan) dispatch(targetTimeSec > 0 ? { type: 'PAUSE' } : { type: 'RESET' });
   }, [minimizePhotoRoute, pausePlayback, state.plan]);
 
@@ -188,13 +193,11 @@ export function App({ workerClient }: AppProps) {
     }
   }, [cameraMode, client, endDate, includeFlights, map, pacingMode, reportProgress, startDate, targetDurationSec, zoomOffset]);
 
-  const playbackStops = useMemo<PlaybackStop[]>(() => journeyMode === 'PHOTOS'
-    ? media.map(item => ({
-        id: item.id,
-        atSec: item.playbackSec,
-        durationSec: item.kind === 'video' && videoMode === 'PLAY' ? videoMaxSec : photoDisplaySec
-      }))
-    : [], [journeyMode, media, photoDisplaySec, videoMaxSec, videoMode]);
+  const photoPlaybackStops = useMemo<PlaybackStop[]>(() => media.map(item => ({
+    id: item.id,
+    atSec: item.playbackSec,
+    durationSec: item.kind === 'video' && videoMode === 'PLAY' ? videoMaxSec : photoDisplaySec
+  })), [media, photoDisplaySec, videoMaxSec, videoMode]);
 
   const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan) => {
     const operation = ++mediaOperationRef.current;
@@ -290,6 +293,11 @@ export function App({ workerClient }: AppProps) {
   }, [media]);
 
   useEffect(() => {
+    photoPlaybackStopsRef.current = photoPlaybackStops;
+    if (journeyModeRef.current === 'PHOTOS') playersRef.current.PHOTOS?.setStops(photoPlaybackStops);
+  }, [photoPlaybackStops]);
+
+  useEffect(() => {
     if (!map || state.phase !== 'ready' || !state.scan || !autoPlanRef.current) return;
     autoPlanRef.current = false;
     void createPlan();
@@ -302,66 +310,80 @@ export function App({ workerClient }: AppProps) {
   }, [attachLocalMedia, attachMediaFiles, localMediaManifest, state.plan]);
 
   useLayoutEffect(() => {
-    playerRef.current?.dispose();
-    playerRef.current = null;
+    playersRef.current.ROUTE?.dispose();
+    playersRef.current.PHOTOS?.dispose();
+    playersRef.current = { ROUTE: null, PHOTOS: null };
     playbackPositionsRef.current = { ROUTE: 0, PHOTOS: 0 };
-    pendingPlaybackRestoreRef.current = null;
     activeMediaRef.current = '__controller-reset__';
     cityRouteCacheRef.current.clear();
     if (!map || !state.plan) return;
-    const controller = new PlayerController(map, {
-      onFrame: (frame, _frameIndex, timeSec, stopId) => {
-        playbackPositionsRef.current[journeyModeRef.current] = timeSec;
-        if (stopId !== activeMediaRef.current) {
-          activeMediaRef.current = stopId;
-          setActiveMediaId(stopId);
-          const item = stopId ? mediaRef.current.find(candidate => candidate.id === stopId) : null;
-          setActivePlaceName(item ? resolvePlaceName(map, item) : null);
-        }
-        if (playerRef.current?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
-        lastHudUpdateRef.current = performance.now();
-        const nextHud = hudForFrame(frame, state.plan!, timeSec);
-        if (frame.kind === 'TRAVEL') {
-          const segment = state.plan!.segments[frame.segmentIndex];
-          const cached = cityRouteCacheRef.current.get(frame.segmentIndex);
-          const now = performance.now();
-          if (!cached || ((!cached.originCity || !cached.destinationCity) && now - cached.lastAttemptMs >= 1000)) {
-            cityRouteCacheRef.current.set(frame.segmentIndex, {
-              originCity: cached?.originCity ?? resolveCityLabel(map, segment.start),
-              destinationCity: cached?.destinationCity ?? resolveCityLabel(map, segment.end),
-              lastAttemptMs: now
-            });
+
+    const createController = (mode: JourneyMode, stops: PlaybackStop[]) => {
+      const controller = new PlayerController(map, {
+        onFrame: (frame, _frameIndex, timeSec, stopId) => {
+          playbackPositionsRef.current[mode] = timeSec;
+          if (mode !== journeyModeRef.current) return;
+          if (stopId !== activeMediaRef.current) {
+            activeMediaRef.current = stopId;
+            setActiveMediaId(stopId);
+            const item = stopId ? mediaRef.current.find(candidate => candidate.id === stopId) : null;
+            setActivePlaceName(item ? resolvePlaceName(map, item) : null);
           }
-          const route = cityRouteCacheRef.current.get(frame.segmentIndex);
-          if (route) {
-            nextHud.originCity = route.originCity;
-            nextHud.destinationCity = route.destinationCity;
+          if (playersRef.current[mode]?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
+          lastHudUpdateRef.current = performance.now();
+          const nextHud = hudForFrame(frame, state.plan!, timeSec);
+          if (frame.kind === 'TRAVEL') {
+            const segment = state.plan!.segments[frame.segmentIndex];
+            const cached = cityRouteCacheRef.current.get(frame.segmentIndex);
+            const now = performance.now();
+            if (!cached || ((!cached.originCity || !cached.destinationCity) && now - cached.lastAttemptMs >= 1000)) {
+              cityRouteCacheRef.current.set(frame.segmentIndex, {
+                originCity: cached?.originCity ?? resolveCityLabel(map, segment.start),
+                destinationCity: cached?.destinationCity ?? resolveCityLabel(map, segment.end),
+                lastAttemptMs: now
+              });
+            }
+            const route = cityRouteCacheRef.current.get(frame.segmentIndex);
+            if (route) {
+              nextHud.originCity = route.originCity;
+              nextHud.destinationCity = route.destinationCity;
+            }
           }
+          setHud(nextHud);
+        },
+        onComplete: () => {
+          if (mode !== journeyModeRef.current) return;
+          setActiveMediaId(null);
+          dispatch({ type: 'COMPLETE' });
         }
-        setHud(nextHud);
-      },
-      onComplete: () => {
-        setActiveMediaId(null);
-        dispatch({ type: 'COMPLETE' });
-      }
-    });
-    controller.setLockToPosition(lockToPosition);
-    controller.setTrackingSpeed(trackingSpeed);
-    controller.loadPlan(state.plan, playbackStops);
-    playerRef.current = controller;
-    return () => {
-      controller.dispose();
+      });
+      controller.setLockToPosition(lockToPosition);
+      controller.setTrackingSpeed(trackingSpeed);
+      controller.loadPlan(state.plan!, stops);
+      return controller;
     };
-  // Plan replacement owns controller lifecycle. Live preferences are applied below.
+
+    const routeController = createController('ROUTE', []);
+    const photoController = createController('PHOTOS', photoPlaybackStopsRef.current);
+    playersRef.current = { ROUTE: routeController, PHOTOS: photoController };
+    playersRef.current[journeyModeRef.current]?.seek(playbackPositionsRef.current[journeyModeRef.current]);
+
+    return () => {
+      routeController.dispose();
+      photoController.dispose();
+    };
+  // Plan replacement owns both playback-session lifecycles. Live preferences are applied below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, state.plan]);
 
   useEffect(() => {
-    playerRef.current?.setLockToPosition(lockToPosition);
+    playersRef.current.ROUTE?.setLockToPosition(lockToPosition);
+    playersRef.current.PHOTOS?.setLockToPosition(lockToPosition);
   }, [lockToPosition]);
 
   useEffect(() => {
-    playerRef.current?.setTrackingSpeed(trackingSpeed);
+    playersRef.current.ROUTE?.setTrackingSpeed(trackingSpeed);
+    playersRef.current.PHOTOS?.setTrackingSpeed(trackingSpeed);
   }, [trackingSpeed]);
 
   useEffect(() => {
@@ -369,17 +391,6 @@ export function App({ workerClient }: AppProps) {
     if (state.phase === 'playing') map.scrollZoom.disable();
     else map.scrollZoom.enable();
   }, [map, state.phase]);
-
-  useEffect(() => {
-    const player = playerRef.current;
-    if (!player) return;
-    const pendingRestore = pendingPlaybackRestoreRef.current;
-    player.setStops(playbackStops);
-    if (pendingRestore?.mode === journeyMode) {
-      pendingPlaybackRestoreRef.current = null;
-      player.seek(pendingRestore.timeSec);
-    }
-  }, [journeyMode, playbackStops]);
 
   useEffect(() => {
     const onResize = () => setSplitNarrow(window.innerWidth <= 820);
@@ -458,12 +469,17 @@ export function App({ workerClient }: AppProps) {
   };
 
   const togglePlayback = () => {
-    const player = playerRef.current;
+    const mode = journeyModeRef.current;
+    const player = playersRef.current[mode];
     if (!player) return;
+    const otherMode: JourneyMode = mode === 'ROUTE' ? 'PHOTOS' : 'ROUTE';
+    playersRef.current[otherMode]?.pause();
     if (player.isPlaying()) {
       player.pause();
       dispatch({ type: 'PAUSE' });
     } else {
+      if (mode === 'PHOTOS') player.setStops(photoPlaybackStopsRef.current);
+      player.seek(playbackPositionsRef.current[mode]);
       player.play();
       dispatch({ type: 'PLAY' });
     }
@@ -478,7 +494,9 @@ export function App({ workerClient }: AppProps) {
   };
 
   const resetPlayback = () => {
-    playerRef.current?.reset();
+    const mode = journeyModeRef.current;
+    playbackPositionsRef.current[mode] = 0;
+    playersRef.current[mode]?.reset();
     dispatch({ type: 'RESET' });
   };
 
@@ -487,7 +505,9 @@ export function App({ workerClient }: AppProps) {
       dispatch({ type: 'NOTICE', message: '로컬 지도 파일이 없습니다. npm run map:setup 후 다시 선택해 주세요.' });
       return;
     }
-    playerRef.current?.dispose();
+    playersRef.current.ROUTE?.dispose();
+    playersRef.current.PHOTOS?.dispose();
+    playersRef.current = { ROUTE: null, PHOTOS: null };
     setMap(null);
     setMapKind(kind);
   };
@@ -521,7 +541,9 @@ export function App({ workerClient }: AppProps) {
   const busy = state.phase === 'loading' || state.phase === 'planning' || mediaLoading;
   const canPlay = Boolean(state.plan && map && !busy);
   const duration = state.plan
-    ? state.plan.durationSec + playbackStops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0)
+    ? state.plan.durationSec + (journeyMode === 'PHOTOS'
+      ? photoPlaybackStops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0)
+      : 0)
     : Math.max(0, targetDurationSec);
   const durationControlValue = targetDurationSec > 0
     ? targetDurationSec
@@ -535,6 +557,7 @@ export function App({ workerClient }: AppProps) {
       ref={shellRef}
       className={`app-shell ${journeyMode === 'PHOTOS' ? 'photo-mode' : ''} ${state.scan ? 'has-trip' : ''} ${state.phase === 'playing' ? 'playback-active' : ''} ${playbackChromeClass}`}
       data-playback-chrome={playbackChrome.visible ? 'visible' : 'hidden'}
+      data-playing-mode={state.phase === 'playing' ? journeyMode : 'NONE'}
       style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}
     >
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
@@ -761,8 +784,10 @@ export function App({ workerClient }: AppProps) {
             value={Math.min(hud.timeSec, duration)}
             disabled={!canPlay}
             onChange={event => {
-              playerRef.current?.pause();
-              playerRef.current?.seek(Number(event.target.value));
+              const mode = journeyModeRef.current;
+              const player = playersRef.current[mode];
+              player?.pause();
+              player?.seek(Number(event.target.value));
               dispatch({ type: 'PAUSE' });
             }}
           />
@@ -837,21 +862,7 @@ function progressValue(progress: MediaImportProgress | null): number {
 }
 
 function resolvePlaceName(map: MapLibreMap, item: JourneyMedia): string {
-  try {
-    const point = map.project([item.matchedLng, item.matchedLat]);
-    const features = map.queryRenderedFeatures([
-      [point.x - 36, point.y - 36],
-      [point.x + 36, point.y + 36]
-    ]);
-    for (const feature of features) {
-      const properties = feature.properties ?? {};
-      const name = properties['name:ko'] ?? properties.name_ko ?? properties.name ?? properties['name:en'];
-      if (typeof name === 'string' && name.trim()) return name.trim();
-    }
-  } catch {
-    // The route can still use coordinates when a map style has no place labels.
-  }
-  return item.positionSource === 'gps'
-    ? `${item.matchedLat.toFixed(3)}, ${item.matchedLng.toFixed(3)}`
-    : 'Timeline 위치';
+  const label = resolvePhotoPlaceLabel(map, { lat: item.matchedLat, lng: item.matchedLng });
+  if (label) return label;
+  return item.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치';
 }
