@@ -54,7 +54,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
         kind: 'photo',
         key: `photo:${active.id}`,
         item: active,
-        place: formatPhotoPlace(placeName, originCity, destinationCity, active.positionSource),
+        place: formatPhotoPlace(placeName, originCity, destinationCity),
         url: activeAsset?.url ?? active.sourceUrl ?? null
       };
     }
@@ -394,13 +394,14 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
   return transition;
 }
 
-function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null, positionSource: JourneyMedia['positionSource']): string {
+function formatPhotoPlace(placeName: string | null, originCity: string | null, destinationCity: string | null): string {
   const city = originCity && destinationCity
     ? originCity === destinationCity ? originCity : null
     : originCity ?? destinationCity;
   const place = placeName?.trim() ?? '';
-  const fallback = city ?? (positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치');
-  if (!place || looksLikeCoordinates(place)) return fallback;
+  const unknown = '알 수 없음';
+
+  if (!place || place === '촬영 위치' || place === 'Timeline 위치' || place === unknown || looksLikeCoordinates(place)) return unknown;
 
   if (/(구|区)$/u.test(place)) {
     if (/\s/u.test(place)) return place;
@@ -408,9 +409,9 @@ function formatPhotoPlace(placeName: string | null, originCity: string | null, d
     return place;
   }
   if (/(특별시|광역시|특별자치시|시|市)$/u.test(place)) return place;
-  if (/(동|읍|면|리|가|로|길|町|村|丁目)$/u.test(place)) return fallback;
+  if (/(동|읍|면|리|가|로|길|町|村|丁目)$/u.test(place)) return unknown;
 
-  return city ?? place;
+  return place;
 }
 
 function looksLikeCoordinates(value: string): boolean {
