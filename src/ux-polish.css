@@ -45,7 +45,7 @@
 
 .photo-mode .player-reveal-zone {
   left: calc(var(--photo-map-share, 60%) / 2);
-  bottom: max(13px, env(safe-area-inset-bottom));
+  bottom: max(22px, env(safe-area-inset-bottom));
   width: min(760px, calc(var(--photo-map-share, 60%) - 32px));
 }
 
@@ -53,9 +53,9 @@
   z-index: 12;
 }
 
-/* Photo playback shifts as a whole; its dimensions stay unchanged. */
+/* Align the photo caption line with the vertical center of the full playback box. */
 .photo-mode .player-dock {
-  bottom: max(13px, env(safe-area-inset-bottom));
+  bottom: max(22px, env(safe-area-inset-bottom));
 }
 
 .timeline-meta {
