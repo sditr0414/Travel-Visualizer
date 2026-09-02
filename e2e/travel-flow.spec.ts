@@ -57,22 +57,31 @@ test('desktop playback chrome hides and reveals as one surface', async ({ page }
   await expect(page.locator('.play-control')).not.toHaveCSS('transition-duration', '0s');
 });
 
-test('switching between route and photo presentations pauses playback', async ({ page }) => {
+test('route and photo journeys keep playback state and cursors separate', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생' });
+  const position = page.getByLabel('재생 위치');
   await expect(play).toBeEnabled({ timeout: 20_000 });
 
   await page.getByRole('button', { name: '사진 여정' }).click();
+  await expect(position).toHaveValue('0');
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
+  await page.getByRole('button', { name: '일시정지' }).click();
+  const photoPosition = Number(await position.inputValue());
+
   await page.getByRole('button', { name: '발자취' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect(position).toHaveValue('0');
 
-  await page.getByRole('button', { name: '재생' }).click();
+  await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(0.05);
 });
 
 test('settings stay usable on a narrow screen', async ({ page }) => {
