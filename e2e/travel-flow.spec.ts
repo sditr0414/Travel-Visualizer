@@ -37,8 +37,8 @@ test('desktop playback chrome uses delayed unified hide and reveal', async ({ pa
 
   const topReveal = page.locator('.topbar-reveal-zone');
   await topReveal.hover();
-  await page.waitForTimeout(60);
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden');
+  await page.waitForTimeout(80);
+  expect(await shell.getAttribute('data-playback-chrome')).toBe('hidden');
   await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_000 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(settings).toHaveCSS('opacity', '1');
@@ -47,7 +47,7 @@ test('desktop playback chrome uses delayed unified hide and reveal', async ({ pa
 
   await page.mouse.move(720, 450);
   await page.waitForTimeout(250);
-  await expect(shell).toHaveAttribute('data-playback-chrome', 'visible');
+  expect(await shell.getAttribute('data-playback-chrome')).toBe('visible');
   await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1_500 });
 
   const bottomReveal = page.locator('.player-reveal-zone');
