@@ -17,7 +17,7 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
   await expect(page.getByLabel('재생 위치')).toHaveValue('0');
 });
 
-test('desktop playback chrome hides and reveals as one surface', async ({ page }, testInfo) => {
+test('desktop playback chrome hides and reveals while route HUD stays persistent', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Hover reveal is a desktop interaction.');
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -29,21 +29,22 @@ test('desktop playback chrome hides and reveals as one surface', async ({ page }
   const shell = page.locator('.app-shell');
   const topbar = page.locator('.topbar');
   const settings = page.locator('.settings-panel');
-  const hud = page.locator('.journey-hud');
+  const hud = page.locator('.route-persistent-hud');
   const dock = page.getByLabel('재생 컨트롤');
   await expect(shell).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3_000 });
   await expect(topbar).toHaveCSS('opacity', '0');
   await expect(settings).toHaveCSS('opacity', '0');
-  await expect(hud).toHaveCSS('opacity', '0');
   await expect(dock).toHaveCSS('opacity', '0');
+  await expect(hud).toHaveCSS('opacity', '1');
+  await expect(hud).toBeVisible();
 
   const topReveal = page.locator('.topbar-reveal-zone');
   await topReveal.hover();
   await expect(shell).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1_500 });
   await expect(topbar).toHaveCSS('opacity', '1');
   await expect(settings).toHaveCSS('opacity', '1');
-  await expect(hud).toHaveCSS('opacity', '1');
   await expect(dock).toHaveCSS('opacity', '1');
+  await expect(hud).toHaveCSS('opacity', '1');
 
   const dockBox = await dock.boundingBox();
   expect(dockBox).not.toBeNull();
@@ -97,7 +98,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 });
 
-test('settings stay usable on a narrow screen', async ({ page }) => {
+test('settings stay usable on a narrow screen with full-width trip dates', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
   const settings = page.getByText('여행 설정');
@@ -107,7 +108,16 @@ test('settings stay usable on a narrow screen', async ({ page }) => {
   expect(topbarBox).not.toBeNull();
   expect(settingsBox!.x).toBeGreaterThanOrEqual(topbarBox!.x + topbarBox!.width);
   await settings.click();
-  await expect(page.getByLabel('여행 시작')).toBeVisible();
+  const startDate = page.getByLabel('여행 시작');
+  const endDate = page.getByLabel('여행 마지막 날');
+  await expect(startDate).toBeVisible();
+  await expect(endDate).toBeVisible();
+  const startBox = await startDate.boundingBox();
+  const endBox = await endDate.boundingBox();
+  expect(startBox).not.toBeNull();
+  expect(endBox).not.toBeNull();
+  expect(Math.abs(startBox!.width - endBox!.width)).toBeLessThanOrEqual(1);
+  expect(endBox!.y).toBeGreaterThan(startBox!.y + startBox!.height);
   const contentBox = await page.locator('.settings-content').boundingBox();
   expect(contentBox).not.toBeNull();
   expect(contentBox!.y).toBeGreaterThan(settingsBox!.y + settingsBox!.height);
