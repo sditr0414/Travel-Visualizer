@@ -332,14 +332,14 @@
   justify-content: flex-start;
   gap: 22px;
   min-height: 84px;
-  padding: 12px 4px 0;
+  padding: 12px 18px 0;
   flex-wrap: wrap;
 }
 
 .media-card .media-caption-place {
   min-width: 0;
   color: var(--paper);
-  font-size: clamp(19px, 1.5vw, 23px);
+  font-size: clamp(21px, 1.65vw, 25px);
   font-weight: 820;
   line-height: 1.22;
   white-space: nowrap;
@@ -347,7 +347,7 @@
 
 .media-card .media-caption-date {
   color: #d0cbc4;
-  font-size: clamp(18px, 1.4vw, 22px);
+  font-size: clamp(20px, 1.55vw, 24px);
   font-weight: 720;
   line-height: 1.22;
   letter-spacing: -.02em;
@@ -470,15 +470,15 @@
   .media-card .media-caption {
     gap: 14px;
     min-height: 66px;
-    padding: 8px 2px 0;
+    padding: 8px 10px 0;
   }
 
   .media-card .media-caption-place {
-    font-size: 17px;
+    font-size: 18px;
   }
 
   .media-card .media-caption-date {
-    font-size: 16px;
+    font-size: 17px;
   }
 
   .media-transit {
