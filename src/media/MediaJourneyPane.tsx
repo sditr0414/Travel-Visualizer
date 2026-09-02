@@ -47,7 +47,7 @@ const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
 export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
-  const dayCue = dayMarkerCueFromId(activeId);
+  const dayCue = useMemo(() => dayMarkerCueFromId(activeId), [activeId]);
   const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
   const activeAsset = active ? preloadedAssets[active.id] : undefined;
