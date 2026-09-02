@@ -130,6 +130,58 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });
 
+  it('preloads upcoming photos and holds the previous scene until the active photo is decoded', async () => {
+    const nativeImage = globalThis.Image;
+    const preloadImages: MockPreloadImage[] = [];
+    class ControlledImage {
+      decoding = 'auto';
+      complete = false;
+      naturalWidth = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      src = '';
+      decode = vi.fn().mockResolvedValue(undefined);
+
+      constructor() {
+        preloadImages.push(this);
+      }
+    }
+    vi.stubGlobal('Image', ControlledImage);
+    const second: JourneyMedia = {
+      ...media,
+      id: 'photo-2',
+      sourceUrl: '/api/local-media/photo-2',
+      title: 'IMG_111223',
+      takenMs: media.takenMs + 60_000,
+      playbackSec: 2
+    };
+
+    try {
+      const view = render(<MediaJourneyPane media={[media, second]} activeId={null} {...baseProps} />);
+      expect(preloadImages.map(image => image.src)).toEqual(expect.arrayContaining([
+        '/api/local-media/photo-1',
+        '/api/local-media/photo-2'
+      ]));
+
+      view.rerender(<MediaJourneyPane media={[media, second]} activeId={media.id} {...baseProps} />);
+      expect(view.container.querySelector('.media-scene-layer.is-current .media-transit')).toBeInTheDocument();
+      expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-media-buffering', 'true');
+
+      const first = preloadImages.find(image => image.src === '/api/local-media/photo-1');
+      expect(first).toBeDefined();
+      await act(async () => {
+        first?.onload?.();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(view.container.querySelector('.media-scene-layer.is-current .media-card')).toBeInTheDocument();
+      expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-media-buffering', 'false');
+    } finally {
+      vi.stubGlobal('Image', nativeImage);
+    }
+  });
+
   it('keeps the outgoing scene mounted during the photo cross-dissolve', () => {
     vi.useFakeTimers();
     const view = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} photoDisplaySec={2} />);
@@ -181,3 +233,8 @@ describe('MediaJourneyPane', () => {
     expect(transitSceneTransitionDurationMs(8)).toBe(320);
   });
 });
+
+interface MockPreloadImage {
+  src: string;
+  onload: (() => void) | null;
+}
