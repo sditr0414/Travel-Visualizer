@@ -31,13 +31,13 @@
 
 .topbar-reveal-zone {
   top: 0;
-  height: 34px;
+  height: 68px;
 }
 
 .player-reveal-zone {
   top: auto;
   bottom: 0;
-  height: 34px;
+  height: 100px;
 }
 
 .photo-mode .player-reveal-zone {
@@ -225,14 +225,14 @@
   to { opacity: 0; transform: scale(.996); }
 }
 
-/* Keep photo metadata on one baseline, slightly above the midpoint of the caption strip. */
+/* Center photo metadata in the strip between the media frame and the pane bottom. */
 .media-card .media-caption {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 22px;
-  min-height: 72px;
-  padding: 8px 4px 16px;
+  min-height: 84px;
+  padding: 0 4px;
   flex-wrap: wrap;
 }
 
@@ -255,7 +255,7 @@
   white-space: nowrap;
 }
 
-/* Put pictogram/date on one row and transport/route on the row below. */
+/* Put pictogram/date on one row and transport/route on a shared aligned row below. */
 .media-transit {
   grid-template-columns: minmax(132px, 166px) minmax(0, 1fr);
   grid-template-rows: auto auto;
@@ -264,7 +264,7 @@
     "mode route";
   align-items: center;
   column-gap: clamp(54px, 6vw, 88px);
-  row-gap: 22px;
+  row-gap: 30px;
   width: min(720px, 90%);
   text-align: left;
 }
@@ -283,17 +283,19 @@
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 15px;
+  gap: 21px;
   min-width: 0;
 }
 
 .media-transit .movement-mode {
   grid-area: mode;
   justify-self: center;
+  align-self: baseline;
+  transform: translateY(5px);
   color: #ece7e0;
   font-size: clamp(19px, 1.55vw, 23px);
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.2;
   letter-spacing: -.02em;
 }
 
@@ -317,13 +319,15 @@
 
 .media-transit .movement-route {
   grid-area: route;
-  align-self: center;
+  align-self: baseline;
   justify-content: flex-start;
   gap: 11px;
   margin-top: 0;
+  transform: translateY(5px);
   color: #e6e1da;
   font-size: clamp(18px, 1.4vw, 22px);
   font-weight: 780;
+  line-height: 1.2;
 }
 
 @media (max-width: 720px) {
@@ -335,10 +339,18 @@
     gap: 7px;
   }
 
+  .topbar-reveal-zone {
+    height: 60px;
+  }
+
+  .player-reveal-zone {
+    height: 88px;
+  }
+
   .media-card .media-caption {
     gap: 14px;
-    min-height: 58px;
-    padding: 6px 2px 12px;
+    min-height: 66px;
+    padding: 0 2px;
   }
 
   .media-card .media-caption-place {
@@ -352,7 +364,7 @@
   .media-transit {
     grid-template-columns: minmax(84px, 106px) minmax(0, 1fr);
     column-gap: 24px;
-    row-gap: 14px;
+    row-gap: 20px;
     width: min(520px, 94%);
   }
 
@@ -361,10 +373,11 @@
   }
 
   .media-transit .movement-primary {
-    gap: 10px;
+    gap: 14px;
   }
 
   .media-transit .movement-mode {
+    transform: translateY(4px);
     font-size: 16px;
   }
 
@@ -378,14 +391,15 @@
 
   .media-transit .movement-route {
     gap: 8px;
+    transform: translateY(4px);
     font-size: 15px;
   }
 
   .photo-mode .player-reveal-zone {
-    top: calc(var(--photo-map-share, 52%) - 34px);
+    top: calc(var(--photo-map-share, 52%) - 88px);
     bottom: auto;
     width: 100%;
-    height: 34px;
+    height: 88px;
   }
 }
 
