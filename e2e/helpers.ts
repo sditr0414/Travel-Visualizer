@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 
 const E2E_TIMELINE = JSON.stringify({
@@ -29,14 +29,17 @@ const E2E_TIMELINE = JSON.stringify({
 });
 
 const PHOTO_ID = 'e2e-photo';
-const PHOTO_BODY = '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#777"/></svg>';
+const PHOTO_BODY = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64'
+);
 
 export async function loadLocalTimeline(page: Page, options: { real?: boolean } = {}): Promise<void> {
   const input = page.getByLabel('시작할 Timeline JSON 선택');
   if (options.real) {
     const path = process.env.REAL_TIMELINE_JSON;
     if (!path) throw new Error('REAL_TIMELINE_JSON is required for the real Timeline E2E case.');
-    await readFile(path);
+    await access(path);
     await input.setInputFiles(path);
   } else {
     await input.setInputFiles({
@@ -58,11 +61,11 @@ export async function attachLocalPhotoManifest(page: Page): Promise<void> {
         available: true,
         rootName: 'E2E 사진',
         count: 1,
-        totalBytes: PHOTO_BODY.length,
+        totalBytes: PHOTO_BODY.byteLength,
         items: [{
           id: PHOTO_ID,
           name: '20260410_091500.png',
-          size: PHOTO_BODY.length,
+          size: PHOTO_BODY.byteLength,
           lastModified: Date.parse('2026-04-10T09:15:00+09:00'),
           kind: 'image',
           metadata: {
@@ -78,6 +81,6 @@ export async function attachLocalPhotoManifest(page: Page): Promise<void> {
   });
 
   await page.route(`**/api/local-media/${PHOTO_ID}`, async route => {
-    await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: PHOTO_BODY });
+    await route.fulfill({ status: 200, contentType: 'image/png', body: PHOTO_BODY });
   });
 }
