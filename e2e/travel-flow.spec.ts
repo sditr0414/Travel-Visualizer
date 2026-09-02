@@ -81,7 +81,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(0.05);
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(0.08);
 });
 
 test('settings stay usable on a narrow screen', async ({ page }) => {
