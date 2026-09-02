@@ -45,6 +45,8 @@ export class PlayerController {
   private lockToPosition = true;
   private trackingSpeed = 1;
   private trackedCenter: Coordinate | null = null;
+  private displayedZoom: number | null = null;
+  private displayedZoomRouteSec = 0;
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
   private stopDurationSec = 0;
@@ -61,6 +63,8 @@ export class PlayerController {
     this.frameIndex = -1;
     this.framePosition = -1;
     this.trackedCenter = null;
+    this.displayedZoom = null;
+    this.displayedZoomRouteSec = 0;
     this.replaceStops(stops);
     this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
@@ -85,6 +89,7 @@ export class PlayerController {
   setLockToPosition(enabled: boolean): void {
     this.lockToPosition = enabled;
     this.trackedCenter = null;
+    this.displayedZoom = null;
     this.renderForTime(true);
   }
 
@@ -115,6 +120,7 @@ export class PlayerController {
     this.timeSec = Math.max(0, Math.min(this.getDuration(), Number(seconds) || 0));
     this.startedAt = performance.now() - this.timeSec * 1000;
     this.trackedCenter = null;
+    this.displayedZoom = null;
     this.renderForTime(true);
   }
 
@@ -124,6 +130,8 @@ export class PlayerController {
     this.frameIndex = -1;
     this.framePosition = -1;
     this.trackedCenter = null;
+    this.displayedZoom = null;
+    this.displayedZoomRouteSec = 0;
     this.lastStopId = null;
     this.render(0, true);
   }
@@ -135,6 +143,8 @@ export class PlayerController {
     this.stopSchedule = [];
     this.stopDurationSec = 0;
     this.fullRouteData = emptyCollection();
+    this.displayedZoom = null;
+    this.displayedZoomRouteSec = 0;
     this.stableFlightZooms.clear();
   }
 
@@ -199,6 +209,7 @@ export class PlayerController {
         frame.mobilityClass
       );
     }
+    zoom = this.stabilizeZoom(zoom, clampedPosition / Math.max(1, this.plan.fps));
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
@@ -211,6 +222,34 @@ export class PlayerController {
       this.setSource('route-head', emptyCollection());
     }
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
+  }
+
+  private stabilizeZoom(targetZoom: number, routeTimeSec: number): number {
+    const target = clamp(Number(targetZoom) || 0, 4, 17.3);
+    if (this.displayedZoom === null || routeTimeSec + 0.001 < this.displayedZoomRouteSec) {
+      this.displayedZoom = target;
+      this.displayedZoomRouteSec = routeTimeSec;
+      return target;
+    }
+
+    const elapsed = routeTimeSec - this.displayedZoomRouteSec;
+    this.displayedZoomRouteSec = routeTimeSec;
+    if (!(elapsed > 0)) return this.displayedZoom;
+
+    const dt = clamp(elapsed, 1 / 240, 0.25);
+    const delta = target - this.displayedZoom;
+    if (Math.abs(delta) < 0.004) {
+      this.displayedZoom = target;
+      return target;
+    }
+
+    const zoomingOut = delta < 0;
+    const tauSec = zoomingOut ? 0.70 : 1.45;
+    const maxRate = zoomingOut ? 0.78 : 0.55;
+    const easedStep = delta * (1 - Math.exp(-dt / tauSec));
+    const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
+    this.displayedZoom = clamp(this.displayedZoom + step, 4, 17.3);
+    return this.displayedZoom;
   }
 
   private followCamera(frame: TravelFrame, frameIndex: number, reset = false): Coordinate {
@@ -245,7 +284,7 @@ export class PlayerController {
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
   if (mobilityClass === 'FLIGHT') return baseZoom;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
-  const shortRouteBoost = distanceKm <= 2 ? 0.62 : distanceKm <= 8 ? 0.46 : distanceKm <= 30 ? 0.24 : 0;
+  const shortRouteBoost = 0.66 * Math.exp(-distanceKm / 28);
   return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
 }
 
