@@ -312,10 +312,23 @@ function limitKinematics(values, fps, maxVelocity, maxAcceleration) {
   const dt = 1 / fps;
   const out = [...values];
   let velocity = 0;
-  for (let index = 1; index < out.length; index += 1) {
-    const desired = clamp((values[index] - out[index - 1]) / dt, -maxVelocity, maxVelocity);
+  for (let index = 1; index < values.length; index += 1) {
+    const targetDelta = values[index] - out[index - 1];
+    if (Math.abs(targetDelta) < 1e-9) {
+      velocity = 0;
+      out[index] = values[index];
+      continue;
+    }
+    const desired = clamp(targetDelta / dt, -maxVelocity, maxVelocity);
     velocity += clamp(desired - velocity, -maxAcceleration * dt, maxAcceleration * dt);
-    out[index] = out[index - 1] + velocity * dt;
+    if (Math.sign(velocity) !== Math.sign(targetDelta)) velocity = 0;
+    const step = velocity * dt;
+    if (Math.abs(step) >= Math.abs(targetDelta)) {
+      out[index] = values[index];
+      velocity = 0;
+    } else {
+      out[index] = out[index - 1] + step;
+    }
   }
   return out;
 }
