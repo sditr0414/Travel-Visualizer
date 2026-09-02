@@ -67,7 +67,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 - 경로 재생 길이의 기본값은 해당 여행에 계산된 최소·최대 재생 시간의 중간값을 5초 단위로 맞춘 값으로 사용한다. 사용자가 직접 값을 바꾸면 그 값을 우선한다.
 - 발자취와 사진 여정은 하나의 플레이어를 공유하지만 동시에 재생되는 별도 모드처럼 동작해서는 안 된다. `발자취 ↔ 사진 여정` 표시 모드를 바꾸면 현재 재생을 즉시 일시정지하고 같은 경로 진행 위치를 유지한 채 새 모드의 stop 구성을 적용한다.
 - 재생 컨트롤은 하단에 두되 사진 여정에서는 지도 영역 안에 배치한다. 데스크톱 재생 중에는 상단 바·접힌 여행 설정·현재 장면 HUD·하단 재생바를 하나의 playback chrome으로 취급해 함께 숨긴다. playback chrome은 CSS `:has()` hover 판정이 아니라 React 상태로 통합 관리한다. 재생을 누른 직후 약 900ms 동안은 보인 뒤 숨김을 시작하고, 상·하단 reveal edge에 포인터가 약 140ms 머물거나 키보드 포커스가 오면 전체 UI를 복원한다. 포인터가 모든 chrome에서 벗어난 뒤에는 약 650ms 기다렸다 함께 숨긴다. 설정 패널이 열려 있는 동안은 항상 표시하며 터치 화면에서도 항상 표시한다.
-- playback chrome의 숨김·복원은 blur 없이 opacity와 작은 translate/scale을 약 320~360ms easing으로 함께 처리해 상태 변화가 눈에 보이면서도 지도를 방해하지 않게 한다. 버튼·선택·설정 패널·카드형 상태 UI도 hover/focus/press/open 상태에 절제된 이동·색·테두리·그림자 애니메이션을 사용한다. 모든 모션은 `prefers-reduced-motion`을 존중한다.
+- playback chrome의 숨김·복원은 blur 없이 opacity와 작은 translate/scale을 약 320~360ms easing으로 함께 처리해 상태 변화가 눈에 보이면서도 지도를 방해하지 않게 한다. playback chrome에 적용하는 일회성 입장 keyframe은 종료 뒤 `opacity`나 `transform`을 유지하는 fill mode를 사용하지 않아 React의 visible/hidden 상태가 최종 스타일을 소유하게 한다. 중앙 정렬 상태 카드처럼 기본 transform이 위치를 결정하는 UI는 입장 keyframe에서 그 transform을 덮지 않는다. 버튼·선택·설정 패널·카드형 상태 UI도 hover/focus/press/open 상태에 절제된 이동·색·테두리·그림자 애니메이션을 사용한다. 모든 모션은 `prefers-reduced-motion`을 존중한다.
 - 사진 여정에 들어갈 때 경로 영역은 허용된 최소 크기(데스크톱 38%, 모바일 34%)로 시작하고 사용자가 분할 핸들로 다시 확장할 수 있다.
 - 접힌 여행 설정 버튼은 사진을 가리지 않도록 상단 바 높이에 두고, Timeline 선택 버튼과 시각적으로 분리된 간격을 유지한다.
 - 모바일에서도 지도와 핵심 조작을 우선한다.
@@ -93,7 +93,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 - `App`/reducer: 모드 변경·미디어 재연결 시 재생 상태와 `PlayerController` 상태가 어긋나지 않도록 공통 pause 경로를 사용한다.
 - `PlayerController`: 프레임 보간, 항공 안정 줌, stop 스케줄 재매핑과 재생 시간 기준을 검토했고 stop 변경 시 경로 위치 보존 로직을 추가했다.
 - `MediaJourneyPane`/media bridge: 짧은 이동 구간 사진 유지, keyed outgoing scene, 사진/픽토그램 전환 identity와 시간 정책을 검토했다.
-- `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다.
+- `styles.css`/`ux-polish.css`: 제거된 마크업을 대상으로 한 오래된 selector와 구형 CSS-only playback reveal 규칙을 정리해 현재 React 상태 기반 모션과 충돌하지 않게 했다. playback chrome의 입장 keyframe이 hidden 상태를 덮거나 중앙 오버레이의 centering transform을 깨지 않도록 animation ownership도 분리했다.
 - Timeline worker/planner, MapStage, bounded JPEG/QuickTime metadata scanner, loopback server/local API를 재검토했으며 기존 privacy·bounded-read·MapLibre 계약을 유지한다.
 
 ## Privacy and repository rules
