@@ -44,7 +44,18 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   await reveal.hover();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
-  // Compare geometry only after the dock's hidden scale/translate transition has been removed.
+  // The visible state flips before the 480–540ms CSS transition fully settles. Keep the exact
+  // footprint contract, but wait until the rendered geometry has converged before measuring it.
+  await expect.poll(async () => {
+    const currentPlayerBox = await player.boundingBox();
+    if (!currentPlayerBox || !revealBox) return Number.POSITIVE_INFINITY;
+    return Math.max(
+      Math.abs(revealBox.x - currentPlayerBox.x),
+      Math.abs(revealBox.y - currentPlayerBox.y),
+      Math.abs(revealBox.width - currentPlayerBox.width),
+      Math.abs(revealBox.height - currentPlayerBox.height)
+    );
+  }, { timeout: 1600 }).toBeLessThan(2);
   const playerBox = await player.boundingBox();
   expect(playerBox).not.toBeNull();
   expect(Math.abs(revealBox!.x - playerBox!.x)).toBeLessThan(2);
