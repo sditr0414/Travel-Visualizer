@@ -1,4 +1,4 @@
-/* Focused settings-panel layout refinements. Loaded after ux-polish.css. */
+/* Focused settings and final interface refinements. Loaded after ux-polish.css. */
 
 /*
  * Photo settings needs a scrollbar more often than route settings.
@@ -10,17 +10,74 @@
     width: min(396px, calc(100vw - 32px));
     scrollbar-gutter: stable;
   }
+
+  /* Keep the photo caption and the full playback box on the same visual centerline. */
+  .media-card .media-caption {
+    transform: translateY(4px);
+  }
+
+  .photo-mode .player-dock,
+  .photo-mode .player-reveal-zone {
+    bottom: max(26px, env(safe-area-inset-bottom));
+  }
 }
 
-/* Treat the trip dates as one compact range control instead of two cramped columns. */
+/* Increase settings typography without changing the panel's content hierarchy. */
+.settings-panel summary {
+  font-size: 15px;
+}
+
+.settings-content {
+  font-size: 14px;
+}
+
+.settings-group-title {
+  font-size: 14px;
+}
+
+.settings-group-title output,
+.source-summary span {
+  font-size: 13px;
+}
+
+.source-summary strong {
+  font-size: 15px;
+}
+
+.form-grid label,
+.select-field {
+  font-size: 13px;
+}
+
+.range-field > span {
+  font-size: 14px;
+}
+
+.toggle-list label {
+  font-size: 14px;
+}
+
+.privacy-note {
+  font-size: 13px;
+}
+
+.media-import-row label {
+  font-size: 13px;
+}
+
+.plan-button {
+  font-size: 15px;
+}
+
+/* Treat the trip dates as one readable range control instead of cramped columns. */
 .trip-range-control {
-  gap: 12px;
-  padding: 14px;
+  gap: 13px;
+  padding: 15px;
 }
 
 .trip-range-heading {
   display: grid;
-  gap: 10px;
+  gap: 11px;
 }
 
 .trip-range-heading > div:first-child {
@@ -32,14 +89,15 @@
 }
 
 .trip-range-heading span {
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 760;
 }
 
 .trip-range-heading strong {
   min-width: 0;
   color: #e8e3dc;
-  font-size: 13px;
-  font-weight: 760;
+  font-size: 15px;
+  font-weight: 780;
   text-align: right;
   white-space: nowrap;
 }
@@ -53,44 +111,66 @@
 
 .trip-range-presets button {
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   padding: 0 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .trip-range-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: 9px;
 }
 
 .trip-range-fields label {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 78px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 6px 7px 6px 12px;
+  padding: 7px 7px 7px 12px;
   border: 1px solid rgba(255, 255, 255, .09);
   border-radius: 9px;
   background: rgba(255, 255, 255, .025);
 }
 
 .trip-range-fields label > span {
-  color: #c8c3bc;
-  font-size: 11px;
-  font-weight: 760;
+  color: #d0cbc4;
+  font-size: 13px;
+  font-weight: 780;
   white-space: nowrap;
 }
 
-.trip-range-fields input {
+/* Native date text stays keyboard-editable; make its calendar affordance easier to hit. */
+.trip-range-fields input[type="date"] {
   width: 100%;
   min-width: 0;
-  min-height: 40px;
-  padding: 0 10px;
+  min-height: 44px;
+  padding: 0 6px 0 12px;
   border: 0;
   border-radius: 7px;
+  color: var(--paper);
   background: #202428;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+  color-scheme: dark;
+}
+
+.trip-range-fields input[type="date"]::-webkit-datetime-edit {
+  padding: 10px 0;
+  cursor: text;
+}
+
+.trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 34px;
+  height: 32px;
+  margin: 0;
+  padding: 5px;
+  cursor: pointer;
+  opacity: .9;
 }
 
 .trip-range-fields input:focus {
@@ -101,27 +181,83 @@
   display: none;
 }
 
+/* Put speed precisely in the vertical gap between date and origin/destination. */
+.media-transit .movement-primary {
+  position: relative;
+  gap: 0;
+}
+
+.media-transit .movement-speed {
+  position: absolute;
+  top: calc(100% + 15px);
+  left: 0;
+  margin: 0;
+  transform: translateY(-50%);
+}
+
 @media (max-width: 720px) {
   .photo-mode .settings-content {
     width: min(330px, calc(100vw - 20px));
   }
 
+  .settings-panel summary {
+    font-size: 14px;
+  }
+
+  .settings-group-title {
+    font-size: 13px;
+  }
+
+  .form-grid label,
+  .select-field,
+  .privacy-note {
+    font-size: 13px;
+  }
+
+  .range-field > span,
+  .toggle-list label {
+    font-size: 13px;
+  }
+
   .trip-range-control {
-    padding: 12px;
+    padding: 13px;
   }
 
   .trip-range-heading > div:first-child {
     display: grid;
-    gap: 3px;
+    gap: 4px;
+  }
+
+  .trip-range-heading span {
+    font-size: 13px;
   }
 
   .trip-range-heading strong {
+    font-size: 14px;
     text-align: left;
   }
 
   .trip-range-fields label {
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: 70px minmax(0, 1fr);
     gap: 8px;
     padding-left: 10px;
+  }
+
+  .trip-range-fields label > span {
+    font-size: 12px;
+  }
+
+  .trip-range-fields input[type="date"] {
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+    width: 32px;
+    height: 30px;
+  }
+
+  .media-transit .movement-speed {
+    top: calc(100% + 10px);
   }
 }
