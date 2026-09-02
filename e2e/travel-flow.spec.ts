@@ -28,6 +28,8 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   await play.click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  // Clicking Play leaves the pointer over playback chrome, which intentionally keeps it visible.
+  await page.mouse.move(1, 1);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3000 });
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
 
@@ -64,29 +66,37 @@ test('route and photo journeys keep playback state and cursors separate', async 
   const play = page.getByRole('button', { name: '재생' });
   const position = page.getByLabel('재생 위치');
 
+  await expect(page.getByRole('button', { name: '사진 여정' })).toHaveClass(/active/);
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
+  const firstPhotoPosition = Number(await position.inputValue());
   await page.getByRole('button', { name: '발자취' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  const routePosition = Number(await position.inputValue());
+  const initialRoutePosition = Number(await position.inputValue());
 
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
-  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(routePosition + 0.05);
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(initialRoutePosition + 0.05);
+  const firstRoutePosition = Number(await position.inputValue());
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  const photoPosition = Number(await position.inputValue());
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - firstPhotoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 
-  await page.getByRole('button', { name: '발자취' }).click();
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - routePosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
   await play.click();
   await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
-  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(routePosition + 0.05);
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(firstPhotoPosition + 0.05);
+  const secondPhotoPosition = Number(await position.inputValue());
+  await page.getByRole('button', { name: '발자취' }).click();
+  await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - firstRoutePosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
+
+  await play.click();
+  await expect(page.getByRole('button', { name: '일시정지' })).toBeVisible();
+  await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(firstRoutePosition + 0.05);
   await page.getByRole('button', { name: '사진 여정' }).click();
   await expect(page.getByRole('button', { name: '재생' })).toBeVisible();
-  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - photoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
+  await expect.poll(async () => Math.abs(Number(await position.inputValue()) - secondPhotoPosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 });
 
 test('settings stay usable on a narrow screen with full-width trip dates', async ({ page }) => {
@@ -117,7 +127,7 @@ test('settings stay usable on a narrow screen with full-width trip dates', async
   await expect(page.getByRole('button', { name: /경로 다시 만들기/ })).toBeVisible();
 });
 
-test('photo journey keeps playback controls inside the route pane', async ({ page }) => {
+test('photo journey keeps playback controls inside the route pane', async ({ page, isMobile }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
   await page.getByRole('button', { name: '사진 여정' }).click();
@@ -129,7 +139,13 @@ test('photo journey keeps playback controls inside the route pane', async ({ pag
   expect(playerBox).not.toBeNull();
   expect(playerBox!.x).toBeGreaterThanOrEqual(mapBox!.x + 8);
   expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mapBox!.x + mapBox!.width - 8);
-  expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mediaBox!.x + 1);
+  expect(playerBox!.y).toBeGreaterThanOrEqual(mapBox!.y + 8);
+  expect(playerBox!.y + playerBox!.height).toBeLessThanOrEqual(mapBox!.y + mapBox!.height - 8);
+  if (isMobile) {
+    expect(playerBox!.y + playerBox!.height).toBeLessThanOrEqual(mediaBox!.y + 1);
+  } else {
+    expect(playerBox!.x + playerBox!.width).toBeLessThanOrEqual(mediaBox!.x + 1);
+  }
 });
 
 test('large local Timeline stays browser-local and produces a playable plan', async ({ page, isMobile }) => {
