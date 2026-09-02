@@ -43,7 +43,7 @@ function loadedSourceCities(map: CityLabelMap): MapFeature[] {
     const source = typeof layer?.source === 'string' ? layer.source : '';
     const sourceLayer = typeof layer?.['source-layer'] === 'string' ? layer['source-layer'] : '';
     const id = String(layer?.id ?? '');
-    if (!source || !sourceLayer || !/place|city|town|municipal/i.test(`${id} ${sourceLayer}`)) continue;
+    if (!source || !sourceLayer || !/place|city|municipal/i.test(`${id} ${sourceLayer}`)) continue;
     const key = `${source}\0${sourceLayer}`;
     if (pairs.has(key)) continue;
     pairs.add(key);
@@ -61,15 +61,32 @@ function nearestCityName(features: MapFeature[], coordinate: Coordinate): string
 
 function cityName(feature: MapFeature): string | null {
   const properties = feature.properties ?? {};
+  if (hasFineAdministrativeName(properties)) return null;
+
   const classification = [properties.place, properties.class, properties.kind, properties.type]
     .filter(value => typeof value === 'string')
     .join(' ')
     .toLowerCase();
   const layerHint = `${feature.sourceLayer ?? ''} ${feature.layer?.['source-layer'] ?? ''} ${feature.layer?.id ?? ''}`.toLowerCase();
-  if (/district|ward|borough|neighbou?rhood|suburb|quarter|village|hamlet|region|province|prefecture|state|county/.test(`${classification} ${layerHint}`)) return null;
-  if (!/(^|\s)(city|town|municipality)(\s|$)/.test(classification) && !/(city|town|municipal).*label|label.*(city|town|municipal)/.test(layerHint)) return null;
+  if (/district|ward|borough|neighbou?rhood|suburb|quarter|village|hamlet|town|region|province|prefecture|state|county/.test(`${classification} ${layerHint}`)) return null;
+  if (!/(^|\s)city(\s|$)/.test(classification) && !/city.*label|label.*city/.test(layerHint)) return null;
+
+  const name = preferredName(properties);
+  return name && !isFineAdministrativeName(name) ? name : null;
+}
+
+function preferredName(properties: Record<string, unknown>): string | null {
   const name = properties['name:ko'] ?? properties.name_ko ?? properties['name:en'] ?? properties.name_en ?? properties.name;
   return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+function hasFineAdministrativeName(properties: Record<string, unknown>): boolean {
+  return [properties['name:ko'], properties.name_ko, properties['name:ja'], properties.name_ja, properties.name]
+    .some(value => typeof value === 'string' && isFineAdministrativeName(value.trim()));
+}
+
+function isFineAdministrativeName(name: string): boolean {
+  return /(?:군|읍|면|동|리|가|로|길|마을|町|村|丁目)$/.test(name);
 }
 
 function featureDistanceKm(feature: MapFeature, coordinate: Coordinate): number | null {
