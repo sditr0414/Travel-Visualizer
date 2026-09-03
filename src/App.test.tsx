@@ -213,6 +213,13 @@ describe('App integration', () => {
     expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
+    expect(screen.getByLabelText('사진 경로 확대')).toHaveValue('AUTO');
+    expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1');
+    fireEvent.change(screen.getByLabelText('사진 경로 확대'), { target: { value: 'OFF' } });
+    expect(screen.queryByRole('slider', { name: '상세 확대 강도' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('사진 경로 확대'), { target: { value: 'AUTO' } });
+    fireEvent.change(screen.getByRole('slider', { name: '상세 확대 강도' }), { target: { value: '1.4' } });
+    expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1.4');
     expect(screen.getByLabelText('날짜 변경 표시')).toBeChecked();
     expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('1.8');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');

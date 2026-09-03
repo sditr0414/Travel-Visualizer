@@ -10,6 +10,8 @@ const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
 const TILE_ZOOM_HYSTERESIS = 0.07;
 const ZOOM_OFFSET_MIN = -1.5;
 const ZOOM_OFFSET_MAX = 1.5;
+const PHOTO_DETAIL_ZOOM_STRENGTH_MAX = 1.5;
+const PHOTO_JOURNEY_MAX_ZOOM_BOOST = 3.5;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -57,6 +59,7 @@ export class PlayerController {
   private raf: number | null = null;
   private lockToPosition = true;
   private zoomOffset = 0;
+  private photoDetailZoomStrength = 0;
   private displayedZoom: number | null = null;
   private displayedZoomTimelineSec = 0;
   private displayedFreeJourneyZoomBoost: number | null = null;
@@ -67,6 +70,7 @@ export class PlayerController {
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
   private stopDurationSec = 0;
+  private mediaStopDurationSec = 0;
   private fullRouteData: object = emptyCollection();
   private lastStopId: string | null = null;
   private stableFlightZooms = new Map<string, number>();
@@ -118,6 +122,16 @@ export class PlayerController {
 
   setZoomOffset(offset: number): void {
     this.zoomOffset = clamp(Number(offset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
+    this.displayedZoom = null;
+    this.displayedZoomTimelineSec = this.timeSec;
+    this.tileZoomLevel = null;
+    if (this.ownsCamera()) this.renderForTime(true);
+  }
+
+  setPhotoDetailZoomStrength(strength: number): void {
+    this.photoDetailZoomStrength = clamp(Number(strength) || 0, 0, PHOTO_DETAIL_ZOOM_STRENGTH_MAX);
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = this.timeSec;
     this.tileZoomLevel = null;
@@ -179,6 +193,7 @@ export class PlayerController {
     this.stops = [];
     this.stopSchedule = [];
     this.stopDurationSec = 0;
+    this.mediaStopDurationSec = 0;
     this.fullRouteData = emptyCollection();
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
@@ -260,7 +275,7 @@ export class PlayerController {
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
-      const journeyBoostTarget = photoJourneyZoomBoost(photoDistanceMeters, frame.mobilityClass);
+      const journeyBoostTarget = this.photoJourneyBoost(photoDistanceMeters, frame.mobilityClass);
       zoom = clamp(zoom + (this.lockToPosition
         ? journeyBoostTarget
         : this.stabilizeFreeJourneyZoomBoost(journeyBoostTarget, this.timeSec)), 4, 17.3);
@@ -305,8 +320,20 @@ export class PlayerController {
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
   }
 
+  private photoJourneyBoost(distanceMeters: number, mobilityClass: MobilityClass): number {
+    const baseBoost = photoJourneyZoomBoost(distanceMeters, mobilityClass);
+    if (!this.plan) return baseBoost;
+    return baseBoost + photoJourneyDetailZoomBoost(
+      this.plan.durationLimits?.extentKm ?? this.plan.durationLimits?.distanceKm ?? 0,
+      this.plan.durationSec,
+      this.mediaStopDurationSec,
+      this.photoDetailZoomStrength,
+      mobilityClass
+    );
+  }
+
   private stabilizeFreeJourneyZoomBoost(targetBoost: number, timelineSec: number): number {
-    const target = clamp(Number(targetBoost) || 0, 0, 2);
+    const target = clamp(Number(targetBoost) || 0, 0, PHOTO_JOURNEY_MAX_ZOOM_BOOST);
     if (this.displayedFreeJourneyZoomBoost === null || timelineSec + 0.001 < this.displayedFreeJourneyZoomBoostTimelineSec) {
       this.displayedFreeJourneyZoomBoost = target;
       this.displayedFreeJourneyZoomBoostTimelineSec = timelineSec;
@@ -328,7 +355,7 @@ export class PlayerController {
     const maxRate = zoomingOut ? 0.72 : 0.52;
     const easedStep = delta * (1 - Math.exp(-dt / tauSec));
     const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
-    this.displayedFreeJourneyZoomBoost = clamp(this.displayedFreeJourneyZoomBoost + step, 0, 2);
+    this.displayedFreeJourneyZoomBoost = clamp(this.displayedFreeJourneyZoomBoost + step, 0, PHOTO_JOURNEY_MAX_ZOOM_BOOST);
     return this.displayedFreeJourneyZoomBoost;
   }
 
@@ -399,7 +426,7 @@ export class PlayerController {
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
-      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+      zoom = clamp(zoom + this.photoJourneyBoost(photoDistanceMeters, frame.mobilityClass), 4, 17.3);
       const futureMediaStop = Boolean(mapped.activeStopId && !isDayMarkerId(mapped.activeStopId));
       if (futureMediaStop && frame.mobilityClass !== 'FLIGHT') {
         zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
@@ -423,6 +450,8 @@ export class PlayerController {
     this.stops = next.stops;
     this.stopSchedule = next.schedule;
     this.stopDurationSec = next.totalDurationSec;
+    this.mediaStopDurationSec = next.stops.reduce((sum, stop) =>
+      isDayMarkerId(stop.id) ? sum : sum + Math.max(0, Number(stop.durationSec) || 0), 0);
     if (!next.stops.length) {
       this.displayedFreeJourneyZoomBoost = null;
     this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
@@ -441,6 +470,26 @@ export function photoJourneyZoomBoost(distanceMeters: number, mobilityClass: Mob
   if (mobilityClass === 'FLIGHT') return 0;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
   return PHOTO_JOURNEY_BASE_ZOOM_BOOST + 1.08 * Math.exp(-distanceKm / 20);
+}
+
+export function photoJourneyDetailZoomBoost(
+  extentKm: number,
+  routeDurationSec: number,
+  mediaStopDurationSec: number,
+  strength: number,
+  mobilityClass: MobilityClass
+): number {
+  if (mobilityClass === 'FLIGHT') return 0;
+  const resolvedStrength = clamp(Number(strength) || 0, 0, PHOTO_DETAIL_ZOOM_STRENGTH_MAX);
+  const stopSeconds = Math.max(0, Number(mediaStopDurationSec) || 0);
+  if (!(resolvedStrength > 0) || !(stopSeconds > 0)) return 0;
+
+  const extent = Math.max(0, Number(extentKm) || 0);
+  const routeSeconds = Math.max(1, Number(routeDurationSec) || 1);
+  const dwellRatio = stopSeconds / routeSeconds;
+  const smallAreaFactor = Math.exp(-extent / 24);
+  const dwellFactor = 1 - Math.exp(-dwellRatio / 0.55);
+  return clamp(1.35 * smallAreaFactor * dwellFactor * resolvedStrength, 0, 1.8);
 }
 
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {

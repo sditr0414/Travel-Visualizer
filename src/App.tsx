@@ -71,6 +71,8 @@ export function App({ workerClient }: AppProps) {
   const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('PREVIEW');
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [photoDisplaySec, setPhotoDisplaySec] = useState(3);
+  const [photoDetailZoomMode, setPhotoDetailZoomMode] = useState<'AUTO' | 'OFF'>('AUTO');
+  const [photoDetailZoomStrength, setPhotoDetailZoomStrength] = useState(1);
   const [showDayMarkers, setShowDayMarkers] = useState(true);
   const [dayMarkerSec, setDayMarkerSec] = useState(1.8);
   const [videoMode, setVideoMode] = useState<'THUMBNAIL' | 'PLAY'>('PLAY');
@@ -215,6 +217,8 @@ export function App({ workerClient }: AppProps) {
       durationSec: item.kind === 'video' && videoMode === 'PLAY' ? videoMaxSec : photoDisplaySec
     }))
   ], [dayMarkerStops, media, photoDisplaySec, videoMaxSec, videoMode]);
+
+  const photoDetailZoom = photoDetailZoomMode === 'AUTO' ? photoDetailZoomStrength : 0;
 
   const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan, activatePhotoJourney = true) => {
     const operation = ++mediaOperationRef.current;
@@ -379,6 +383,7 @@ export function App({ workerClient }: AppProps) {
       });
       controller.setLockToPosition(lockToPosition);
       controller.setZoomOffset(zoomOffset);
+      controller.setPhotoDetailZoomStrength(mode === 'PHOTOS' ? photoDetailZoom : 0);
       controller.loadPlan(state.plan!, stops);
       return controller;
     };
@@ -405,6 +410,10 @@ export function App({ workerClient }: AppProps) {
     playersRef.current.ROUTE?.setZoomOffset(zoomOffset);
     playersRef.current.PHOTOS?.setZoomOffset(zoomOffset);
   }, [zoomOffset]);
+
+  useEffect(() => {
+    playersRef.current.PHOTOS?.setPhotoDetailZoomStrength(photoDetailZoom);
+  }, [photoDetailZoom]);
 
   useEffect(() => {
     if (!map?.scrollZoom) return;
@@ -723,6 +732,14 @@ export function App({ workerClient }: AppProps) {
             <label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
               <input type="range" min="1.5" max="8" step="0.5" value={photoDisplaySec} onChange={event => setPhotoDisplaySec(Number(event.target.value))} />
             </label>
+            <label className="select-field">사진 경로 확대
+              <select aria-label="사진 경로 확대" value={photoDetailZoomMode} onChange={event => setPhotoDetailZoomMode(event.target.value as 'AUTO' | 'OFF')}>
+                <option value="AUTO">좁은 지역 상세 확대 · 추천</option><option value="OFF">기본 확대만</option>
+              </select>
+            </label>
+            {photoDetailZoomMode === 'AUTO' && <label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
+              <input aria-label="상세 확대 강도" type="range" min="0.5" max="1.5" step="0.1" value={photoDetailZoomStrength} onChange={event => setPhotoDetailZoomStrength(Number(event.target.value))} />
+            </label>}
             <div className="toggle-list photo-day-toggle">
               <label><input type="checkbox" aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => setShowDayMarkers(event.target.checked)} /><span>날짜 변경 표시</span></label>
             </div>
