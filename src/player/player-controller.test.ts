@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost } from './player-controller';
+import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -75,6 +75,22 @@ describe('photo journey stops', () => {
     const nextPhotoTarget = Math.max(afterSecondRelease, photoStopZoomBoost(1_500, 0.15, 'WALK'));
     const resumed = smoothPhotoStopZoomBoost(afterSecondRelease, nextPhotoTarget, 0.1);
     expect(resumed).toBeGreaterThanOrEqual(afterSecondRelease);
+  });
+
+  it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
+    const heldBelow = stabilizeTileZoomBoundary(13.98, 14);
+    expect(heldBelow.level).toBe(14);
+    expect(heldBelow.zoom).toBeGreaterThanOrEqual(14);
+
+    const releasedDown = stabilizeTileZoomBoundary(13.91, 14);
+    expect(releasedDown).toEqual({ zoom: 13.91, level: 13 });
+
+    const heldAbove = stabilizeTileZoomBoundary(14.02, 13);
+    expect(heldAbove.level).toBe(13);
+    expect(heldAbove.zoom).toBeLessThan(14);
+
+    const releasedUp = stabilizeTileZoomBoundary(14.08, 13);
+    expect(releasedUp).toEqual({ zoom: 14.08, level: 14 });
   });
 
   it('centers current-position tracking on the interpolated route head instead of an offset locked center', () => {
