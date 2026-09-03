@@ -63,7 +63,7 @@ export function App({ workerClient }: AppProps) {
   const [includeFlights, setIncludeFlights] = useState(true);
   const [targetDurationSec, setTargetDurationSec] = useState(0);
   const [cameraMode, setCameraMode] = useState<CameraMode>('AUTO');
-  const [zoomOffset, setZoomOffset] = useState(0.7);
+  const [zoomOffset, setZoomOffset] = useState(0);
   const [pacingMode, setPacingMode] = useState<PacingMode>('LOCAL_DAYS');
   const [lockToPosition, setLockToPosition] = useState(true);
   const [trackingSpeed, setTrackingSpeed] = useState(1);
@@ -380,6 +380,7 @@ export function App({ workerClient }: AppProps) {
       });
       controller.setLockToPosition(lockToPosition);
       controller.setTrackingSpeed(trackingSpeed);
+      controller.setZoomOffset(zoomOffset);
       controller.loadPlan(state.plan!, stops);
       return controller;
     };
@@ -406,6 +407,11 @@ export function App({ workerClient }: AppProps) {
     playersRef.current.ROUTE?.setTrackingSpeed(trackingSpeed);
     playersRef.current.PHOTOS?.setTrackingSpeed(trackingSpeed);
   }, [trackingSpeed]);
+
+  useEffect(() => {
+    playersRef.current.ROUTE?.setZoomOffset(zoomOffset);
+    playersRef.current.PHOTOS?.setZoomOffset(zoomOffset);
+  }, [zoomOffset]);
 
   useEffect(() => {
     if (!map?.scrollZoom) return;
@@ -568,7 +574,9 @@ export function App({ workerClient }: AppProps) {
     : Math.max(0, targetDurationSec);
   const durationControlValue = targetDurationSec > 0
     ? targetDurationSec
-    : state.plan ? roundDurationStep(state.plan.durationSec) : 45;
+    : state.plan
+      ? midpointDurationControlValue(state.plan.durationLimits.minSeconds, state.plan.durationLimits.maxSeconds)
+      : midpointDurationControlValue(45, 300);
   const playbackChromeClass = state.phase === 'playing'
     ? playbackChrome.visible ? 'playback-chrome-visible' : 'playback-chrome-hidden'
     : 'playback-chrome-visible';
@@ -767,7 +775,7 @@ export function App({ workerClient }: AppProps) {
           </section>
 
           <label className="range-field">
-            <span><span>경로 재생 길이</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동 계산'}</output></span>
+            <span><span>경로 재생 길이</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '중앙값'}</output></span>
             <input
               type="range"
               min={state.plan?.durationLimits.minSeconds ?? 45}
@@ -879,6 +887,12 @@ function formatClock(seconds: number): string {
 
 function roundDurationStep(seconds: number): number {
   return Math.max(5, Math.round((Number(seconds) || 0) / 5) * 5);
+}
+
+function midpointDurationControlValue(minSeconds: number, maxSeconds: number): number {
+  const min = Math.max(5, Number(minSeconds) || 5);
+  const max = Math.max(min, Number(maxSeconds) || min);
+  return Math.min(max, Math.max(min, roundDurationStep((min + max) / 2)));
 }
 
 function formatSigned(value: number): string {
