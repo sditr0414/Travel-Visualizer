@@ -1,5 +1,5 @@
 import { durationLimitsForMovements, planPlayback } from '../camera-planner.js';
-import { applyCameraMode } from '../camera-modes.js';
+import { applyCameraMode, ZOOM_OFFSET_MAX, ZOOM_OFFSET_MIN } from '../camera-modes.js';
 import type { AnalysisOptions, DurationLimits, Movement, PlaybackPlan, TravelFrame } from '../types';
 
 const AUTO_ZOOM_BIAS = 0.28;
@@ -21,12 +21,18 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
     selectedDays
   }) as PlaybackPlan;
 
+  // User map zoom is a presentation-level camera preference. Keep the planned
+  // trajectory neutral so the same offset can be applied consistently to
+  // TRAVEL, FLIGHT, and OUTRO frames by PlayerController without double-counting
+  // after a re-plan.
+  const resolvedZoomOffset = clampZoomOffset(options.zoomOffset);
   const plan = applyCameraMode(basePlan, {
     mode: options.cameraMode,
-    zoomOffset: options.zoomOffset,
+    zoomOffset: 0,
     viewportWidth: options.viewportWidth,
     viewportHeight: options.viewportHeight
   });
+  plan.zoomOffset = resolvedZoomOffset;
 
   if (plan.cameraMode !== 'AUTO') return plan;
   for (const frame of plan.frames) {
@@ -59,6 +65,11 @@ function inclusiveDays(startDate: string, endDate: string): number {
 
 function clampZoom(value: number): number {
   return Math.min(17.3, Math.max(4, value));
+}
+
+function clampZoomOffset(value: number): number {
+  const numeric = Number(value) || 0;
+  return Math.min(ZOOM_OFFSET_MAX, Math.max(ZOOM_OFFSET_MIN, numeric));
 }
 
 function reconnectOverview(plan: PlaybackPlan): void {
