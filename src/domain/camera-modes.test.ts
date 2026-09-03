@@ -28,6 +28,23 @@ describe('restored camera modes', () => {
     expect(result.autoLockedCloserBias).toBe(0.46);
   });
 
+  it('does not bleed zoom anticipation across intentional scene cuts', () => {
+    const disconnected: Movement[] = [
+      movement(startMs, 12, { lat: 34.69, lng: 135.50 }, { lat: 34.70, lng: 135.51 }, 1.4, 'WALKING'),
+      movement(startMs + 20 * 60_000, 50, { lat: 35.68, lng: 139.76 }, { lat: 36.10, lng: 140.10 }, 80, 'IN_TRAIN')
+    ];
+    const result = buildPlaybackPlan(disconnected, {
+      startDate: '2026-03-20', endDate: '2026-03-20', includeFlights: true,
+      targetDurationSec: 60, viewportWidth: 1100, viewportHeight: 700,
+      cameraMode: 'SEGMENT', zoomOffset: 0, pacingMode: 'LOCAL_DAYS'
+    });
+    const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');
+    const boundary = frames.findIndex((frame, index) => index > 0 && frame.sceneId !== frames[index - 1].sceneId);
+    expect(boundary).toBeGreaterThan(0);
+    expect(frames[boundary].sceneBreak).toBe(true);
+    expect(frames[boundary].zoom).toBeCloseTo(frames[boundary].modeTargetZoom ?? frames[boundary].zoom, 6);
+  });
+
   it('does not repeatedly reverse zoom direction over short intervals', () => {
     const result = plan('AUTO');
     const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');

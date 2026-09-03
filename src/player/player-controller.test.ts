@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary, trackingDemandPxPerSec } from './player-controller';
+import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -161,7 +161,8 @@ describe('photo journey stops', () => {
     expect(jumpTo).toHaveBeenCalledTimes(1);
   });
 
-  it('scales non-locked tracking demand with the effective camera zoom', () => {
+
+  it('uses the planned cinematic center directly when current-position tracking is disabled', () => {
     const plan = simplePlan();
     const first = plan.frames[0];
     const outro = plan.frames[1];
@@ -170,26 +171,97 @@ describe('photo journey stops', () => {
     plan.frames = [
       {
         ...first,
-        sceneId: 0,
-        center: { lat: 37.5, lng: 127 },
         position: { lat: 37.5, lng: 127 },
-        zoom: 10
+        center: { lat: 37.7, lng: 127.3 },
+        zoom: 11
       },
       {
         ...first,
         timeSec: 0.25,
-        sceneId: 0,
-        center: { lat: 37.51, lng: 127.01 },
+        progress: 0.5,
         position: { lat: 37.51, lng: 127.01 },
-        zoom: 10
+        center: { lat: 37.71, lng: 127.31 },
+        zoom: 11
       },
       outro
     ];
 
-    const neutral = trackingDemandPxPerSec(plan, 0, 0);
-    const zoomed = trackingDemandPxPerSec(plan, 0, 1);
-    expect(neutral).toBeGreaterThan(0);
-    expect(zoomed).toBeCloseTo(neutral * 2, 5);
+    const jumpTo = vi.fn();
+    const map = { getSource: () => ({ setData: vi.fn() }), jumpTo } as unknown as Map;
+    const controller = new PlayerController(map);
+    controller.setLockToPosition(false);
+    controller.loadPlan(plan);
+    controller.seek(0.125);
+
+    const camera = jumpTo.mock.calls.at(-1)?.[0] as { center: [number, number] };
+    expect(camera.center[0]).toBeCloseTo(127.305, 3);
+    expect(camera.center[1]).toBeCloseTo(37.705, 3);
+  });
+
+  it('replays planned free-camera zoom without a second runtime lag filter', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    plan.fps = 4;
+    plan.durationSec = 0.5;
+    plan.frames = [
+      { ...first, sceneId: 0, zoom: 10, lockedZoom: 10 },
+      { ...first, timeSec: 0.25, progress: 0.5, sceneId: 0, zoom: 14, lockedZoom: 14 },
+      { ...outro, timeSec: 0.5 }
+    ];
+
+    const jumpTo = vi.fn();
+    const map = { getSource: () => ({ setData: vi.fn() }), jumpTo } as unknown as Map;
+    let scheduled: FrameRequestCallback | null = null;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      scheduled = callback;
+      return 1;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const controller = new PlayerController(map);
+    try {
+      controller.setLockToPosition(false);
+      controller.loadPlan(plan);
+      controller.play();
+      expect(scheduled).not.toBeNull();
+      (scheduled as unknown as FrameRequestCallback)(125);
+      const camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+      expect(camera.zoom).toBeCloseTo(12, 4);
+    } finally {
+      controller.pause();
+      now.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps unlocked flight on the planned cinematic zoom while locked flight stays stable', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    plan.fps = 4;
+    plan.frames = [
+      { ...first, mobilityClass: 'FLIGHT', sceneId: 0, zoom: 8, lockedZoom: 8 },
+      { ...first, timeSec: 0.25, progress: 0.5, mobilityClass: 'FLIGHT', sceneId: 0, zoom: 10, lockedZoom: 10 },
+      outro
+    ];
+
+    const unlockedJumpTo = vi.fn();
+    const unlockedMap = { getSource: () => ({ setData: vi.fn() }), jumpTo: unlockedJumpTo } as unknown as Map;
+    const unlocked = new PlayerController(unlockedMap);
+    unlocked.setLockToPosition(false);
+    unlocked.loadPlan(plan);
+    unlocked.seek(0.125);
+    expect((unlockedJumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom).toBeCloseTo(9, 5);
+
+    const lockedJumpTo = vi.fn();
+    const lockedMap = { getSource: () => ({ setData: vi.fn() }), jumpTo: lockedJumpTo } as unknown as Map;
+    const locked = new PlayerController(lockedMap);
+    locked.loadPlan(plan);
+    locked.seek(0.125);
+    expect((lockedJumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom).toBeCloseTo(8, 5);
   });
 
   it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
