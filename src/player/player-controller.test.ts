@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
+import { PlayerController, applyLiveZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -75,6 +75,12 @@ describe('photo journey stops', () => {
     const nextPhotoTarget = Math.max(afterSecondRelease, photoStopZoomBoost(1_500, 0.15, 'WALK'));
     const resumed = smoothPhotoStopZoomBoost(afterSecondRelease, nextPhotoTarget, 0.1);
     expect(resumed).toBeGreaterThanOrEqual(afterSecondRelease);
+  });
+
+  it('applies live zoom changes relative to the planned offset even for short playback', () => {
+    expect(applyLiveZoomOffset(11, 1.2, 0, 'ROAD')).toBeCloseTo(12.2, 5);
+    expect(applyLiveZoomOffset(11, 1.2, 1.2, 'ROAD')).toBeCloseTo(11, 5);
+    expect(applyLiveZoomOffset(8, 1.2, 0, 'FLIGHT')).toBe(8);
   });
 
   it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
