@@ -85,7 +85,8 @@ describe('App integration', () => {
 
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 기간')).toBeInTheDocument();
-    expect(screen.getByRole('slider', { name: '지도 확대' })).toHaveValue('0');
+    const zoomSlider = screen.getAllByRole('slider').find(element => element.getAttribute('min') === '-1.5');
+    expect(zoomSlider).toHaveValue('0');
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
     fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
