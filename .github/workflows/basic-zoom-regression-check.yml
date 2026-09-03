@@ -1,0 +1,22 @@
+name: basic-zoom-regression-check
+
+on:
+  push:
+    branches: [ai/fix-map-zoom-application]
+
+permissions:
+  contents: read
+
+jobs:
+  basic-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run src/domain/planner.test.ts src/player/player-controller.test.ts src/App.test.tsx
