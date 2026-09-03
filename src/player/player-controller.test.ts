@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
+import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary, trackingDemandPxPerSec } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -116,6 +116,80 @@ describe('photo journey stops', () => {
     flightController.loadPlan(flightPlan);
     camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
     expect(camera.zoom).toBeCloseTo(9.2, 5);
+  });
+
+  it('applies zoom-out after photo journey boosts so lower clamping does not cancel the user setting', () => {
+    const jumpTo = vi.fn();
+    const map = {
+      getSource: () => ({ setData: vi.fn() }),
+      jumpTo
+    } as unknown as Map;
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    if (first.kind !== 'TRAVEL') throw new Error('fixture shape changed');
+    first.zoom = 4.2;
+    first.lockedZoom = 4.2;
+
+    const controller = new PlayerController(map);
+    controller.setZoomOffset(-1.5);
+    controller.loadPlan(plan, [{ id: 'photo', atSec: 0, durationSec: 1 }]);
+
+    const camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+    const photoBaseZoom = photoJourneyZoom(4.2, plan.segments[0].distanceMeters, first.mobilityClass);
+    expect(camera.zoom).toBeCloseTo(applyUserZoomOffset(photoBaseZoom, -1.5), 5);
+  });
+
+  it('does not let an inactive journey controller overwrite the shared map on zoom preference changes', () => {
+    const jumpTo = vi.fn();
+    const map = {
+      getSource: () => ({ setData: vi.fn() }),
+      jumpTo
+    } as unknown as Map;
+    const routeController = new PlayerController(map);
+    const photoController = new PlayerController(map);
+    routeController.loadPlan(simplePlan());
+    photoController.loadPlan(simplePlan(), [{ id: 'photo', atSec: 0, durationSec: 1 }]);
+    routeController.seek(0);
+    jumpTo.mockClear();
+
+    routeController.setZoomOffset(1);
+    const activeCamera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+    expect(activeCamera.zoom).toBeCloseTo(13, 5);
+    expect(jumpTo).toHaveBeenCalledTimes(1);
+
+    photoController.setZoomOffset(1);
+    expect(jumpTo).toHaveBeenCalledTimes(1);
+  });
+
+  it('scales non-locked tracking demand with the effective camera zoom', () => {
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+    plan.fps = 4;
+    plan.frames = [
+      {
+        ...first,
+        sceneId: 0,
+        center: { lat: 37.5, lng: 127 },
+        position: { lat: 37.5, lng: 127 },
+        zoom: 10
+      },
+      {
+        ...first,
+        timeSec: 0.25,
+        sceneId: 0,
+        center: { lat: 37.51, lng: 127.01 },
+        position: { lat: 37.51, lng: 127.01 },
+        zoom: 10
+      },
+      outro
+    ];
+
+    const neutral = trackingDemandPxPerSec(plan, 0, 0);
+    const zoomed = trackingDemandPxPerSec(plan, 0, 1);
+    expect(neutral).toBeGreaterThan(0);
+    expect(zoomed).toBeCloseTo(neutral * 2, 5);
   });
 
   it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
