@@ -205,7 +205,7 @@ describe('App integration', () => {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
-    await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '5.8'));
+    await waitFor(() => expect(screen.getByLabelText('재생 위치')).toHaveAttribute('max', '6.5'));
     expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
     expect(screen.getByText('도보')).toBeInTheDocument();
     expect(screen.getByText('12 km/h')).toBeInTheDocument();
@@ -214,7 +214,7 @@ describe('App integration', () => {
     const playerStatus = screen.getByLabelText('재생 컨트롤').querySelector('.player-status');
     expect(playerStatus).toBeEmptyDOMElement();
     expect(playerStatus?.previousElementSibling).toHaveTextContent('0:00');
-    expect(playerStatus?.nextElementSibling).toHaveTextContent('0:06');
+    expect(playerStatus?.nextElementSibling).toHaveTextContent('0:07');
     const separator = screen.getByRole('separator', { name: '경로와 사진 영역 크기 조절' });
     expect(separator).toHaveAttribute('aria-valuenow', '38');
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
@@ -233,9 +233,10 @@ describe('App integration', () => {
     fireEvent.change(screen.getByRole('slider', { name: '상세 확대 강도' }), { target: { value: '1.4' } });
     expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1.4');
     expect(screen.getByLabelText('날짜 변경 표시')).toBeChecked();
-    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('1.8');
+    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('2.5');
     expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('min', '1');
     expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('max', '5');
+    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('step', '0.5');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
     expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });

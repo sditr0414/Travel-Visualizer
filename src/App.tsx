@@ -83,7 +83,7 @@ export function App({ workerClient }: AppProps) {
   const [photoDetailZoomMode, setPhotoDetailZoomMode] = useState<'AUTO' | 'OFF'>('AUTO');
   const [photoDetailZoomStrength, setPhotoDetailZoomStrength] = useState(1);
   const [showDayMarkers, setShowDayMarkers] = useState(true);
-  const [dayMarkerSec, setDayMarkerSec] = useState(1.8);
+  const [dayMarkerSec, setDayMarkerSec] = useState(2.5);
   const [videoMode, setVideoMode] = useState<'THUMBNAIL' | 'PLAY'>('PLAY');
   const [videoMuted, setVideoMuted] = useState(true);
   const [videoMaxSec, setVideoMaxSec] = useState(5);
@@ -771,7 +771,7 @@ export function App({ workerClient }: AppProps) {
               <label><input type="checkbox" aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => setShowDayMarkers(event.target.checked)} /><span>날짜 변경 표시</span></label>
             </div>
             {showDayMarkers && <label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
-              <input aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.2" value={dayMarkerSec} onChange={event => setDayMarkerSec(Number(event.target.value))} />
+              <input aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => setDayMarkerSec(Number(event.target.value))} />
             </label>}
             <label className="select-field">영상 재생
               <select aria-label="영상 재생" value={videoMode} onChange={event => setVideoMode(event.target.value as 'THUMBNAIL' | 'PLAY')}>
