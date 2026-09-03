@@ -9,6 +9,8 @@ const TILE_SIZE = 512;
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
 const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
 const TILE_ZOOM_HYSTERESIS = 0.07;
+const ZOOM_OFFSET_MIN = -1.5;
+const ZOOM_OFFSET_MAX = 1.5;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -54,6 +56,7 @@ export class PlayerController {
   private raf: number | null = null;
   private lockToPosition = true;
   private trackingSpeed = 1;
+  private zoomOffset = 0;
   private trackedCenter: Coordinate | null = null;
   private displayedZoom: number | null = null;
   private displayedZoomTimelineSec = 0;
@@ -112,6 +115,14 @@ export class PlayerController {
 
   setTrackingSpeed(multiplier: number): void {
     this.trackingSpeed = clamp(Number(multiplier) || 1, 0.5, 2);
+  }
+
+  setZoomOffset(offset: number): void {
+    this.zoomOffset = clamp(Number(offset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
+    this.displayedZoom = null;
+    this.displayedZoomTimelineSec = this.timeSec;
+    this.tileZoomLevel = null;
+    this.renderForTime(true);
   }
 
   getDuration(): number {
@@ -240,6 +251,8 @@ export class PlayerController {
     }
     if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT') {
       zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
+    } else if (frame.kind === 'TRAVEL') {
+      zoom = applyLiveZoomOffset(zoom, this.zoomOffset, this.plan.zoomOffset, frame.mobilityClass);
     }
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
@@ -339,6 +352,8 @@ export class PlayerController {
       }
       if (frame.mobilityClass === 'FLIGHT') {
         zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
+      } else {
+        zoom = applyLiveZoomOffset(zoom, this.zoomOffset, this.plan.zoomOffset, frame.mobilityClass);
       }
       if (this.stops.length) {
         const segment = this.plan.segments[frame.segmentIndex];
@@ -385,6 +400,13 @@ export class PlayerController {
       this.displayedPhotoStopBoostTimelineSec = this.timeSec;
     }
   }
+}
+
+export function applyLiveZoomOffset(baseZoom: number, currentOffset: number, plannedOffset: number | undefined, mobilityClass: MobilityClass): number {
+  if (mobilityClass === 'FLIGHT') return clamp(Number(baseZoom) || 0, 4, 17.3);
+  const current = clamp(Number(currentOffset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
+  const planned = clamp(Number(plannedOffset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
+  return clamp((Number(baseZoom) || 0) + current - planned, 4, 17.3);
 }
 
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
