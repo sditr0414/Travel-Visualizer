@@ -4,7 +4,26 @@
 
 ## 빠른 시작
 
-Node.js 24 이상이 필요합니다.
+Node.js 24 이상이 필요합니다. Windows에서는 저장소를 한 번 준비한 뒤부터 명령어를 직접 입력하지 않아도 됩니다.
+
+### Windows 권장: 더블클릭 실행
+
+1. 저장소 루트의 `Install-TravelCamera-Shortcut.cmd`를 한 번 실행합니다.
+2. 바탕 화면에 생성된 **Travel Camera Visualizer** 바로가기를 더블클릭합니다.
+3. 런처가 안전한 경우 `main`을 최신 상태로 fast-forward 업데이트하고, `package-lock.json`이 바뀌었거나 `node_modules`가 없을 때만 `npm ci`를 실행합니다.
+4. 로컬 서버가 준비되면 브라우저에서 `http://127.0.0.1:5517`을 자동으로 엽니다.
+
+바탕 화면 바로가기를 만들지 않아도 저장소 루트의 `TravelCamera.cmd`를 더블클릭하면 같은 방식으로 실행됩니다.
+
+런처는 작업 중인 코드를 보호합니다. 현재 브랜치가 `main`이 아니거나 추적 중인 로컬 수정이 있으면 `git pull`을 자동으로 실행하지 않고 현재 작업 트리 그대로 앱을 시작합니다. 네트워크 문제로 업데이트에 실패해도 기존 로컬 버전으로 계속 실행합니다.
+
+개발 중 자동 업데이트를 원하지 않으면 터미널에서 다음을 사용할 수 있습니다.
+
+```powershell
+npm run launch:no-update
+```
+
+기존 수동 실행도 계속 지원합니다.
 
 ```powershell
 npm ci
@@ -29,7 +48,7 @@ $env:TRAVEL_MEDIA_DIR = 'D:\My Travel\photos'
 npm start
 ```
 
-기본 포트를 바꾸려면 `npm start -- --port 5520` 또는 `$env:PORT=5520`을 사용합니다.
+기본 포트를 바꾸려면 `npm start -- --port 5520`, `npm run launch -- --port 5520` 또는 `$env:PORT=5520`을 사용합니다.
 
 ## 주요 기능
 
@@ -74,6 +93,8 @@ npm run map:setup
 - `src/media/`: sidecar·EXIF·QuickTime 분석, Timeline 매칭, 사진 여정 구성
 - `src/map/`: MapLibre와 온라인·PMTiles 지도 스타일
 - `server.mjs`: 로컬 정적 서버, Timeline·미디어·PMTiles Range 제공, 메타데이터 캐시
+- `scripts/launch-local.mjs`: 안전한 `main` 업데이트, lockfile 기반 의존성 동기화, 서버 시작, 브라우저 자동 열기
+- `TravelCamera.cmd`: Windows 더블클릭 런처
 
 로컬 서버의 API는 `/api/map-status`, `/api/local-timeline`, `/api/local-media-manifest`, `/api/local-media/:id`, `/api/local-media-metadata-cache`로 제한됩니다.
 

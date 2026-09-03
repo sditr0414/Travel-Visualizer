@@ -7,6 +7,8 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
+    "launch": "node scripts/launch-local.mjs",
+    "launch:no-update": "node scripts/launch-local.mjs --no-update",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint src e2e server.mjs scripts --max-warnings=0",

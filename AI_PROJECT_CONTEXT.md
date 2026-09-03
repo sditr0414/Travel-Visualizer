@@ -45,6 +45,7 @@ Local media manifest
 - QuickTime 스캔: 큰 영상 전체를 읽지 않고 앞·뒤 최대 1MB씩에서 Apple `creationdate`, `location.ISO6709`, `mvhd` 생성 시각을 확인
 - 캐시: `.cache/media-metadata.json`, 파일 fingerprint와 parser version으로 무효화
 - 서버: `127.0.0.1` 전용 Vite/정적 서버와 제한된 로컬 API
+- Windows 개발 런처: 저장소 루트의 `TravelCamera.cmd` 또는 바탕 화면 바로가기가 `scripts/launch-local.mjs`를 실행한다. `main`이면서 추적 중인 로컬 수정이 없을 때만 `git pull --ff-only origin main`으로 안전하게 갱신하고, `package-lock.json` SHA-256이 마지막 실행과 달라졌거나 `node_modules`가 없을 때만 `npm ci`를 수행한 뒤 로컬 서버를 시작하고 브라우저를 연다. 다른 브랜치/로컬 수정/네트워크 실패에서는 업데이트를 건너뛰고 현재 작업 트리를 그대로 실행한다.
 
 ## Contracts
 
@@ -80,7 +81,7 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 - 여행 기간 설정은 하나의 `여행 기간` 그룹으로 묶고 현재 선택 범위를 한 줄로 보여준다. `추천 기간`과 Timeline 전체 범위를 즉시 선택하는 `전체 기간` 프리셋을 제공한다. 시작일과 마지막 날은 좁은 3열 구조가 아니라 **서로 같은 폭의 전체 너비 2행**으로 배치한다. native date input의 날짜 텍스트는 키보드로 직접 수정할 수 있고 달력 indicator의 클릭 영역도 넉넉하게 유지한다. 설정 패널의 주요 라벨·입력·버튼은 작은 보조 텍스트가 되지 않도록 한 단계 크게 유지한다.
 - 발자취/사진 여정의 설정 패널은 scrollbar 유무 때문에 실제 콘텐츠 폭이 달라지지 않도록 `scrollbar-gutter: stable`을 사용해 scrollbar 공간을 예약한다.
 - 사진 여정의 `사진 표시 범위` 기본값은 **미리보기**이며 사용자가 필요할 때 전체 보기로 바꾼다.
-- 사진 여정의 `날짜 변경 표시` 기본값은 **켜짐**이다. 켜져 있을 때만 `날짜 표시 시간` slider를 표시하며 현재 범위는 **1.0~3.5초**, 기본값은 **1.8초**다. 첫 여행일도 날짜 카드로 한 번 표시하고, 이후 실제 `TRAVEL` frame의 날짜가 **Asia/Seoul 기준으로 바뀌는 지점마다** 날짜 marker stop을 추가한다. 날짜 marker와 사진 stop이 같은 route time이면 날짜 marker가 사진보다 먼저 나오며, 날짜 marker의 표시 시간도 사진 여정 전체 재생 시간에 포함한다. 날짜 장면은 `여행 N일차` / `YYYY년 M월 D일` / `요일`을 큰 카드로 표시한다. `__day__:` marker는 실제 사진이 아니므로 media bridge가 직전 사진을 계속 유지해 날짜 카드를 덮어서는 안 된다.
+- 사진 여정의 `날짜 변경 표시` 기본값은 **켜짐**이다. 켜져 있을 때만 `날짜 표시 시간` slider를 표시하며 현재 범위는 **1.0~5.0초**, 기본값은 **2.5초**, step은 **0.5초**다. 첫 여행일도 날짜 카드로 한 번 표시하고, 이후 실제 `TRAVEL` frame의 날짜가 **Asia/Seoul 기준으로 바뀌는 지점마다** 날짜 marker stop을 추가한다. 날짜 marker와 사진 stop이 같은 route time이면 날짜 marker가 사진보다 먼저 나오며, 날짜 marker의 표시 시간도 사진 여정 전체 재생 시간에 포함한다. 날짜 장면은 `여행 N일차` / `YYYY년 M월 D일` / `요일`을 큰 카드로 표시한다. `__day__:` marker는 실제 사진이 아니므로 media bridge가 직전 사진을 계속 유지해 날짜 카드를 덮어서는 안 된다.
 - 사진 여정에 들어갈 때 경로 영역은 허용된 최소 크기(데스크톱 38%, 모바일 34%)로 시작하고 사용자가 분할 핸들로 다시 확장할 수 있다.
 - 접힌 여행 설정 버튼은 사진을 가리지 않도록 상단 바 높이에 두고, Timeline 선택 버튼과 시각적으로 분리된 간격을 유지한다.
 - 모바일에서도 지도와 핵심 조작을 우선한다.
@@ -149,10 +150,12 @@ Worker 요청은 `SCAN_TIMELINE`, `PLAN_TRIP`, `CANCEL`을 사용합니다. 플�
 ## Commands
 
 ```powershell
+npm run launch
+npm run launch:no-update
 npm start
 npm run verify
 npm run test:e2e
 npm run map:setup
 ```
 
-실제 데이터 없이 typecheck, lint, 단위·통합 테스트, build, 데스크톱·모바일 E2E가 모두 통과해야 합니다. 단, 사용자가 수정 단계에서 전체 테스트를 요청하지 않은 경우에는 관련 typecheck/단위 테스트만 먼저 실행하고 전체 verify/E2E는 별도 요청 시 진행합니다.
+Windows의 일상 실행은 `TravelCamera.cmd` 또는 `npm run launch`를 우선 사용합니다. `npm run launch:no-update`는 개발 중 현재 브랜치/작업 트리를 그대로 실행하고 싶을 때 사용합니다. 실제 데이터 없이 typecheck, lint, 단위·통합 테스트, build, 데스크톱·모바일 E2E가 모두 통과해야 합니다. 단, 사용자가 수정 단계에서 전체 테스트를 요청하지 않은 경우에는 관련 typecheck/단위 테스트만 먼저 실행하고 전체 verify/E2E는 별도 요청 시 진행합니다.
