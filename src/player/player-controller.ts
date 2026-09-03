@@ -251,9 +251,8 @@ export class PlayerController {
     }
     if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT') {
       zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
-    } else if (frame.kind === 'TRAVEL') {
-      zoom = applyLiveZoomOffset(zoom, this.zoomOffset, this.plan.zoomOffset, frame.mobilityClass);
     }
+    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
@@ -352,17 +351,16 @@ export class PlayerController {
       }
       if (frame.mobilityClass === 'FLIGHT') {
         zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
-      } else {
-        zoom = applyLiveZoomOffset(zoom, this.zoomOffset, this.plan.zoomOffset, frame.mobilityClass);
       }
-      if (this.stops.length) {
-        const segment = this.plan.segments[frame.segmentIndex];
-        const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
-        zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
-        const futureMediaStop = Boolean(mapped.activeStopId && !isDayMarkerId(mapped.activeStopId));
-        if (futureMediaStop && frame.mobilityClass !== 'FLIGHT') {
-          zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
-        }
+    }
+    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
+    if (frame.kind === 'TRAVEL' && this.stops.length) {
+      const segment = this.plan.segments[frame.segmentIndex];
+      const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
+      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+      const futureMediaStop = Boolean(mapped.activeStopId && !isDayMarkerId(mapped.activeStopId));
+      if (futureMediaStop && frame.mobilityClass !== 'FLIGHT') {
+        zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
       }
     }
 
@@ -376,7 +374,7 @@ export class PlayerController {
       return this.trackedCenter;
     }
     const current = mercatorProject(this.trackedCenter);
-    const scale = TILE_SIZE * 2 ** frame.zoom;
+    const scale = TILE_SIZE * 2 ** applyUserZoomOffset(frame.zoom, this.zoomOffset);
     const dxPx = (target.x - current.x) * scale;
     const dyPx = (target.y - current.y) * scale;
     const lagPx = Math.hypot(dxPx, dyPx);
@@ -402,11 +400,9 @@ export class PlayerController {
   }
 }
 
-export function applyLiveZoomOffset(baseZoom: number, currentOffset: number, plannedOffset: number | undefined, mobilityClass: MobilityClass): number {
-  if (mobilityClass === 'FLIGHT') return clamp(Number(baseZoom) || 0, 4, 17.3);
+export function applyUserZoomOffset(baseZoom: number, currentOffset: number): number {
   const current = clamp(Number(currentOffset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
-  const planned = clamp(Number(plannedOffset) || 0, ZOOM_OFFSET_MIN, ZOOM_OFFSET_MAX);
-  return clamp((Number(baseZoom) || 0) + current - planned, 4, 17.3);
+  return clamp((Number(baseZoom) || 0) + current, 4, 17.3);
 }
 
 export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
