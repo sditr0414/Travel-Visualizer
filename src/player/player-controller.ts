@@ -5,7 +5,6 @@ import { isDayMarkerId } from '../media/day-markers';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 import { heldMediaStopId } from './media-bridge';
 
-const TILE_SIZE = 512;
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
 const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
 const TILE_ZOOM_HYSTERESIS = 0.07;
@@ -57,11 +56,11 @@ export class PlayerController {
   private framePosition = -1;
   private raf: number | null = null;
   private lockToPosition = true;
-  private trackingSpeed = 1;
   private zoomOffset = 0;
-  private trackedCenter: Coordinate | null = null;
   private displayedZoom: number | null = null;
   private displayedZoomTimelineSec = 0;
+  private displayedFreeJourneyZoomBoost: number | null = null;
+  private displayedFreeJourneyZoomBoostTimelineSec = 0;
   private displayedPhotoStopBoost: number | null = null;
   private displayedPhotoStopBoostTimelineSec = 0;
   private tileZoomLevel: number | null = null;
@@ -80,9 +79,10 @@ export class PlayerController {
     this.timeSec = 0;
     this.frameIndex = -1;
     this.framePosition = -1;
-    this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
     this.tileZoomLevel = null;
@@ -109,14 +109,11 @@ export class PlayerController {
 
   setLockToPosition(enabled: boolean): void {
     this.lockToPosition = enabled;
-    this.trackedCenter = null;
     this.displayedZoom = null;
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.tileZoomLevel = null;
     if (this.ownsCamera()) this.renderForTime(true);
-  }
-
-  setTrackingSpeed(multiplier: number): void {
-    this.trackingSpeed = clamp(Number(multiplier) || 1, 0.5, 2);
   }
 
   setZoomOffset(offset: number): void {
@@ -149,9 +146,10 @@ export class PlayerController {
     if (!this.plan) return;
     this.timeSec = Math.max(0, Math.min(this.getDuration(), Number(seconds) || 0));
     this.startedAt = performance.now() - this.timeSec * 1000;
-    this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = this.timeSec;
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = this.timeSec;
     this.tileZoomLevel = null;
@@ -163,9 +161,10 @@ export class PlayerController {
     this.timeSec = 0;
     this.frameIndex = -1;
     this.framePosition = -1;
-    this.trackedCenter = null;
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
     this.tileZoomLevel = null;
@@ -183,6 +182,8 @@ export class PlayerController {
     this.fullRouteData = emptyCollection();
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = 0;
+    this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
     this.tileZoomLevel = null;
@@ -244,21 +245,25 @@ export class PlayerController {
     let zoom = frame.zoom;
     if (frame.kind !== 'TRAVEL') {
       center = frame.center;
-      this.trackedCenter = null;
     } else if (this.lockToPosition) {
       center = frame.position;
       zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
-      this.trackedCenter = { ...frame.position };
     } else {
-      center = this.followCamera(frame, baseIndex, force || frame.sceneBreak);
+      // The planner already solves a scene-aware cinematic camera path. Re-chasing
+      // its raw look-ahead target here caused a second, frame-rate-dependent pan
+      // filter that drifted out of phase with the planned zoom trajectory.
+      center = frame.center;
     }
-    if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT') {
+    if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT' && this.lockToPosition) {
       zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
     }
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
-      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+      const journeyBoostTarget = photoJourneyZoomBoost(photoDistanceMeters, frame.mobilityClass);
+      zoom = clamp(zoom + (this.lockToPosition
+        ? journeyBoostTarget
+        : this.stabilizeFreeJourneyZoomBoost(journeyBoostTarget, this.timeSec)), 4, 17.3);
       if (frame.mobilityClass === 'FLIGHT') {
         this.displayedPhotoStopBoost = 0;
         this.displayedPhotoStopBoostTimelineSec = this.timeSec;
@@ -273,7 +278,14 @@ export class PlayerController {
       }
     }
     zoom = applyUserZoomOffset(zoom, this.zoomOffset);
-    zoom = this.stabilizeZoom(zoom, this.timeSec);
+    if (this.lockToPosition) {
+      zoom = this.stabilizeZoom(zoom, this.timeSec);
+    } else {
+      // Unlocked playback replays the already-smoothed planned zoom directly.
+      // Only photo-specific overlays have their own smoothing above.
+      this.displayedZoom = zoom;
+      this.displayedZoomTimelineSec = this.timeSec;
+    }
     const tileZoom = stabilizeTileZoomBoundary(zoom, this.tileZoomLevel);
     zoom = tileZoom.zoom;
     this.tileZoomLevel = tileZoom.level;
@@ -291,6 +303,33 @@ export class PlayerController {
       this.setSource('route-head', emptyCollection());
     }
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
+  }
+
+  private stabilizeFreeJourneyZoomBoost(targetBoost: number, timelineSec: number): number {
+    const target = clamp(Number(targetBoost) || 0, 0, 2);
+    if (this.displayedFreeJourneyZoomBoost === null || timelineSec + 0.001 < this.displayedFreeJourneyZoomBoostTimelineSec) {
+      this.displayedFreeJourneyZoomBoost = target;
+      this.displayedFreeJourneyZoomBoostTimelineSec = timelineSec;
+      return target;
+    }
+
+    const elapsed = timelineSec - this.displayedFreeJourneyZoomBoostTimelineSec;
+    this.displayedFreeJourneyZoomBoostTimelineSec = timelineSec;
+    if (!(elapsed > 0)) return this.displayedFreeJourneyZoomBoost;
+
+    const dt = clamp(elapsed, 1 / 240, 0.25);
+    const delta = target - this.displayedFreeJourneyZoomBoost;
+    if (Math.abs(delta) < 0.001) {
+      this.displayedFreeJourneyZoomBoost = target;
+      return target;
+    }
+    const zoomingOut = delta < 0;
+    const tauSec = zoomingOut ? 0.82 : 1.35;
+    const maxRate = zoomingOut ? 0.72 : 0.52;
+    const easedStep = delta * (1 - Math.exp(-dt / tauSec));
+    const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
+    this.displayedFreeJourneyZoomBoost = clamp(this.displayedFreeJourneyZoomBoost + step, 0, 2);
+    return this.displayedFreeJourneyZoomBoost;
   }
 
   private stabilizePhotoStopZoomBoost(targetBoost: number, timelineSec: number): number {
@@ -353,7 +392,7 @@ export class PlayerController {
         center = frame.position;
         zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
       }
-      if (frame.mobilityClass === 'FLIGHT') {
+      if (this.lockToPosition && frame.mobilityClass === 'FLIGHT') {
         zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
       }
     }
@@ -371,42 +410,6 @@ export class PlayerController {
     warmMapTilesAhead(this.map, center, clamp(zoom, 4, 17.3));
   }
 
-  private followCamera(frame: TravelFrame, frameIndex: number, reset = false): Coordinate {
-    const target = trackingTargetProjected(frame);
-    if (reset || !this.trackedCenter) {
-      this.trackedCenter = { ...frame.position };
-      return this.trackedCenter;
-    }
-    const current = mercatorProject(this.trackedCenter);
-    const effectiveZoom = this.trackingZoomForFrame(frame);
-    const scale = TILE_SIZE * 2 ** effectiveZoom;
-    const dxPx = (target.x - current.x) * scale;
-    const dyPx = (target.y - current.y) * scale;
-    const lagPx = Math.hypot(dxPx, dyPx);
-    const maxStepPx = trackingPanLimitPxPerSec(
-      this.plan!,
-      frameIndex,
-      this.trackingSpeed,
-      lagPx,
-      effectiveZoom - frame.zoom
-    ) / Math.max(1, this.plan?.fps || 60);
-    const ratio = Math.min(Math.max(0, lagPx - 4), maxStepPx) / Math.max(lagPx, 1e-9);
-    this.trackedCenter = mercatorUnproject({ x: current.x + dxPx * ratio / scale, y: current.y + dyPx * ratio / scale });
-    return this.trackedCenter;
-  }
-
-  private trackingZoomForFrame(frame: TravelFrame): number {
-    let zoom = frame.mobilityClass === 'FLIGHT'
-      ? this.stableFlightZooms.get(flightZoomKey(frame)) ?? frame.zoom
-      : frame.zoom;
-    if (this.stops.length) {
-      const segment = this.plan?.segments[frame.segmentIndex];
-      const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
-      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
-    }
-    return applyUserZoomOffset(zoom, this.zoomOffset);
-  }
-
   private ownsCamera(): boolean {
     return cameraOwners.get(this.map) === this;
   }
@@ -421,7 +424,9 @@ export class PlayerController {
     this.stopSchedule = next.schedule;
     this.stopDurationSec = next.totalDurationSec;
     if (!next.stops.length) {
-      this.displayedPhotoStopBoost = null;
+      this.displayedFreeJourneyZoomBoost = null;
+    this.displayedFreeJourneyZoomBoostTimelineSec = this.timeSec;
+    this.displayedPhotoStopBoost = null;
       this.displayedPhotoStopBoostTimelineSec = this.timeSec;
     }
   }
@@ -432,11 +437,14 @@ export function applyUserZoomOffset(baseZoom: number, currentOffset: number): nu
   return clamp((Number(baseZoom) || 0) + current, 4, 17.3);
 }
 
-export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
-  if (mobilityClass === 'FLIGHT') return baseZoom;
+export function photoJourneyZoomBoost(distanceMeters: number, mobilityClass: MobilityClass): number {
+  if (mobilityClass === 'FLIGHT') return 0;
   const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
-  const shortRouteBoost = 1.08 * Math.exp(-distanceKm / 20);
-  return clamp(baseZoom + PHOTO_JOURNEY_BASE_ZOOM_BOOST + shortRouteBoost, 4, 17.3);
+  return PHOTO_JOURNEY_BASE_ZOOM_BOOST + 1.08 * Math.exp(-distanceKm / 20);
+}
+
+export function photoJourneyZoom(baseZoom: number, distanceMeters: number, mobilityClass: MobilityClass): number {
+  return clamp(baseZoom + photoJourneyZoomBoost(distanceMeters, mobilityClass), 4, 17.3);
 }
 
 export function photoStopZoomBoost(distanceMeters: number, progress: number, mobilityClass: MobilityClass): number {
@@ -622,58 +630,6 @@ export function mapJourneyTime(timeSec: number, stops: PlaybackStop[], routeDura
     added += duration;
   }
   return { routeTimeSec: clamp(timeSec - added, 0, routeDurationSec), activeStopId: null };
-}
-
-export function trackingDurationScale(plan: PlaybackPlan): number {
-  const recommended = Number(plan.durationLimits?.recommendedSeconds);
-  const actual = Number(plan.durationSec);
-  return recommended > 0 && actual > 0 ? clamp(Math.sqrt(recommended / actual), 0.72, 1.85) : 1;
-}
-
-export function trackingDemandPxPerSec(plan: PlaybackPlan, frameIndex: number, zoomAdjustment = 0): number {
-  const frames = plan.frames;
-  const fps = Math.max(1, plan.fps || 60);
-  const index = clamp(Math.round(frameIndex), 0, Math.max(0, frames.length - 1));
-  const frame = frames[index];
-  if (!frame || frame.kind !== 'TRAVEL') return 0;
-  const radius = Math.max(1, Math.round(fps * 0.1));
-  let left = index;
-  let right = index;
-  while (left > 0 && index - left < radius) {
-    const candidate = frames[left - 1];
-    if (candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
-    left -= 1;
-  }
-  while (right < frames.length - 1 && right - index < radius) {
-    const candidate = frames[right + 1];
-    if (candidate.kind !== 'TRAVEL' || candidate.sceneId !== frame.sceneId) break;
-    right += 1;
-  }
-  if (left === right) return 0;
-  const first = frames[left];
-  const last = frames[right];
-  if (first.kind !== 'TRAVEL' || last.kind !== 'TRAVEL') return 0;
-  const a = trackingTargetProjected(first);
-  const b = trackingTargetProjected(last);
-  const scale = TILE_SIZE * 2 ** clamp(frame.zoom + zoomAdjustment, 4, 17.3);
-  return Math.hypot((b.x - a.x) * scale, (b.y - a.y) * scale) / Math.max((right - left) / fps, 1 / fps);
-}
-
-export function trackingPanLimitPxPerSec(
-  plan: PlaybackPlan,
-  frameIndex: number,
-  userMultiplier = 1,
-  lagPx = 0,
-  zoomAdjustment = 0
-): number {
-  const frame = plan.frames[clamp(Math.round(frameIndex), 0, Math.max(0, plan.frames.length - 1))];
-  const basePan = Math.max(120, Number(frame?.kind === 'TRAVEL' ? frame.maxPanPxPerSec : 0) || 240);
-  const demand = trackingDemandPxPerSec(plan, frameIndex, zoomAdjustment);
-  const durationFloor = basePan * trackingDurationScale(plan) * 0.82;
-  const synchronized = demand > 0 ? demand * 1.16 + 36 : 0;
-  const catchUp = Math.max(0, lagPx - 36) * 2.8;
-  const automatic = clamp(Math.max(basePan * 0.72, durationFloor, synchronized) + catchUp, 120, 2600);
-  return clamp(automatic * clamp(userMultiplier, 0.5, 2), 80, 3600);
 }
 
 function trackingTargetProjected(frame: TravelFrame): { x: number; y: number } {

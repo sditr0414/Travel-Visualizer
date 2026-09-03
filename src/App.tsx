@@ -66,7 +66,6 @@ export function App({ workerClient }: AppProps) {
   const [zoomOffset, setZoomOffset] = useState(0);
   const [pacingMode, setPacingMode] = useState<PacingMode>('LOCAL_DAYS');
   const [lockToPosition, setLockToPosition] = useState(true);
-  const [trackingSpeed, setTrackingSpeed] = useState(1);
   const [journeyMode, setJourneyMode] = useState<JourneyMode>('ROUTE');
   const [mediaLibrary, setMediaLibrary] = useState<{ preview: JourneyMedia[]; all: JourneyMedia[] }>({ preview: [], all: [] });
   const [photoViewMode, setPhotoViewMode] = useState<PhotoViewMode>('PREVIEW');
@@ -379,7 +378,6 @@ export function App({ workerClient }: AppProps) {
         }
       });
       controller.setLockToPosition(lockToPosition);
-      controller.setTrackingSpeed(trackingSpeed);
       controller.setZoomOffset(zoomOffset);
       controller.loadPlan(state.plan!, stops);
       return controller;
@@ -402,11 +400,6 @@ export function App({ workerClient }: AppProps) {
     playersRef.current.ROUTE?.setLockToPosition(lockToPosition);
     playersRef.current.PHOTOS?.setLockToPosition(lockToPosition);
   }, [lockToPosition]);
-
-  useEffect(() => {
-    playersRef.current.ROUTE?.setTrackingSpeed(trackingSpeed);
-    playersRef.current.PHOTOS?.setTrackingSpeed(trackingSpeed);
-  }, [trackingSpeed]);
 
   useEffect(() => {
     playersRef.current.ROUTE?.setZoomOffset(zoomOffset);
@@ -800,10 +793,6 @@ export function App({ workerClient }: AppProps) {
             <label><input type="checkbox" checked={includeFlights} onChange={event => setIncludeFlights(event.target.checked)} /><span>항공 경로 포함</span></label>
             <label><input type="checkbox" checked={lockToPosition} onChange={event => setLockToPosition(event.target.checked)} /><span>현재 위치 따라가기</span></label>
           </div>
-
-          {!lockToPosition && <label className="range-field"><span><span>따라가기 반응 속도</span><output>{trackingSpeed.toFixed(1)}×</output></span>
-            <input type="range" min="0.5" max="2" step="0.1" value={trackingSpeed} onChange={event => setTrackingSpeed(Number(event.target.value))} />
-          </label>}
 
           <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map}>
             <Route size={16} /> 경로 다시 만들기
