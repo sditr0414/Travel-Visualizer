@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, applyLiveZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
+import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -77,10 +77,45 @@ describe('photo journey stops', () => {
     expect(resumed).toBeGreaterThanOrEqual(afterSecondRelease);
   });
 
-  it('applies live zoom changes relative to the planned offset even for short playback', () => {
-    expect(applyLiveZoomOffset(11, 1.2, 0, 'ROAD')).toBeCloseTo(12.2, 5);
-    expect(applyLiveZoomOffset(11, 1.2, 1.2, 'ROAD')).toBeCloseTo(11, 5);
-    expect(applyLiveZoomOffset(8, 1.2, 0, 'FLIGHT')).toBe(8);
+  it('applies the user zoom offset as an absolute final camera adjustment', () => {
+    expect(applyUserZoomOffset(11, 1.2)).toBeCloseTo(12.2, 5);
+    expect(applyUserZoomOffset(11, -1.2)).toBeCloseTo(9.8, 5);
+    expect(applyUserZoomOffset(8, 1.2)).toBeCloseTo(9.2, 5);
+  });
+
+  it('applies user zoom to current-position travel, stable flight, and outro map cameras', () => {
+    const jumpTo = vi.fn();
+    const map = {
+      getSource: () => ({ setData: vi.fn() }),
+      jumpTo
+    } as unknown as Map;
+    const plan = simplePlan();
+    plan.zoomOffset = 1.2;
+    const first = plan.frames[0];
+    const outro = plan.frames[1];
+    if (first.kind !== 'TRAVEL' || outro.kind !== 'OUTRO') throw new Error('fixture shape changed');
+
+    const controller = new PlayerController(map);
+    controller.setZoomOffset(1.2);
+    controller.loadPlan(plan);
+    let camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+    expect(camera.zoom).toBeCloseTo(first.zoom + 1.2, 5);
+
+    controller.seek(plan.durationSec);
+    camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+    expect(camera.zoom).toBeCloseTo(outro.zoom + 1.2, 5);
+
+    const flightPlan = simplePlan();
+    const flight = flightPlan.frames[0];
+    if (flight.kind !== 'TRAVEL') throw new Error('fixture shape changed');
+    flight.mobilityClass = 'FLIGHT';
+    flight.zoom = 8;
+    flight.lockedZoom = 8;
+    const flightController = new PlayerController(map);
+    flightController.setZoomOffset(1.2);
+    flightController.loadPlan(flightPlan);
+    camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
+    expect(camera.zoom).toBeCloseTo(9.2, 5);
   });
 
   it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
