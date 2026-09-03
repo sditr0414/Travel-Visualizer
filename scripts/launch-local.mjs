@@ -41,6 +41,9 @@ async function main() {
     env: process.env,
     stdio: 'inherit'
   });
+  const exitPromise = new Promise(resolveExit => {
+    child.once('exit', code => resolveExit(code ?? 1));
+  });
 
   child.on('error', error => {
     console.error(`[Travel Camera] npm start 실행 실패: ${error.message}`);
@@ -52,10 +55,7 @@ async function main() {
     console.warn(`[Travel Camera] 브라우저 자동 열기 전에 서버 응답을 확인하지 못했습니다. 직접 ${url} 을 열어 주세요.`);
   }
 
-  const exitCode = await new Promise(resolveExit => {
-    child.once('exit', code => resolveExit(code ?? 1));
-  });
-  process.exitCode = exitCode;
+  process.exitCode = child.exitCode ?? await exitPromise;
 }
 
 function assertSupportedNode() {
@@ -157,13 +157,12 @@ function openBrowser(url) {
     openArgs = [url];
   }
 
-  try {
-    const opener = spawn(command, openArgs, { detached: true, stdio: 'ignore', windowsHide: true });
-    opener.unref();
-    console.log('[Travel Camera] 브라우저를 열었습니다. 이 창을 닫거나 Ctrl+C를 누르면 서버가 종료됩니다.');
-  } catch {
+  const opener = spawn(command, openArgs, { detached: true, stdio: 'ignore', windowsHide: true });
+  opener.once('error', () => {
     console.warn(`[Travel Camera] 브라우저를 자동으로 열지 못했습니다. 직접 ${url} 을 열어 주세요.`);
-  }
+  });
+  opener.unref();
+  console.log('[Travel Camera] 브라우저 열기를 요청했습니다. 이 창을 닫거나 Ctrl+C를 누르면 서버가 종료됩니다.');
 }
 
 function commandAvailable(command, commandArgs) {
