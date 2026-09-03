@@ -33,4 +33,4 @@ jobs:
           git add src/App.tsx src/App.test.tsx
           git commit -m "Set day marker default to 2.5 seconds [skip ci]"
           git push
-# rerun after updating expected photo journey duration
+# rerun after updating both photo journey duration expectations
