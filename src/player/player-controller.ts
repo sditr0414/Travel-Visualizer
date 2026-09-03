@@ -11,6 +11,7 @@ const TILE_ZOOM_HYSTERESIS = 0.07;
 const ZOOM_OFFSET_MIN = -1.5;
 const ZOOM_OFFSET_MAX = 1.5;
 const PHOTO_DETAIL_ZOOM_STRENGTH_MAX = 1.5;
+const PHOTO_JOURNEY_MAX_ZOOM_BOOST = 3.5;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -332,7 +333,7 @@ export class PlayerController {
   }
 
   private stabilizeFreeJourneyZoomBoost(targetBoost: number, timelineSec: number): number {
-    const target = clamp(Number(targetBoost) || 0, 0, 2);
+    const target = clamp(Number(targetBoost) || 0, 0, PHOTO_JOURNEY_MAX_ZOOM_BOOST);
     if (this.displayedFreeJourneyZoomBoost === null || timelineSec + 0.001 < this.displayedFreeJourneyZoomBoostTimelineSec) {
       this.displayedFreeJourneyZoomBoost = target;
       this.displayedFreeJourneyZoomBoostTimelineSec = timelineSec;
@@ -354,7 +355,7 @@ export class PlayerController {
     const maxRate = zoomingOut ? 0.72 : 0.52;
     const easedStep = delta * (1 - Math.exp(-dt / tauSec));
     const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
-    this.displayedFreeJourneyZoomBoost = clamp(this.displayedFreeJourneyZoomBoost + step, 0, 2);
+    this.displayedFreeJourneyZoomBoost = clamp(this.displayedFreeJourneyZoomBoost + step, 0, PHOTO_JOURNEY_MAX_ZOOM_BOOST);
     return this.displayedFreeJourneyZoomBoost;
   }
 

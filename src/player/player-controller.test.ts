@@ -81,6 +81,23 @@ describe('photo journey stops', () => {
     expect(detailed).toBeGreaterThan(base + 0.8);
   });
 
+  it('keeps photo detail strength effective in unlocked cinematic mode without saturating at the legacy boost cap', () => {
+    const plan = simplePlan();
+    plan.durationSec = 60;
+    plan.durationLimits.extentKm = 2;
+    const jumpTo = vi.fn();
+    const map = { getSource: () => ({ setData: vi.fn() }), jumpTo } as unknown as Map;
+    const controller = new PlayerController(map);
+    controller.setLockToPosition(false);
+    controller.setPhotoDetailZoomStrength(0.5);
+    controller.loadPlan(plan, [{ id: 'photo', atSec: 0, durationSec: 60 }]);
+    const low = (jumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom;
+
+    controller.setPhotoDetailZoomStrength(1.5);
+    const high = (jumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom;
+    expect(high).toBeGreaterThan(low + 0.6);
+  });
+
   it('continues easing closer while a short-route photo is on screen', () => {
     const early = photoStopZoomBoost(1_500, 0.25, 'WALK');
     const late = photoStopZoomBoost(1_500, 0.85, 'WALK');
