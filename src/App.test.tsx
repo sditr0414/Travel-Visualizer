@@ -85,6 +85,8 @@ describe('App integration', () => {
 
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 기간')).toBeInTheDocument();
+    const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuildButton).toBeDisabled();
     const zoomSlider = screen.getAllByRole('slider').find(element => element.getAttribute('min') === '-1.5');
     expect(zoomSlider).toHaveValue('0');
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
@@ -92,15 +94,18 @@ describe('App integration', () => {
     const followCurrentPosition = screen.getByLabelText('현재 위치 따라가기');
     fireEvent.click(followCurrentPosition);
     expect(screen.queryByText('따라가기 반응 속도')).not.toBeInTheDocument();
+    expect(rebuildButton).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+    expect(rebuildButton).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '추천 기간' }));
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
+    expect(rebuildButton).toBeDisabled();
   });
 
-  it('applies changed map zoom immediately and preserves it when rebuilding the route', async () => {
+  it('keeps live camera settings out of rebuild state and rebuilds only after a planned camera change', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
       plan: vi.fn().mockImplementation(() => Promise.resolve({ trip: {}, plan: simplePlan() })),
@@ -120,9 +125,16 @@ describe('App integration', () => {
     fireEvent.change(zoomSlider, { target: { value: '1.2' } });
     await waitFor(() => expect(fakeMap.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13.2 })));
 
-    fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
+    const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuildButton).toBeDisabled();
+    expect(worker.plan).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('화면 구성'), { target: { value: 'DAY' } });
+    expect(rebuildButton).toBeEnabled();
+    fireEvent.click(rebuildButton);
     await waitFor(() => expect(worker.plan).toHaveBeenCalledTimes(2));
-    expect(worker.plan).toHaveBeenLastCalledWith(expect.objectContaining({ zoomOffset: 1.2 }), expect.any(Function));
+    expect(worker.plan).toHaveBeenLastCalledWith(expect.objectContaining({ cameraMode: 'DAY', zoomOffset: 1.2 }), expect.any(Function));
+    await waitFor(() => expect(rebuildButton).toBeDisabled());
     await waitFor(() => expect(fakeMap.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13.2 })));
   });
 
@@ -227,9 +239,13 @@ describe('App integration', () => {
     fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('ALL');
 
+    const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuildButton).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '발자취' }));
     expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
-    fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
+    fireEvent.change(screen.getByLabelText('화면 구성'), { target: { value: 'SEGMENT' } });
+    expect(rebuildButton).toBeEnabled();
+    fireEvent.click(rebuildButton);
     await waitFor(() => expect(worker.plan).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
