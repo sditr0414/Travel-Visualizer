@@ -1,6 +1,6 @@
 import { durationLimitsForMovements } from '../camera-planner.js';
 import type { Movement } from '../types';
-import { buildPlaybackPlan } from './planner';
+import { buildPlaybackPlan, midpointDurationSeconds } from './planner';
 import { buildParsedTrip, parseTimelineJson } from './timeline';
 
 describe('playback planner', () => {
@@ -25,7 +25,7 @@ describe('playback planner', () => {
     expect(plan.cameraMode).toBe('AUTO');
   });
 
-  it('uses the spatially adaptive recommended duration when no explicit duration is set', () => {
+  it('uses the min/max midpoint when no explicit duration is set', () => {
     const json = parseTimelineJson(JSON.stringify({ semanticSegments: [{
       startTime: '2026-04-10T09:00:00+09:00',
       endTime: '2026-04-10T10:00:00+09:00',
@@ -40,7 +40,12 @@ describe('playback planner', () => {
       targetDurationSec: 0, viewportWidth: 1200, viewportHeight: 700,
       cameraMode: 'AUTO', zoomOffset: 0.3, pacingMode: 'LOCAL_DAYS'
     });
-    expect(plan.durationSec).toBeCloseTo(plan.durationLimits.recommendedSeconds, 1);
+    expect(plan.durationSec).toBeCloseTo(midpointDurationSeconds(plan.durationLimits), 1);
+  });
+
+  it('rounds midpoint duration to the five-second control step without leaving its limits', () => {
+    expect(midpointDurationSeconds({ minSeconds: 45, maxSeconds: 300 })).toBe(175);
+    expect(midpointDurationSeconds({ minSeconds: 31, maxSeconds: 34 })).toBe(34);
   });
 
   it('keeps a long but geographically compact trip available at a fast playback length', () => {
