@@ -76,7 +76,7 @@ describe('App integration', () => {
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
     expect(worker.scan).toHaveBeenCalled();
     expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({
-      startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0.7,
+      startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0,
       pacingMode: 'LOCAL_DAYS', targetDurationSec: 0
     }), expect.any(Function));
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
@@ -85,6 +85,7 @@ describe('App integration', () => {
 
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 기간')).toBeInTheDocument();
+    expect(screen.getByRole('slider', { name: '지도 확대' })).toHaveValue('0');
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
     fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
