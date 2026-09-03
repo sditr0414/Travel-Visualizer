@@ -1,0 +1,35 @@
+name: day-marker-5s-check
+
+on:
+  push:
+    branches:
+      - ai/day-marker-5s
+    paths:
+      - .github/workflows/day-marker-5s-check.yml
+
+permissions:
+  contents: write
+
+jobs:
+  focused-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: python scripts/apply-day-marker-5s.py
+      - run: git diff --check
+      - run: npm run typecheck
+      - run: npx eslint src/App.tsx src/App.test.tsx --max-warnings=0
+      - run: npx vitest run src/App.test.tsx
+      - name: Commit focused changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/App.tsx src/App.test.tsx
+          git commit -m "Extend day marker duration to five seconds [skip ci]"
+          git push
