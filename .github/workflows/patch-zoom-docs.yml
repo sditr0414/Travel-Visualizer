@@ -1,0 +1,42 @@
+name: patch-zoom-docs
+
+on:
+  push:
+    branches: [ai/fix-map-zoom-application]
+    paths: [.github/workflows/patch-zoom-docs.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Remove zoom docs patch workflow') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Update zoom contract documentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('AI_PROJECT_CONTEXT.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '`PlayerController.setZoomOffset()`은 선택된 기본/locked/항공 안정 줌 뒤에 현재 사용자 offset을 최종 카메라 조정으로 정확히 한 번 적용하고 변경 즉시 현재 프레임을 다시 그립니다.',
+              '`PlayerController.setZoomOffset()`은 선택된 기본/locked/항공 안정 줌과 사진 여정 내부 보정을 계산한 뒤 현재 사용자 offset을 최종 카메라 조정으로 정확히 한 번 적용하고 변경 즉시 현재 프레임을 다시 그립니다. 공유 지도에서는 마지막으로 실제 카메라를 그린 활성 controller만 live 설정 변경으로 다시 렌더링하며, 비활성 controller는 내부 설정만 동기화해 발자취/사진 여정이 서로 카메라를 덮어쓰지 않습니다.'
+          )
+          text = text.replace(
+              '사진 여정에서는 이 사용자 확대 위에 비행기 이외 이동에만 **기본 추가 확대 `PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62`**와 `1.08 * exp(-distanceKm / 20)` 거리 기반 확대를 추가하며, 사진 전용 확대는 FLIGHT에 적용하지 않는다.',
+              '사진 여정에서는 비행기 이외 이동에만 **기본 추가 확대 `PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62`**와 `1.08 * exp(-distanceKm / 20)` 거리 기반 확대를 먼저 계산한 뒤 사용자 확대를 최종 적용하며, 사진 전용 확대는 FLIGHT에 적용하지 않는다. `현재 위치 따라가기`를 끈 경우에도 화면 픽셀 기준 추적 수요는 이 최종 확대 배율을 사용해 큰 확대에서 카메라 추적이 느려지지 않게 한다.'
+          )
+          text = text.replace(
+              '임시 브랜치 기본 체크에서 **`npm run typecheck` 성공 + 3개 test file / 23개 테스트 전부 통과**했고, 전체 verify/build/Playwright는 실행하지 않았다.',
+              '최종 보완까지 포함한 임시 브랜치 기본 체크에서 **`npm run typecheck` 성공 + 3개 test file / 26개 테스트 전부 통과**했다. 추가 테스트는 사진 보정 뒤 최종 사용자 zoom-out, 공유 지도에서 비활성 controller의 카메라 덮어쓰기 방지, 확대 배율에 따른 비고정 추적 수요 스케일도 직접 검증한다. 전체 verify/build/Playwright는 실행하지 않았다.'
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add AI_PROJECT_CONTEXT.md
+          git commit -m "Document final zoom camera invariants [skip ci]"
+          git push
