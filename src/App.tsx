@@ -28,6 +28,15 @@ interface HudState {
   destinationCity: string | null;
 }
 
+interface AppliedPlanSettings {
+  startDate: string;
+  endDate: string;
+  includeFlights: boolean;
+  cameraMode: CameraMode;
+  pacingMode: PacingMode;
+  durationSec: number;
+}
+
 type JourneyMode = 'ROUTE' | 'PHOTOS';
 
 const MOBILITY_LABELS: Record<string, string> = {
@@ -86,6 +95,7 @@ export function App({ workerClient }: AppProps) {
   const [mobileMapShare, setMobileMapShare] = useState(PHOTO_MAP_MIN_MOBILE);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appliedPlanSettings, setAppliedPlanSettings] = useState<AppliedPlanSettings | null>(null);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
   const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
   const journeyModeRef = useRef<JourneyMode>('ROUTE');
@@ -156,6 +166,7 @@ export function App({ workerClient }: AppProps) {
 
   const scanSource = useCallback(async (source: TimelineSource, text: string) => {
     const operation = ++scanOperationRef.current;
+    setAppliedPlanSettings(null);
     dispatch({ type: 'LOAD_START', source });
     try {
       const scan = await client.scan(source, text, reportProgress);
@@ -199,6 +210,14 @@ export function App({ workerClient }: AppProps) {
       if (!durationCustomizedRef.current || targetDurationSec < limits.minSeconds || targetDurationSec > limits.maxSeconds) {
         setTargetDurationSec(roundedDuration);
       }
+      setAppliedPlanSettings({
+        startDate,
+        endDate,
+        includeFlights,
+        cameraMode,
+        pacingMode,
+        durationSec: roundedDuration
+      });
       dispatch({ type: 'PLAN_SUCCESS', plan: result.plan });
     } catch (error) {
       dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '경로를 계산하지 못했습니다.' });
@@ -569,6 +588,14 @@ export function App({ workerClient }: AppProps) {
 
   const busy = state.phase === 'loading' || state.phase === 'planning' || mediaLoading;
   const canPlay = Boolean(state.plan && map && !busy);
+  const planNeedsRebuild = Boolean(state.plan && appliedPlanSettings && (
+    startDate !== appliedPlanSettings.startDate
+    || endDate !== appliedPlanSettings.endDate
+    || includeFlights !== appliedPlanSettings.includeFlights
+    || cameraMode !== appliedPlanSettings.cameraMode
+    || pacingMode !== appliedPlanSettings.pacingMode
+    || targetDurationSec !== appliedPlanSettings.durationSec
+  ));
   const duration = state.plan
     ? state.plan.durationSec + (journeyMode === 'PHOTOS'
       ? photoPlaybackStops.reduce((sum, stop) => sum + Math.max(0, stop.durationSec), 0)
@@ -811,7 +838,7 @@ export function App({ workerClient }: AppProps) {
             <label><input type="checkbox" checked={lockToPosition} onChange={event => setLockToPosition(event.target.checked)} /><span>현재 위치 따라가기</span></label>
           </div>
 
-          <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map}>
+          <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map || !planNeedsRebuild}>
             <Route size={16} /> 경로 다시 만들기
           </button>
         </div>
