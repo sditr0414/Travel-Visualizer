@@ -1,11 +1,14 @@
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl';
 import { clamp, mercatorProject, mercatorUnproject } from '../geo.js';
+import { warmMapTilesAhead } from '../map/tile-warmup';
 import { isDayMarkerId } from '../media/day-markers';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 import { heldMediaStopId } from './media-bridge';
 
 const TILE_SIZE = 512;
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
+const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
+const TILE_ZOOM_HYSTERESIS = 0.07;
 
 const COLORS: Record<MobilityClass, string> = {
   WALK: '#ff725d',
@@ -56,6 +59,7 @@ export class PlayerController {
   private displayedZoomTimelineSec = 0;
   private displayedPhotoStopBoost: number | null = null;
   private displayedPhotoStopBoostTimelineSec = 0;
+  private tileZoomLevel: number | null = null;
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
   private stopDurationSec = 0;
@@ -76,6 +80,7 @@ export class PlayerController {
     this.displayedZoomTimelineSec = 0;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
+    this.tileZoomLevel = null;
     this.replaceStops(stops);
     this.fullRouteData = fullRoute(plan);
     this.lastStopId = null;
@@ -101,6 +106,7 @@ export class PlayerController {
     this.lockToPosition = enabled;
     this.trackedCenter = null;
     this.displayedZoom = null;
+    this.tileZoomLevel = null;
     this.renderForTime(true);
   }
 
@@ -135,6 +141,7 @@ export class PlayerController {
     this.displayedZoomTimelineSec = this.timeSec;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = this.timeSec;
+    this.tileZoomLevel = null;
     this.renderForTime(true);
   }
 
@@ -148,6 +155,7 @@ export class PlayerController {
     this.displayedZoomTimelineSec = 0;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
+    this.tileZoomLevel = null;
     this.lastStopId = null;
     this.render(0, true);
   }
@@ -163,6 +171,7 @@ export class PlayerController {
     this.displayedZoomTimelineSec = 0;
     this.displayedPhotoStopBoost = null;
     this.displayedPhotoStopBoostTimelineSec = 0;
+    this.tileZoomLevel = null;
     this.stableFlightZooms.clear();
   }
 
@@ -250,7 +259,11 @@ export class PlayerController {
       }
     }
     zoom = this.stabilizeZoom(zoom, this.timeSec);
+    const tileZoom = stabilizeTileZoomBoundary(zoom, this.tileZoomLevel);
+    zoom = tileZoom.zoom;
+    this.tileZoomLevel = tileZoom.level;
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
+    this.warmTilesAhead();
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
 
@@ -306,6 +319,39 @@ export class PlayerController {
     const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
     this.displayedZoom = clamp(this.displayedZoom + step, 4, 17.3);
     return this.displayedZoom;
+  }
+
+  private warmTilesAhead(): void {
+    if (!this.plan?.frames.length) return;
+    const lookAheadTimeSec = Math.min(this.getDuration(), this.timeSec + TILE_WARMUP_LOOKAHEAD_SEC);
+    const mapped = mapScheduledJourneyTime(lookAheadTimeSec, this.stopSchedule, this.plan.durationSec);
+    const framePosition = clamp(mapped.routeTimeSec * this.plan.fps, 0, this.plan.frames.length - 1);
+    const baseIndex = Math.floor(framePosition);
+    const nextIndex = Math.min(baseIndex + 1, this.plan.frames.length - 1);
+    const frame = interpolatePlaybackFrame(this.plan.frames[baseIndex], this.plan.frames[nextIndex], framePosition - baseIndex);
+    let center = frame.center;
+    let zoom = frame.zoom;
+
+    if (frame.kind === 'TRAVEL') {
+      if (this.lockToPosition) {
+        center = frame.position;
+        zoom = Number.isFinite(frame.lockedZoom) ? frame.lockedZoom! : frame.zoom;
+      }
+      if (frame.mobilityClass === 'FLIGHT') {
+        zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
+      }
+      if (this.stops.length) {
+        const segment = this.plan.segments[frame.segmentIndex];
+        const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
+        zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+        const futureMediaStop = Boolean(mapped.activeStopId && !isDayMarkerId(mapped.activeStopId));
+        if (futureMediaStop && frame.mobilityClass !== 'FLIGHT') {
+          zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
+        }
+      }
+    }
+
+    warmMapTilesAhead(this.map, center, clamp(zoom, 4, 17.3));
   }
 
   private followCamera(frame: TravelFrame, frameIndex: number, reset = false): Coordinate {
@@ -371,6 +417,24 @@ export function smoothPhotoStopZoomBoost(currentBoost: number, targetBoost: numb
   const easedStep = delta * (1 - Math.exp(-dt / tauSec));
   const step = clamp(easedStep, -maxRate * dt, maxRate * dt);
   return clamp(current + step, 0, 0.5);
+}
+
+export function stabilizeTileZoomBoundary(zoom: number, currentLevel: number | null): { zoom: number; level: number } {
+  const target = clamp(Number(zoom) || 0, 4, 17.3);
+  if (currentLevel === null || !Number.isFinite(currentLevel)) {
+    return { zoom: target, level: Math.floor(target) };
+  }
+
+  let level = Math.floor(currentLevel);
+  if (target >= level + 1 + TILE_ZOOM_HYSTERESIS || target < level - TILE_ZOOM_HYSTERESIS) {
+    level = Math.floor(target);
+    return { zoom: target, level };
+  }
+
+  const targetLevel = Math.floor(target);
+  if (targetLevel > level) return { zoom: Math.min(target, level + 0.999), level };
+  if (targetLevel < level) return { zoom: Math.max(target, level + 0.001), level };
+  return { zoom: target, level };
 }
 
 function interpolatePlaybackFrame(frame: PlaybackFrame, next: PlaybackFrame, mix: number): PlaybackFrame {

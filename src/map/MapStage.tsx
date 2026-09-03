@@ -35,7 +35,9 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
         center: [127.6, 36.2],
         zoom: 5.4,
         attributionControl: false,
-        cooperativeGestures: false
+        cooperativeGestures: false,
+        cancelPendingTileRequestsWhileZooming: false,
+        maxTileCacheZoomLevels: 8
       });
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
