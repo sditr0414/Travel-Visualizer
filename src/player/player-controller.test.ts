@@ -1,5 +1,5 @@
 import type { Map } from 'maplibre-gl';
-import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
+import { PlayerController, applyUserZoomOffset, mapJourneyTime, photoJourneyDetailZoomBoost, photoJourneyZoom, photoStopZoomBoost, remapJourneyTimeForStops, smoothPhotoStopZoomBoost, stabilizeTileZoomBoundary } from './player-controller';
 import { simplePlan } from '../test/fixtures';
 
 describe('photo journey stops', () => {
@@ -50,6 +50,35 @@ describe('photo journey stops', () => {
     expect(medium).toBeGreaterThan(long);
     expect(long).toBeGreaterThan(12.6);
     expect(photoJourneyZoom(8, 1_500, 'FLIGHT')).toBe(8);
+  });
+
+  it('adds adjustable detail zoom when photo dwell time is long and the trip extent is small', () => {
+    const smallArea = photoJourneyDetailZoomBoost(3, 120, 120, 1, 'WALK');
+    const wideArea = photoJourneyDetailZoomBoost(60, 120, 120, 1, 'WALK');
+    const shortDwell = photoJourneyDetailZoomBoost(3, 120, 20, 1, 'WALK');
+
+    expect(smallArea).toBeGreaterThan(0.9);
+    expect(smallArea).toBeGreaterThan(wideArea);
+    expect(smallArea).toBeGreaterThan(shortDwell);
+    expect(photoJourneyDetailZoomBoost(3, 120, 120, 0, 'WALK')).toBe(0);
+    expect(photoJourneyDetailZoomBoost(3, 120, 120, 1.5, 'WALK')).toBeGreaterThan(smallArea);
+    expect(photoJourneyDetailZoomBoost(3, 120, 120, 1.5, 'FLIGHT')).toBe(0);
+  });
+
+  it('applies photo detail zoom live without changing the base route controller behavior', () => {
+    const jumpTo = vi.fn();
+    const map = { getSource: () => ({ setData: vi.fn() }), jumpTo } as unknown as Map;
+    const plan = simplePlan();
+    plan.durationSec = 60;
+    plan.durationLimits.extentKm = 2;
+    const controller = new PlayerController(map);
+    controller.setPhotoDetailZoomStrength(1);
+    controller.loadPlan(plan, [{ id: 'photo', atSec: 0, durationSec: 60 }]);
+    const detailed = (jumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom;
+
+    controller.setPhotoDetailZoomStrength(0);
+    const base = (jumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom;
+    expect(detailed).toBeGreaterThan(base + 0.8);
   });
 
   it('continues easing closer while a short-route photo is on screen', () => {
