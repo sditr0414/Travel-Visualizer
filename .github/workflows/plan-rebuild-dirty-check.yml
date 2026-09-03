@@ -1,0 +1,35 @@
+name: plan-rebuild-dirty-check
+
+on:
+  push:
+    branches:
+      - ai/plan-rebuild-dirty
+    paths:
+      - .github/workflows/plan-rebuild-dirty-check.yml
+
+permissions:
+  contents: write
+
+jobs:
+  focused-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: python scripts/apply-plan-rebuild-dirty.py
+      - run: git diff --check
+      - run: npm run typecheck
+      - run: npx eslint src/App.tsx src/App.test.tsx --max-warnings=0
+      - run: npx vitest run src/App.test.tsx
+      - name: Commit focused changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/App.tsx src/App.test.tsx AI_PROJECT_CONTEXT.md
+          git commit -m "Enable route rebuild only for pending plan changes [skip ci]"
+          git push
