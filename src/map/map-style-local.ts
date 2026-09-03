@@ -1,16 +1,18 @@
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
-import { Protocol } from 'pmtiles';
+import { PMTiles, Protocol } from 'pmtiles';
 import type { MapSourceConfig } from '../types';
 
 type LocalMapSource = Extract<MapSourceConfig, { kind: 'local-pmtiles' }>;
 
 const GLYPHS_URL = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
-let protocolRegistered = false;
+let protocol: Protocol | null = null;
+const archives = new Map<string, PMTiles>();
 
 export function localMapStyleFor(config: LocalMapSource): StyleSpecification {
-  registerPmtilesProtocol();
+  ensurePmtilesArchive(config.worldUrl);
+  ensurePmtilesArchive(config.regionUrl);
   const flavor = namedFlavor('grayscale');
   const worldLayers = prepareLayers(layers('world', flavor, { lang: 'ko' }), 'world', 'world-', { maxzoom: 6 });
   const regionLayers = prepareLayers(layers('region', flavor, { lang: 'ko' }), 'region', 'region-', { minzoom: 6 });
@@ -29,11 +31,25 @@ export function localMapStyleFor(config: LocalMapSource): StyleSpecification {
   } as unknown as StyleSpecification;
 }
 
+export async function warmLocalPmtilesTile(url: string, z: number, x: number, y: number): Promise<void> {
+  await ensurePmtilesArchive(url).getZxy(z, x, y);
+}
+
+function ensurePmtilesArchive(url: string): PMTiles {
+  registerPmtilesProtocol();
+  let archive = archives.get(url);
+  if (!archive) {
+    archive = new PMTiles(url);
+    archives.set(url, archive);
+    protocol!.add(archive);
+  }
+  return archive;
+}
+
 function registerPmtilesProtocol(): void {
-  if (protocolRegistered) return;
-  const protocol = new Protocol();
+  if (protocol) return;
+  protocol = new Protocol();
   maplibregl.addProtocol('pmtiles', protocol.tile);
-  protocolRegistered = true;
 }
 
 function prepareLayers(
