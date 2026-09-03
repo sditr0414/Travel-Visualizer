@@ -1,16 +1,17 @@
 import { durationLimitsForMovements, planPlayback } from '../camera-planner.js';
 import { applyCameraMode } from '../camera-modes.js';
-import type { AnalysisOptions, Movement, PlaybackPlan, TravelFrame } from '../types';
+import type { AnalysisOptions, DurationLimits, Movement, PlaybackPlan, TravelFrame } from '../types';
 
 const AUTO_ZOOM_BIAS = 0.28;
 const DAY_MS = 86_400_000;
+const DURATION_STEP_SEC = 5;
 
 export function buildPlaybackPlan(movements: Movement[], options: AnalysisOptions): PlaybackPlan {
   const selectedDays = inclusiveDays(options.startDate, options.endDate);
   const durationLimits = durationLimitsForMovements(movements, { selectedDays });
   const requestedDurationSec = options.targetDurationSec > 0
     ? options.targetDurationSec
-    : durationLimits.recommendedSeconds;
+    : midpointDurationSeconds(durationLimits);
   const basePlan = planPlayback(movements, {
     fps: 60,
     targetTotalSeconds: requestedDurationSec,
@@ -39,6 +40,14 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
 
   reconnectOverview(plan);
   return { ...plan, autoCloserBias: AUTO_ZOOM_BIAS, autoLockedCloserBias: AUTO_ZOOM_BIAS + 0.18 };
+}
+
+export function midpointDurationSeconds(limits: Pick<DurationLimits, 'minSeconds' | 'maxSeconds'>): number {
+  const min = Math.max(1, Number(limits.minSeconds) || 1);
+  const max = Math.max(min, Number(limits.maxSeconds) || min);
+  const midpoint = (min + max) / 2;
+  const stepped = Math.round(midpoint / DURATION_STEP_SEC) * DURATION_STEP_SEC;
+  return Math.min(max, Math.max(min, stepped));
 }
 
 function inclusiveDays(startDate: string, endDate: string): number {
