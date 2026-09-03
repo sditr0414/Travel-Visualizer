@@ -37,3 +37,4 @@ jobs:
           git add AI_PROJECT_CONTEXT.md
           git commit -m "Document one-click local launcher [skip ci]"
           git push
+# rerun after launcher process-handling hardening
