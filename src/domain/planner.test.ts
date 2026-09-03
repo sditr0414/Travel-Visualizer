@@ -23,6 +23,7 @@ describe('playback planner', () => {
     expect(plan.frames.some(frame => frame.kind === 'TRAVEL')).toBe(true);
     expect(plan.frames.at(-1)?.kind).toBe('OUTRO');
     expect(plan.cameraMode).toBe('AUTO');
+    expect(plan.zoomOffset).toBe(0.3);
   });
 
   it('uses the min/max midpoint when no explicit duration is set', () => {
@@ -46,6 +47,26 @@ describe('playback planner', () => {
   it('rounds midpoint duration to the five-second control step without leaving its limits', () => {
     expect(midpointDurationSeconds({ minSeconds: 45, maxSeconds: 300 })).toBe(175);
     expect(midpointDurationSeconds({ minSeconds: 31, maxSeconds: 34 })).toBe(34);
+  });
+
+  it('keeps user map zoom out of planned frames so short playback and outro use one final player offset', () => {
+    const startMs = Date.parse('2026-04-10T09:00:00+09:00');
+    const movements = [movement(startMs, { lat: 37.5, lng: 127 }, { lat: 37.6, lng: 127.2 }, 22_000)];
+    const baseOptions = {
+      startDate: '2026-04-10', endDate: '2026-04-10', includeFlights: true,
+      targetDurationSec: 45, viewportWidth: 1200, viewportHeight: 700,
+      cameraMode: 'AUTO' as const, pacingMode: 'LOCAL_DAYS' as const
+    };
+    const neutral = buildPlaybackPlan(movements, { ...baseOptions, zoomOffset: 0 });
+    const zoomed = buildPlaybackPlan(movements, { ...baseOptions, zoomOffset: 1.2 });
+    const neutralTravel = neutral.frames.find(frame => frame.kind === 'TRAVEL');
+    const zoomedTravel = zoomed.frames.find(frame => frame.kind === 'TRAVEL');
+    const neutralOutro = neutral.frames.at(-1);
+    const zoomedOutro = zoomed.frames.at(-1);
+
+    expect(zoomed.zoomOffset).toBe(1.2);
+    expect(zoomedTravel?.zoom).toBeCloseTo(neutralTravel?.zoom ?? 0, 6);
+    expect(zoomedOutro?.zoom).toBeCloseTo(neutralOutro?.zoom ?? 0, 6);
   });
 
   it('keeps a long but geographically compact trip available at a fast playback length', () => {
