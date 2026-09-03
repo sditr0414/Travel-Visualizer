@@ -90,6 +90,8 @@ class MapTileWarmup {
 const warmups = new WeakMap<MapLibreMap, MapTileWarmup>();
 
 export function warmMapTilesAhead(map: MapLibreMap, center: Coordinate, zoom: number): void {
+  const candidate = map as Partial<MapLibreMap>;
+  if (typeof candidate.getCanvas !== 'function' || typeof candidate.getStyle !== 'function' || typeof candidate.getSource !== 'function') return;
   let warmup = warmups.get(map);
   if (!warmup) {
     warmup = new MapTileWarmup(map);
