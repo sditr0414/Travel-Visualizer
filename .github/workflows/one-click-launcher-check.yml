@@ -1,0 +1,39 @@
+name: one-click-launcher-check
+
+on:
+  push:
+    branches:
+      - ai/one-click-local-launcher
+    paths:
+      - .github/workflows/one-click-launcher-check.yml
+
+permissions:
+  contents: write
+
+jobs:
+  focused-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: python scripts/apply-launcher-context.py
+      - run: git diff --check
+      - run: node --check scripts/launch-local.mjs
+      - run: npm run typecheck
+      - run: npx eslint scripts/launch-local.mjs --max-warnings=0
+      - name: Verify launcher dry-run
+        run: |
+          npm run launch -- --dry-run --no-update --no-install --port 5520 | tee /tmp/travel-launcher.txt
+          grep -q "http://127.0.0.1:5520" /tmp/travel-launcher.txt
+      - name: Commit context update
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add AI_PROJECT_CONTEXT.md
+          git commit -m "Document one-click local launcher [skip ci]"
+          git push
