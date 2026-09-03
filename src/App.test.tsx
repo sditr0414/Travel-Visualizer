@@ -234,6 +234,8 @@ describe('App integration', () => {
     expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1.4');
     expect(screen.getByLabelText('날짜 변경 표시')).toBeChecked();
     expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('1.8');
+    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('min', '1');
+    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('max', '5');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
     expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });
