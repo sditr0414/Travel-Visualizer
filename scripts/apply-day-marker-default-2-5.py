@@ -14,6 +14,7 @@ app_path.write_text(app)
 
 test_path = Path('src/App.test.tsx')
 test = test_path.read_text()
+test = replace_once(test, "toHaveAttribute('max', '5.8')", "toHaveAttribute('max', '6.5')", 'photo journey duration expectation')
 test = replace_once(test, "expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('1.8');", "expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveValue('2.5');", 'day marker default test')
 test = replace_once(test, "expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('max', '5');", "expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('max', '5');\n    expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('step', '0.5');", 'day marker step test')
 test_path.write_text(test)
