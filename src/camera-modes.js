@@ -41,8 +41,8 @@ export function applyCameraMode(plan, {
     desired[index], plan.segments[frame.segmentIndex], frame.longDistanceException, resolvedMode
   ));
 
-  const smoothed = smoothZoomTrajectory(desired, plan.fps || 60, resolvedMode, plan.durationSec);
-  const smoothedLocked = smoothZoomTrajectory(lockedDesired, plan.fps || 60, resolvedMode, plan.durationSec);
+  const smoothed = smoothZoomTrajectoryByScene(travelFrames, desired, plan.fps || 60, resolvedMode);
+  const smoothedLocked = smoothZoomTrajectoryByScene(travelFrames, lockedDesired, plan.fps || 60, resolvedMode);
   for (let index = 0; index < travelFrames.length; index += 1) {
     travelFrames[index].zoom = smoothed[index];
     travelFrames[index].lockedZoom = smoothedLocked[index];
@@ -132,6 +132,20 @@ function positionLockTargetZoom(baseZoom, segment, longDistanceException, mode) 
   else if (mobility === 'URBAN_TRANSIT') extra = km >= 70 ? 0.24 : 0.12;
   else if (mobility === 'UNKNOWN') extra = km >= 150 ? 0.28 : 0.14;
   return clamp(baseZoom - extra, 4, 17.3);
+}
+
+function smoothZoomTrajectoryByScene(frames, values, fps, mode) {
+  const out = [...values];
+  let start = 0;
+  for (let index = 1; index <= frames.length; index += 1) {
+    if (index === frames.length || frames[index].sceneId !== frames[start].sceneId) {
+      const sceneSeconds = Math.max(1 / Math.max(1, fps), (index - start) / Math.max(1, fps));
+      const smoothed = smoothZoomTrajectory(values.slice(start, index), fps, mode, sceneSeconds);
+      for (let cursor = start; cursor < index; cursor += 1) out[cursor] = smoothed[cursor - start];
+      start = index;
+    }
+  }
+  return out;
 }
 
 function smoothZoomTrajectory(values, fps, mode, totalSeconds) {

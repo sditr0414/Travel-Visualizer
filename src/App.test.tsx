@@ -89,6 +89,9 @@ describe('App integration', () => {
     expect(zoomSlider).toHaveValue('0');
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
+    const followCurrentPosition = screen.getByLabelText('현재 위치 따라가기');
+    fireEvent.click(followCurrentPosition);
+    expect(screen.queryByText('따라가기 반응 속도')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
