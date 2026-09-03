@@ -23,6 +23,8 @@ const COLORS: Record<MobilityClass, string> = {
   UNKNOWN: '#64748b'
 };
 
+const cameraOwners = new WeakMap<MapLibreMap, PlayerController>();
+
 export interface PlayerCallbacks {
   onFrame?: (frame: PlaybackFrame, frameIndex: number, timeSec: number, activeStopId: string | null) => void;
   onComplete?: () => void;
@@ -110,7 +112,7 @@ export class PlayerController {
     this.trackedCenter = null;
     this.displayedZoom = null;
     this.tileZoomLevel = null;
-    this.renderForTime(true);
+    if (this.ownsCamera()) this.renderForTime(true);
   }
 
   setTrackingSpeed(multiplier: number): void {
@@ -122,7 +124,7 @@ export class PlayerController {
     this.displayedZoom = null;
     this.displayedZoomTimelineSec = this.timeSec;
     this.tileZoomLevel = null;
-    this.renderForTime(true);
+    if (this.ownsCamera()) this.renderForTime(true);
   }
 
   getDuration(): number {
@@ -173,6 +175,7 @@ export class PlayerController {
 
   dispose(): void {
     this.pause();
+    if (cameraOwners.get(this.map) === this) cameraOwners.delete(this.map);
     this.plan = null;
     this.stops = [];
     this.stopSchedule = [];
@@ -252,7 +255,6 @@ export class PlayerController {
     if (frame.kind === 'TRAVEL' && frame.mobilityClass === 'FLIGHT') {
       zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
     }
-    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
@@ -270,11 +272,13 @@ export class PlayerController {
         zoom += this.stabilizePhotoStopZoomBoost(stopBoostTarget, this.timeSec);
       }
     }
+    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
     zoom = this.stabilizeZoom(zoom, this.timeSec);
     const tileZoom = stabilizeTileZoomBoundary(zoom, this.tileZoomLevel);
     zoom = tileZoom.zoom;
     this.tileZoomLevel = tileZoom.level;
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
+    cameraOwners.set(this.map, this);
     this.warmTilesAhead();
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
@@ -353,7 +357,6 @@ export class PlayerController {
         zoom = this.stableFlightZooms.get(flightZoomKey(frame)) ?? zoom;
       }
     }
-    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
     if (frame.kind === 'TRAVEL' && this.stops.length) {
       const segment = this.plan.segments[frame.segmentIndex];
       const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
@@ -363,6 +366,7 @@ export class PlayerController {
         zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
       }
     }
+    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
 
     warmMapTilesAhead(this.map, center, clamp(zoom, 4, 17.3));
   }
@@ -374,14 +378,37 @@ export class PlayerController {
       return this.trackedCenter;
     }
     const current = mercatorProject(this.trackedCenter);
-    const scale = TILE_SIZE * 2 ** applyUserZoomOffset(frame.zoom, this.zoomOffset);
+    const effectiveZoom = this.trackingZoomForFrame(frame);
+    const scale = TILE_SIZE * 2 ** effectiveZoom;
     const dxPx = (target.x - current.x) * scale;
     const dyPx = (target.y - current.y) * scale;
     const lagPx = Math.hypot(dxPx, dyPx);
-    const maxStepPx = trackingPanLimitPxPerSec(this.plan!, frameIndex, this.trackingSpeed, lagPx) / Math.max(1, this.plan?.fps || 60);
+    const maxStepPx = trackingPanLimitPxPerSec(
+      this.plan!,
+      frameIndex,
+      this.trackingSpeed,
+      lagPx,
+      effectiveZoom - frame.zoom
+    ) / Math.max(1, this.plan?.fps || 60);
     const ratio = Math.min(Math.max(0, lagPx - 4), maxStepPx) / Math.max(lagPx, 1e-9);
     this.trackedCenter = mercatorUnproject({ x: current.x + dxPx * ratio / scale, y: current.y + dyPx * ratio / scale });
     return this.trackedCenter;
+  }
+
+  private trackingZoomForFrame(frame: TravelFrame): number {
+    let zoom = frame.mobilityClass === 'FLIGHT'
+      ? this.stableFlightZooms.get(flightZoomKey(frame)) ?? frame.zoom
+      : frame.zoom;
+    if (this.stops.length) {
+      const segment = this.plan?.segments[frame.segmentIndex];
+      const photoDistanceMeters = segment?.pathDistanceMeters ?? segment?.distanceMeters ?? 0;
+      zoom = photoJourneyZoom(zoom, photoDistanceMeters, frame.mobilityClass);
+    }
+    return applyUserZoomOffset(zoom, this.zoomOffset);
+  }
+
+  private ownsCamera(): boolean {
+    return cameraOwners.get(this.map) === this;
   }
 
   private setSource(id: string, data: object): void {
@@ -603,7 +630,7 @@ export function trackingDurationScale(plan: PlaybackPlan): number {
   return recommended > 0 && actual > 0 ? clamp(Math.sqrt(recommended / actual), 0.72, 1.85) : 1;
 }
 
-export function trackingDemandPxPerSec(plan: PlaybackPlan, frameIndex: number): number {
+export function trackingDemandPxPerSec(plan: PlaybackPlan, frameIndex: number, zoomAdjustment = 0): number {
   const frames = plan.frames;
   const fps = Math.max(1, plan.fps || 60);
   const index = clamp(Math.round(frameIndex), 0, Math.max(0, frames.length - 1));
@@ -628,14 +655,20 @@ export function trackingDemandPxPerSec(plan: PlaybackPlan, frameIndex: number): 
   if (first.kind !== 'TRAVEL' || last.kind !== 'TRAVEL') return 0;
   const a = trackingTargetProjected(first);
   const b = trackingTargetProjected(last);
-  const scale = TILE_SIZE * 2 ** frame.zoom;
+  const scale = TILE_SIZE * 2 ** clamp(frame.zoom + zoomAdjustment, 4, 17.3);
   return Math.hypot((b.x - a.x) * scale, (b.y - a.y) * scale) / Math.max((right - left) / fps, 1 / fps);
 }
 
-export function trackingPanLimitPxPerSec(plan: PlaybackPlan, frameIndex: number, userMultiplier = 1, lagPx = 0): number {
+export function trackingPanLimitPxPerSec(
+  plan: PlaybackPlan,
+  frameIndex: number,
+  userMultiplier = 1,
+  lagPx = 0,
+  zoomAdjustment = 0
+): number {
   const frame = plan.frames[clamp(Math.round(frameIndex), 0, Math.max(0, plan.frames.length - 1))];
   const basePan = Math.max(120, Number(frame?.kind === 'TRAVEL' ? frame.maxPanPxPerSec : 0) || 240);
-  const demand = trackingDemandPxPerSec(plan, frameIndex);
+  const demand = trackingDemandPxPerSec(plan, frameIndex, zoomAdjustment);
   const durationFloor = basePan * trackingDurationScale(plan) * 0.82;
   const synchronized = demand > 0 ? demand * 1.16 + 36 : 0;
   const catchUp = Math.max(0, lagPx - 36) * 2.8;
