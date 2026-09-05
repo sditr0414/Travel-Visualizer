@@ -27,7 +27,7 @@ const COLORS: Record<MobilityClass, string> = {
 const cameraOwners = new WeakMap<MapLibreMap, PlayerController>();
 
 export interface PlayerCallbacks {
-  onFrame?: (frame: PlaybackFrame, frameIndex: number, timeSec: number, activeStopId: string | null) => void;
+  onFrame?: (frame: PlaybackFrame, frameIndex: number, timeSec: number, activeStopId: string | null, stopElapsedSec?: number) => void;
   onComplete?: () => void;
 }
 
@@ -69,6 +69,7 @@ export class PlayerController {
   private tileZoomLevel: number | null = null;
   private stops: PlaybackStop[] = [];
   private stopSchedule: ScheduledStop[] = [];
+  private stopById = new Map<string, ScheduledStop>();
   private stopDurationSec = 0;
   private mediaStopDurationSec = 0;
   private fullRouteData: object = emptyCollection();
@@ -192,6 +193,7 @@ export class PlayerController {
     this.plan = null;
     this.stops = [];
     this.stopSchedule = [];
+    this.stopById.clear();
     this.stopDurationSec = 0;
     this.mediaStopDurationSec = 0;
     this.fullRouteData = emptyCollection();
@@ -230,7 +232,7 @@ export class PlayerController {
     this.lastStopId = displayStopId;
     this.renderAtPosition(
       mapped.routeTimeSec * this.plan.fps,
-      force || stopChanged || activeMediaStop,
+      force || stopChanged || Boolean(mapped.activeStopId),
       displayStopId,
       activeMediaStop ? mapped.activeStopProgress : 0,
       activeMediaStop
@@ -292,7 +294,7 @@ export class PlayerController {
         zoom += this.stabilizePhotoStopZoomBoost(stopBoostTarget, this.timeSec);
       }
     }
-    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
+    zoom = applyUserZoomOffset(zoom + this.viewportZoomAdjustment(), this.zoomOffset);
     if (this.lockToPosition) {
       zoom = this.stabilizeZoom(zoom, this.timeSec);
     } else {
@@ -317,7 +319,9 @@ export class PlayerController {
       this.setSource('route-progress', this.fullRouteData);
       this.setSource('route-head', emptyCollection());
     }
-    this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId);
+    const stop = activeStopId ? this.stopById.get(activeStopId) : null;
+    const elapsed = stop ? clamp(this.timeSec - stop.journeyStartSec, 0, stop.durationSec) : 0;
+    this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId, elapsed);
   }
 
   private photoJourneyBoost(distanceMeters: number, mobilityClass: MobilityClass): number {
@@ -432,9 +436,17 @@ export class PlayerController {
         zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
       }
     }
-    zoom = applyUserZoomOffset(zoom, this.zoomOffset);
+    zoom = applyUserZoomOffset(zoom + this.viewportZoomAdjustment(), this.zoomOffset);
 
     warmMapTilesAhead(this.map, center, clamp(zoom, 4, 17.3));
+  }
+
+  private viewportZoomAdjustment(): number {
+    if (!this.plan?.viewportWidth || !this.plan.viewportHeight) return 0;
+    const canvas = this.map.getCanvas();
+    const width = canvas.clientWidth || this.plan.viewportWidth;
+    const height = canvas.clientHeight || this.plan.viewportHeight;
+    return Math.log2(Math.min(width / this.plan.viewportWidth, height / this.plan.viewportHeight));
   }
 
   private ownsCamera(): boolean {
@@ -449,6 +461,7 @@ export class PlayerController {
     const next = buildStopSchedule(stops, this.plan?.durationSec ?? 0);
     this.stops = next.stops;
     this.stopSchedule = next.schedule;
+    this.stopById = new Map(next.schedule.map(stop => [stop.id, stop]));
     this.stopDurationSec = next.totalDurationSec;
     this.mediaStopDurationSec = next.stops.reduce((sum, stop) =>
       isDayMarkerId(stop.id) ? sum : sum + Math.max(0, Number(stop.durationSec) || 0), 0);

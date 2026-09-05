@@ -34,7 +34,7 @@ export async function analyzeMediaFilesInline(
     const { file, fileIndex } = mediaEntries[index];
     const embedded = await readEmbeddedMetadata(file);
     const filenameTime = parseFilenameTimestamp(file.name);
-    const source: MediaMetadataSource = embedded ? 'embedded-exif' : filenameTime ? 'filename-time' : 'file-time';
+    const source: MediaMetadataSource = embedded?.takenMs != null ? 'embedded-exif' : filenameTime != null ? 'filename-time' : 'file-time';
     records.push({
       fileIndex,
       takenMs: embedded?.takenMs ?? filenameTime ?? Number(file.lastModified),

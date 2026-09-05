@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
@@ -16,7 +17,7 @@ const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
 const localTimeline = configuredPath('TRAVEL_TIMELINE_PATH', resolve(root, '..', '타임라인.json'));
 const localMediaRoot = configuredPath('TRAVEL_MEDIA_DIR', resolve(root, '..', '여행 사진'));
 const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
-const MEDIA_CACHE_VERSION = 2;
+const MEDIA_CACHE_VERSION = 3;
 let localMediaCache = null;
 
 const vite = isProduction
@@ -116,7 +117,7 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     response.setHeader('Allow', 'GET, HEAD');
     return text(response, 405, 'Method not allowed');
   }
-  if (!existsSync(path)) return text(response, 404, 'Map archive not found');
+  if (!existsSync(path) || !statSync(path).isFile()) return text(response, 404, 'File not found');
   const size = statSync(path).size;
   const range = request.headers.range;
   response.setHeader('Accept-Ranges', 'bytes');
@@ -127,11 +128,11 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
   if (!range) {
     response.writeHead(200, { 'Content-Length': size });
     if (request.method === 'HEAD') return response.end();
-    return createReadStream(path).pipe(response);
+    return pipeFile(path, response);
   }
 
   const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match) {
+  if (!match || (!match[1] && !match[2])) {
     response.writeHead(416, { 'Content-Range': `bytes */${size}` });
     return response.end();
   }
@@ -158,7 +159,7 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     'Content-Length': end - start + 1
   });
   if (request.method === 'HEAD') return response.end();
-  return createReadStream(path, { start, end }).pipe(response);
+  return pipeFile(path, response, { start, end });
 }
 
 function serveLocalTimeline(request, response) {
@@ -175,7 +176,7 @@ function serveLocalTimeline(request, response) {
     'X-Content-Type-Options': 'nosniff'
   });
   if (request.method === 'HEAD') return response.end();
-  return createReadStream(localTimeline).pipe(response);
+  return pipeFile(localTimeline, response);
 }
 
 function serveLocalMediaManifest(request, response) {
@@ -260,13 +261,13 @@ function buildLocalMediaCache(refresh = false) {
   }
   paths.sort((a, b) => relative(localMediaRoot, a).localeCompare(relative(localMediaRoot, b), 'ko'));
   const metadata = loadMediaMetadataCache();
-  const items = paths.map((path, index) => {
+  const items = paths.map(path => {
     const stats = statSync(path);
     const extension = extname(path).toLowerCase();
     const name = relative(localMediaRoot, path).replaceAll('\\', '/');
     const cached = metadata.entries[name];
     return {
-      id: String(index),
+      id: createHash('sha256').update(`${name}\0${stats.size}\0${stats.mtimeMs}`).digest('hex').slice(0, 32),
       path,
       name,
       size: stats.size,
@@ -397,7 +398,7 @@ function serveStatic(request, response, pathname) {
     'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
   });
   if (request.method === 'HEAD') return response.end();
-  createReadStream(filePath).pipe(response);
+  pipeFile(filePath, response);
 }
 
 function mimeType(extension) {
@@ -440,7 +441,7 @@ function isAllowedHost(host) {
 
 function isSameOriginRequest(request) {
   const origin = request.headers.origin;
-  if (!origin) return true;
+  if (!origin) return !request.headers['sec-fetch-site'] || request.headers['sec-fetch-site'] === 'same-origin';
   try {
     return new URL(origin).host === request.headers.host && isAllowedHost(request.headers.host);
   } catch {
@@ -476,4 +477,11 @@ function json(response, status, value) {
 function text(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end(body);
+}
+
+function pipeFile(path, response, options) {
+  const stream = createReadStream(path, options);
+  stream.on('error', () => response.destroy());
+  response.on('close', () => stream.destroy());
+  stream.pipe(response);
 }

@@ -139,6 +139,9 @@ export interface OutroFrame {
 export type PlaybackFrame = TravelFrame | OutroFrame;
 
 export interface PlaybackPlan {
+  selectedRange?: TimelineDateRange;
+  viewportWidth?: number;
+  viewportHeight?: number;
   frames: PlaybackFrame[];
   segments: PlaybackSegment[];
   fps: number;

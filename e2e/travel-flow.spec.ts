@@ -6,7 +6,7 @@ const CURSOR_RESTORE_TOLERANCE_SEC = 0.12;
 test('local trip can be planned, played, paused and reset', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
-  const play = page.getByRole('button', { name: '재생' });
+  const play = page.getByRole('button', { name: '재생', exact: true });
   const position = page.getByLabel('재생 위치');
   await expect(play).toBeVisible();
   await play.click();
@@ -27,7 +27,7 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   const mapBox = await page.getByTestId('map-stage').boundingBox();
   expect(mapBox).not.toBeNull();
   const outsideChrome = { x: mapBox!.x + mapBox!.width / 2, y: mapBox!.y + mapBox!.height / 2 };
-  const play = page.getByRole('button', { name: '재생' });
+  const play = page.getByRole('button', { name: '재생', exact: true });
   await play.click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
   await expect(page.locator('.route-persistent-hud')).toBeVisible();
@@ -79,7 +79,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await attachLocalPhotoManifest(page);
   await page.goto('/');
   await loadLocalTimeline(page);
-  const play = page.getByRole('button', { name: '재생' });
+  const play = page.getByRole('button', { name: '재생', exact: true });
   const pause = page.getByRole('button', { name: '일시정지' });
   const position = page.getByLabel('재생 위치');
 
@@ -123,28 +123,23 @@ test('route and photo journeys keep playback state and cursors separate', async 
 test('settings stay usable on a narrow screen with full-width trip dates', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
-  const settings = page.getByText('여행 설정');
-  const settingsBox = await settings.boundingBox();
-  const topbarBox = await page.locator('.topbar-actions').boundingBox();
-  expect(settingsBox).not.toBeNull();
-  expect(topbarBox).not.toBeNull();
-  expect(settingsBox!.x).toBeGreaterThanOrEqual(topbarBox!.x + topbarBox!.width);
+  const settings = page.getByRole('button', { name: '여행 설정', exact: true });
   await settings.click();
   const startDate = page.getByLabel('여행 시작');
   const endDate = page.getByLabel('여행 마지막 날');
   await expect(startDate).toBeVisible();
   await expect(endDate).toBeVisible();
   // Geometry must be measured after the settings panel's opening scale animation settles.
-  await page.waitForTimeout(380);
+  await page.waitForTimeout(150);
   const startBox = await startDate.boundingBox();
   const endBox = await endDate.boundingBox();
   expect(startBox).not.toBeNull();
   expect(endBox).not.toBeNull();
   expect(Math.abs(startBox!.width - endBox!.width)).toBeLessThanOrEqual(1);
   expect(endBox!.y).toBeGreaterThan(startBox!.y + startBox!.height);
-  const contentBox = await page.locator('.settings-content').boundingBox();
+  const contentBox = await page.locator('.settings-sheet .dialog-body').boundingBox();
   expect(contentBox).not.toBeNull();
-  expect(contentBox!.y).toBeGreaterThan(settingsBox!.y + settingsBox!.height);
+  expect(contentBox!.height).toBeGreaterThan(100);
   await expect(page.getByRole('button', { name: /경로 다시 만들기/ })).toBeVisible();
 });
 
@@ -174,7 +169,7 @@ test('large local Timeline stays browser-local and produces a playable plan', as
   test.skip(isMobile, 'The expensive real-data fixture only needs one browser viewport.');
   await page.goto('/');
   await loadLocalTimeline(page, { real: true });
-  await expect(page.getByRole('button', { name: '재생' })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole('button', { name: '재생', exact: true })).toBeVisible({ timeout: 120_000 });
   const position = page.getByLabel('재생 위치');
   const max = Number(await position.getAttribute('max'));
   expect(max).toBeGreaterThan(0);

@@ -1,7 +1,9 @@
 import { haversineMeters } from '../geo.js';
 import { analyzeMediaFiles } from './media-analysis';
 export { parseFilenameTimestamp, readEmbeddedMetadata } from './media-metadata';
-import type { JourneyMedia, MediaImportProgress, PhotoViewMode, PlaybackPlan, PlaybackSegment, TravelFrame } from '../types';
+import type { MediaMetadataRecord, JourneyMedia, MediaImportProgress, PhotoViewMode, PlaybackPlan, PlaybackSegment, TravelFrame } from '../types';
+
+const analyzedFileSets = new WeakMap<object, Promise<MediaMetadataRecord[]>>();
 
 export interface JourneyMediaLibrary {
   preview: JourneyMedia[];
@@ -14,7 +16,13 @@ export async function loadJourneyMedia(
   onProgress?: (progress: MediaImportProgress) => void
 ): Promise<JourneyMediaLibrary> {
   const allFiles = Array.from(files);
-  const records = await analyzeMediaFiles(allFiles, onProgress);
+  let analysis = analyzedFileSets.get(files);
+  if (!analysis) {
+    analysis = analyzeMediaFiles(allFiles, onProgress);
+    analyzedFileSets.set(files, analysis);
+    void analysis.catch(() => analyzedFileSets.delete(files));
+  }
+  const records = await analysis;
   onProgress?.({ phase: 'MATCH', processed: 0, total: records.length, message: '촬영 정보와 Timeline을 연결하고 있습니다.' });
   const mapped = records.map(record => {
     const file = allFiles[record.fileIndex];
@@ -45,9 +53,9 @@ export async function loadJourneyMedia(
 }
 
 export function organizeJourneyMedia(items: JourneyMedia[], plan: PlaybackPlan, mode: PhotoViewMode = 'PREVIEW'): JourneyMedia[] {
-  const startMs = plan.segments[0]?.startMs ?? -Infinity;
-  const endMs = plan.segments.at(-1)?.endMs ?? Infinity;
-  const relevant = items.filter(item => item.takenMs >= startMs - 12 * 60 * 60_000 && item.takenMs <= endMs + 12 * 60 * 60_000)
+  const startMs = plan.selectedRange ? Date.parse(`${plan.selectedRange.startDate}T00:00:00+09:00`) : (plan.segments[0]?.startMs ?? -Infinity) - 12 * 60 * 60_000;
+  const endMs = plan.selectedRange ? Date.parse(`${plan.selectedRange.endDate}T23:59:59.999+09:00`) : (plan.segments.at(-1)?.endMs ?? Infinity) + 12 * 60 * 60_000;
+  const relevant = items.filter(item => item.takenMs >= startMs && item.takenMs <= endMs)
     .sort((a, b) => a.takenMs - b.takenMs);
   const groups: JourneyMedia[][] = [];
   for (const item of relevant) {

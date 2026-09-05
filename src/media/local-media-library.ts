@@ -50,7 +50,10 @@ export async function loadLocalMediaManifest(
       groupCount: 1,
       sourceCount: 1
       });
-      if (shouldCache) updates.push({ id: item.id, ...metadata });
+      if (shouldCache) {
+        item.metadata = metadata;
+        updates.push({ id: item.id, ...metadata });
+      }
     }
     const processed = Math.min(offset + batch.length, manifest.items.length);
     onProgress?.({ phase: 'METADATA', processed, total: manifest.items.length, message: `${processed} / ${manifest.items.length} 촬영 정보 확인` });
@@ -75,12 +78,19 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
   }
 
   let embedded = null;
+  let embeddedScanned = cached?.embeddedScanned === true;
   if (shouldReadEmbedded) {
-    if (isJpeg(item)) {
-      embedded = await fetchJpegMetadata(item, LOCAL_EXIF_FAST_BYTES);
-      if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchJpegMetadata(item, LOCAL_EXIF_MAX_BYTES);
-    } else {
-      embedded = await fetchQuickTimeMetadata(item);
+    try {
+      if (isJpeg(item)) {
+        embedded = await fetchJpegMetadata(item, LOCAL_EXIF_FAST_BYTES);
+        if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchJpegMetadata(item, LOCAL_EXIF_MAX_BYTES);
+      } else {
+        embedded = await fetchQuickTimeMetadata(item);
+      }
+      embeddedScanned = true;
+    } catch {
+      // Temporary read failures may use fallback metadata, but must be retried next time.
+      embeddedScanned = false;
     }
   }
 
@@ -96,54 +106,47 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
       lng: cached?.lng ?? embedded?.lng ?? null,
       source: cached?.source === 'takeout-sidecar'
         ? 'takeout-sidecar'
-        : embedded
+        : embedded?.takenMs != null
           ? 'embedded-exif'
           : cached?.source ?? (filenameTime == null ? 'file-time' : 'filename-time'),
-      embeddedScanned: shouldReadEmbedded || cached?.embeddedScanned === true
+      embeddedScanned
     },
     shouldCache: true
   };
 }
 
 async function fetchJpegMetadata(item: LocalMediaManifestItem, bytes: number) {
-  try {
-    const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` } });
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }));
-  } catch {
-    return null;
-  }
+  const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` }, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`Media read failed: ${response.status}`);
+  const blob = await response.blob();
+  return readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }));
 }
 
 async function fetchQuickTimeMetadata(item: LocalMediaManifestItem) {
   if (item.size <= 0) return null;
-  try {
-    const ranges = item.size <= LOCAL_VIDEO_SCAN_BYTES * 2
-      ? [[0, item.size - 1]]
-      : [[0, LOCAL_VIDEO_SCAN_BYTES - 1], [item.size - LOCAL_VIDEO_SCAN_BYTES, item.size - 1]];
-    const chunks = (await Promise.all(ranges.map(([start, end]) => fetchMediaRange(item.id, start, end))))
-      .filter((value): value is ArrayBuffer => value != null);
-    return parseQuickTimeMetadataChunks(chunks);
-  } catch {
-    return null;
-  }
+  const ranges = item.size <= LOCAL_VIDEO_SCAN_BYTES * 2
+    ? [[0, item.size - 1]]
+    : [[0, LOCAL_VIDEO_SCAN_BYTES - 1], [item.size - LOCAL_VIDEO_SCAN_BYTES, item.size - 1]];
+  const chunks = await Promise.all(ranges.map(([start, end]) => fetchMediaRange(item.id, start, end)));
+  return parseQuickTimeMetadataChunks(chunks);
 }
 
-async function fetchMediaRange(id: string, start: number, end: number): Promise<ArrayBuffer | null> {
-  const response = await fetch(`/api/local-media/${encodeURIComponent(id)}`, { headers: { Range: `bytes=${start}-${end}` } });
-  return response.ok ? response.arrayBuffer() : null;
+async function fetchMediaRange(id: string, start: number, end: number): Promise<ArrayBuffer> {
+  const response = await fetch(`/api/local-media/${encodeURIComponent(id)}`, { headers: { Range: `bytes=${start}-${end}` }, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`Media read failed: ${response.status}`);
+  return response.arrayBuffer();
 }
 
 async function saveMetadataCache(entries: CachedMetadataUpdate[]): Promise<void> {
-  try {
-    await fetch('/api/local-media-metadata-cache', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entries })
-    });
-  } catch {
-    // Cache writes are an optimization; the journey remains usable without them.
+  for (let offset = 0; offset < entries.length; offset += 500) {
+    try {
+      const response = await fetch('/api/local-media-metadata-cache', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: entries.slice(offset, offset + 500) }),
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!response.ok) return;
+    } catch { return; /* Persistent caching is optional; the in-memory result remains usable. */ }
   }
 }
 

@@ -14,7 +14,7 @@ export function localMapStyleFor(config: LocalMapSource): StyleSpecification {
   ensurePmtilesArchive(config.worldUrl);
   ensurePmtilesArchive(config.regionUrl);
   const flavor = namedFlavor('grayscale');
-  const worldLayers = prepareLayers(layers('world', flavor, { lang: 'ko' }), 'world', 'world-', { maxzoom: 6 });
+  const worldLayers = prepareLayers(layers('world', flavor, { lang: 'ko' }), 'world', 'world-', {});
   const regionLayers = prepareLayers(layers('region', flavor, { lang: 'ko' }), 'region', 'region-', { minzoom: 6 });
   return {
     version: 8,

@@ -1,46 +1,57 @@
-# Travel Camera Visualizer v2
+# Travel Camera Visualizer v3
 
-개인 Google Timeline과 로컬 사진·영상을 지도 위에서 재생하는 로컬 우선 반응형 웹앱입니다. Google Photos API나 OAuth 없이 이 PC의 파일만 사용합니다.
+Google Timeline과 내 사진·영상을 지도 위에서 다시 감상하는 로컬 우선 웹앱입니다. v3는 기존 경로·카메라 엔진을 유지하면서 처음 사용하기 쉬운 화면, 설명이 있는 설정, PC·모바일 조작을 새로 구성했습니다.
 
 ## 빠른 시작
 
-Node.js 24 이상이 필요합니다. Windows에서는 저장소를 한 번 준비한 뒤부터 명령어를 직접 입력하지 않아도 됩니다.
+Node.js 24 이상이 필요합니다.
 
-### Windows 권장: 더블클릭 실행
-
-1. 저장소 루트의 `Install-TravelCamera-Shortcut.cmd`를 한 번 실행합니다.
-2. 바탕 화면에 생성된 **Travel Camera Visualizer** 바로가기를 더블클릭합니다.
-3. 런처가 안전한 경우 `main`을 최신 상태로 fast-forward 업데이트하고, `package-lock.json`이 바뀌었거나 `node_modules`가 없을 때만 `npm ci`를 실행합니다.
-4. 로컬 서버가 준비되면 브라우저에서 `http://127.0.0.1:5517`을 자동으로 엽니다.
-
-바탕 화면 바로가기를 만들지 않아도 저장소 루트의 `TravelCamera.cmd`를 더블클릭하면 같은 방식으로 실행됩니다.
-
-런처는 작업 중인 코드를 보호합니다. 현재 브랜치가 `main`이 아니거나 추적 중인 로컬 수정이 있으면 `git pull`을 자동으로 실행하지 않고 현재 작업 트리 그대로 앱을 시작합니다. 네트워크 문제로 업데이트에 실패해도 기존 로컬 버전으로 계속 실행합니다.
-
-개발 중 자동 업데이트를 원하지 않으면 터미널에서 다음을 사용할 수 있습니다.
-
-```powershell
-npm run launch:no-update
-```
-
-기존 수동 실행도 계속 지원합니다.
-
-```powershell
+```sh
 npm ci
 npm start
 ```
 
-브라우저에서 `http://127.0.0.1:5517`을 엽니다. 기본값은 다음과 같습니다.
+`http://127.0.0.1:5517`을 엽니다. 처음 실행하거나 앱이 변경되면 배포 화면을 빌드하고, 변경이 없으면 저장된 빌드를 사용합니다. 개발 서버는 `npm run dev`로 실행합니다.
+
+Windows에서는 `Install-TravelCamera-Shortcut.cmd`를 한 번 실행한 뒤 바탕 화면 바로가기를 사용하거나, 저장소의 `TravelCamera.cmd`를 더블클릭합니다. 런처는 `main`이고 추적 중인 수정이 없을 때만 fast-forward 업데이트합니다. 다른 브랜치에서는 현재 코드를 실행합니다. 의존성은 lockfile이 바뀔 때만 설치합니다.
+
+- 자동 업데이트 없이 실행: `npm run launch:no-update`
+- 포트 변경: `npm start -- --port 5520`
+- 기본 개인 파일 자동 연결 끄기: `npm start -- --no-local-data`
+
+## 처음 사용하는 순서
+
+1. 스마트폰 Google 지도에서 내보낸 **semanticSegments 형식의 Timeline JSON**을 선택합니다. 직접 선택하는 파일은 250MB 이하를 지원합니다.
+2. 기록의 전체 기간으로 경로가 준비됩니다. **여행 설정**에서 원하는 날짜로 좁히고 **경로 다시 만들기**를 누릅니다. 날짜는 한국 시간(UTC+9) 기준입니다.
+3. **재생**을 누릅니다. **발자취**는 이동 경로를, **사진 여정**은 사진·영상과 경로를 함께 보여줍니다. 두 모드는 각각 보던 위치를 기억합니다.
+4. 사진을 연결하려면 **사진 폴더** 또는 설정의 **사진·영상 개별 선택**을 사용합니다. Takeout JSON 보조 파일도 함께 선택하면 촬영 정보를 보완할 수 있습니다.
+
+설정은 여행 기간, 카메라·지도, 사진·영상 순서로 배치되어 있습니다. 각 항목에 효과와 권장값을 설명합니다. 날짜·화면 구성·시간 배분·항공 포함·경로 길이는 경로를 다시 만들 때 적용되고, 확대·따라가기·사진·영상 설정은 즉시 반영됩니다. 설정을 열면 재생을 일시정지합니다.
+
+**사진 목록**에서 촬영 시각의 출처와 GPS/Timeline 추정 위치를 확인하고, 원본 파일을 변경하지 않고 이번 감상에서 제외할 수 있습니다. 제외 상태는 새로고침하면 초기화됩니다. 대표 사진은 포함된 사진 가운데 다시 고릅니다.
+
+## PC와 모바일
+
+PC는 지도와 사진을 좌우로, 좁은 화면은 위아래로 배치합니다. 분할선은 드래그하거나 키보드로 조절할 수 있습니다. 작은 화면의 파일 선택과 사진 목록은 여행 설정에서도 접근할 수 있습니다.
+
+- `Space`: 재생·일시정지
+- `←` / `→`: 5초 탐색
+- `Home`: 처음으로
+- `Esc`: 열린 창 닫기
+
+입력란에서는 기본 키 동작을 유지합니다. 설정창은 native dialog의 포커스 관리와 키보드 닫기를 사용하며, 주요 터치 조작은 44px 이상입니다. 운영체제의 모션 줄이기·고대비 설정을 지원합니다.
+
+PC의 `127.0.0.1` 주소는 휴대폰에서 열 수 없습니다. 모바일 제공에는 `dist/`를 HTTPS 정적 호스팅의 루트에 배포해야 합니다. 이 경우 모바일 기기에서 파일을 직접 선택하며 PC의 자동 파일 연결·설치 지도 API는 사용할 수 없습니다. 이 저장소에는 공개 호스팅 배포를 포함하지 않습니다. 개발 서버를 외부 네트워크에 공개하지 마세요.
+
+## 파일과 개인정보
 
 | 데이터 | 기본 위치 |
 | --- | --- |
 | Timeline | 저장소 상위 폴더의 `타임라인.json` |
 | 사진·영상 | 저장소 상위 폴더의 `여행 사진` |
-| 메타데이터 캐시 | 저장소의 `.cache/media-metadata.json` |
+| 메타데이터 캐시 | `.cache/media-metadata.json` |
 
-현재 작업 폴더에서는 각각 `E:\travel-camera-visualizer\타임라인.json`, `E:\travel-camera-visualizer\여행 사진`에 해당합니다. 기본 파일이 없으면 앱의 파일·폴더 선택기를 사용합니다.
-
-다른 위치를 기본값으로 사용하려면 실행 전에 지정합니다.
+기본 파일이 없어도 파일 선택기로 사용할 수 있습니다. 경로는 `TRAVEL_TIMELINE_PATH`, `TRAVEL_MEDIA_DIR`, `TRAVEL_METADATA_CACHE` 환경변수로 변경할 수 있습니다.
 
 ```powershell
 $env:TRAVEL_TIMELINE_PATH = 'D:\My Travel\timeline.json'
@@ -48,69 +59,39 @@ $env:TRAVEL_MEDIA_DIR = 'D:\My Travel\photos'
 npm start
 ```
 
-기본 포트를 바꾸려면 `npm start -- --port 5520`, `npm run launch -- --port 5520` 또는 `$env:PORT=5520`을 사용합니다.
+Timeline과 사진 원본은 외부로 업로드하지 않습니다. 온라인 지도 타일은 외부 지도 서버에서 받습니다. 일부 지도 글꼴도 인터넷을 사용합니다. 감상 설정만 브라우저에 저장하고, 직접 선택한 파일과 날짜는 저장하지 않습니다. 새로고침하면 직접 선택한 파일을 다시 선택해야 합니다.
 
-## 주요 기능
+촬영 정보는 Takeout 보조 파일 → JPEG EXIF/QuickTime → 파일명 → 파일 수정 시각 순으로 보완합니다. GPS가 없으면 Timeline에서 위치를 추정합니다. 시간대가 없는 촬영 정보는 기기의 시간대를 따르며, 화면 표시는 한국 시간입니다. 큰 영상은 앞·뒤 최대 1MB씩만 읽어 메타데이터를 찾으므로 모든 파일의 내장 정보를 읽을 수 있다고 보장하지 않습니다.
 
-- Timeline 파싱과 재생 계획 계산을 Web Worker에서 수행
-- 복원된 AUTO 카메라와 DAY·SEGMENT 카메라 선택
-- 온라인 OpenFreeMap 기본, 로컬 PMTiles 선택 가능
-- 재생 전·일시정지에는 전체 경로 표시, 재생 중에는 진행 경로에 집중
-- 사진 전체 보기와 대표 장면 미리보기
-- 사진·영상 표시 시간, 항공 포함 여부, 재생 길이, 화면 분할 조절
-- 재생 중 지도 휠 확대 방지, 정지 상태에서는 직접 확대·축소 가능
-
-Timeline과 사진은 외부 서비스로 전송되지 않습니다. 자동 경로를 사용할 때는 `127.0.0.1`에 바인딩된 로컬 서버가 파일을 같은 PC의 브라우저에 제공합니다.
-
-## 사진·영상 메타데이터와 캐시
-
-메타데이터는 다음 순서로 결합합니다.
-
-1. Google Takeout sidecar의 촬영 시각·GPS
-2. JPEG EXIF의 촬영 시각·GPS
-3. MP4·MOV·M4V QuickTime 메타데이터의 생성 시각·GPS
-4. 파일명에 포함된 촬영 시각
-5. 파일 수정 시각
-
-Sidecar에 GPS가 없고 내장 메타데이터에 GPS가 있으면 두 정보를 결합합니다. 최초 분석에서는 JPEG 전체가 아니라 최대 256KB의 헤더만 읽고, MP4·MOV·M4V는 큰 파일 전체를 읽지 않고 앞·뒤 최대 1MB씩만 확인합니다. 결과는 `.cache/media-metadata.json`에 저장하며 파일 크기·수정 시각 또는 파서 상태가 바뀐 항목만 다시 분석합니다. 캐시와 원본 데이터는 `.gitignore`에서 제외됩니다.
-
-WebM 영상의 내부 촬영 시각과 GPS는 아직 분석하지 않습니다. Sidecar 또는 파일명 시각을 사용하고, 둘 다 없으면 수정 시각을 사용합니다.
+HEIC/HEIF와 일부 영상 코덱은 브라우저에서 표시되지 않을 수 있습니다. 실패 안내에 따라 JPEG·PNG 또는 브라우저 지원 영상으로 변환하세요. 영상은 앱의 일시정지·탐색과 함께 동작하며, 자동 재생이 차단되면 영상 안에 재생 버튼이 나타납니다.
 
 ## 지도
 
-온라인 지도가 기본값입니다. 오프라인 지도가 필요하면 다음 명령으로 PMTiles를 준비합니다.
+온라인 OpenFreeMap이 기본입니다. 설치형 PMTiles가 필요하면 다음을 실행합니다.
 
-```powershell
+```sh
 npm run map:setup
 ```
 
-준비 후 설정에서 **로컬 PMTiles**를 선택합니다. 로컬 지도 전용 코드는 선택할 때만 로드됩니다.
+설정에서 **이 PC에 설치된 지도**를 선택합니다. 세계 지도의 해상도는 낮고 상세 지도는 설치 지역에 한정됩니다. 상세 범위 밖에는 세계 지도를 유지하지만 일부 지명 글꼴에는 인터넷이 필요하므로 완전한 오프라인 모드를 뜻하지 않습니다.
 
-## 구조
+## 구조와 검증
 
-- `src/workers/timeline.worker.ts`: Timeline 스캔·계획 Worker
-- `src/player/player-controller.ts`: React 밖의 프레임 재생과 지도 갱신
-- `src/media/`: sidecar·EXIF·QuickTime 분석, Timeline 매칭, 사진 여정 구성
-- `src/map/`: MapLibre와 온라인·PMTiles 지도 스타일
-- `server.mjs`: 로컬 정적 서버, Timeline·미디어·PMTiles Range 제공, 메타데이터 캐시
-- `scripts/launch-local.mjs`: 안전한 `main` 업데이트, lockfile 기반 의존성 동기화, 서버 시작, 브라우저 자동 열기
-- `TravelCamera.cmd`: Windows 더블클릭 런처
+- `src/ui/`, `src/settings/`: v3 화면, 설명, 대화상자, 설정 저장
+- `src/workers/`, `src/domain/`: Timeline 분석과 경로 계획
+- `src/player/`: 독립된 두 재생 세션, 카메라와 영상 시간 동기화용 콜백
+- `src/media/`: 촬영 정보, 사진 목록·대표 장면, 영상과 장면 전환
+- `src/map/`: MapLibre, 온라인·PMTiles 지도
+- `server.mjs`: loopback 전용 파일·Range·메타데이터 API
+- `scripts/ensure-build.mjs`: 변경된 소스의 배포 빌드 준비
+- `scripts/launch-local.mjs`: 업데이트·설치·빌드·브라우저 실행
 
-로컬 서버의 API는 `/api/map-status`, `/api/local-timeline`, `/api/local-media-manifest`, `/api/local-media/:id`, `/api/local-media-metadata-cache`로 제한됩니다.
-
-## 검증
-
-```powershell
+```sh
+npm run lint
+npm run build
+# 전체 검증이 필요할 때만
 npm run verify
 npm run test:e2e
 ```
 
-`verify`는 typecheck, lint, 단위·통합 테스트, 프로덕션 빌드를 순서대로 실행합니다. E2E는 데스크톱과 모바일 viewport에서 계획·재생·일시정지·탐색 흐름을 확인합니다.
-
-## 버전과 개인정보
-
-- `main`, `v2`: 현재 React/TypeScript 재구축 버전
-- `v1`: 이전 JavaScript 버전 보존 태그
-- Google Photos API·OAuth, 영상 내보내기, PWA, 네이티브 앱은 현재 범위 밖입니다.
-- Timeline, 사진, PMTiles, 환경 파일, OAuth secret, 메타데이터 캐시는 커밋하지 않습니다.
-- 과거 Git 이력에는 위치 fixture가 남아 있으므로 저장소를 공개하려면 이력 정리가 별도로 필요합니다.
+v3 변경 범위와 확인 결과는 [V3_RELEASE_NOTES.md](V3_RELEASE_NOTES.md)에 정리했습니다. `v1`, `v2`는 이전 버전 태그입니다. 개인 Timeline·사진·지도 원본·캐시·환경 파일은 커밋하지 않습니다. 과거 위치 fixture가 Git 이력에 남아 있으므로 저장소 공개 전 이력 검토가 필요합니다.

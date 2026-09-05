@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Map } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import type { MapSourceConfig } from '../types';
 import { mapStyleFor } from './map-style';
 
@@ -17,10 +16,12 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
   useEffect(() => {
     if (!containerRef.current) return;
     let map: Map | null = null;
+    let cancelled = false;
+    let observer: ResizeObserver | null = null;
     let ready = false;
     let fallbackTimeout = 0;
     const initTimeout = window.setTimeout(async () => {
-      if (!containerRef.current) return;
+      if (cancelled || !containerRef.current) return;
       let style;
       try {
         style = await mapStyleFor(source);
@@ -28,7 +29,8 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
         onError('지도 구성을 준비하지 못해 기본 배경으로 전환했습니다.');
         style = fallbackStyle();
       }
-      if (!containerRef.current) return;
+      if (cancelled || !containerRef.current) return;
+      try {
       map = new maplibregl.Map({
         container: containerRef.current,
         style,
@@ -40,6 +42,12 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
         maxTileCacheZoomLevels: 8
       });
 
+      } catch {
+        onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.');
+        return;
+      }
+      observer = new ResizeObserver(() => map?.resize());
+      observer.observe(containerRef.current);
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
       collapseAttribution(map);
@@ -66,6 +74,8 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
     }, 0);
 
     return () => {
+      cancelled = true;
+      observer?.disconnect();
       window.clearTimeout(initTimeout);
       window.clearTimeout(fallbackTimeout);
       map?.remove();
