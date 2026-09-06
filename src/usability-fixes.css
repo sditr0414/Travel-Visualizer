@@ -1,0 +1,51 @@
+/* v2 is the visual baseline. Only targeted usability and recovery additions. */
+.setting-help { margin: -3px 0 12px; color: #c6c3be; font-size: 12px; line-height: 1.65; }
+.settings-help-link { padding: 8px 0; border: 0; background: transparent; color: var(--paper); font: inherit; font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 40px; }
+.overview-button { color: var(--paper); cursor: pointer; }
+.import-button:focus-within, .local-import-actions label:focus-within, .media-import-row label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.map-recovery { position: absolute; z-index: 20; right: 16px; bottom: 110px; max-width: min(380px, calc(100% - 32px)); padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 13px; line-height: 1.6; }
+.map-recovery p { margin: 0 0 8px; }
+.map-recovery button { background: transparent; color: var(--paper); border: 0; padding: 8px 10px; min-height: 40px; cursor: pointer; text-decoration: underline; }
+.app-dialog { padding: 0; margin: auto; width: min(620px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); color: var(--paper); box-shadow: var(--shadow); overflow: hidden; }
+.app-dialog[open] { display: flex; flex-direction: column; }
+.app-dialog::backdrop { background: rgba(0,0,0,.5); }
+.dialog-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 20px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.dialog-header h2 { font-size: 20px; margin: 0; }
+.dialog-header p { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 8px 0 0; }
+.dialog-body { padding: 20px; overflow: auto; overscroll-behavior: contain; min-height: 0; }
+.dialog-footer { border-top: 1px solid var(--line); padding: 12px 20px; flex-shrink: 0; }
+.app-dialog .icon-button, .app-dialog .text-button { border: 0; background: transparent; color: var(--paper); cursor: pointer; min-height: 44px; min-width: 44px; }
+.app-dialog .text-button { text-decoration: underline; }
+.app-dialog button:disabled { opacity: .4; cursor: default; }
+.help-steps { padding-left: 22px; margin: 0; }
+.help-steps li + li, .help-section { margin-top: 20px; }
+.help-section h3 { margin: 0; font-size: 15px; }
+.help-steps p, .help-section p, .library-description, .empty-note { font-size: 13px; line-height: 1.7; color: #ccc8c2; }
+.shortcut-list > div { display: flex; gap: 18px; font-size: 13px; line-height: 1.8; }
+.shortcut-list dd { margin: 0; }
+.shortcut-list dt { min-width: 70px; }
+.library-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.library-row input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.library-info { min-width: 0; display: grid; gap: 5px; font-size: 12px; }
+.library-info strong { font-size: 13px; overflow-wrap: anywhere; }
+.library-info time, .library-info > span { color: var(--muted); }
+.library-info .metadata-estimated { color: #ffbb93; }
+.library-row.is-excluded { opacity: .55; }
+.library-footer, .library-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.video-play-prompt { position: absolute; z-index: 4; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 12px 16px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--paper); cursor: pointer; white-space: nowrap; }
+.media-buffering { position: absolute; right: 18px; top: 18px; z-index: 4; padding: 8px 12px; border-radius: 8px; background: var(--surface); color: var(--paper); font-size: 12px; }
+.fatal-screen { min-height: 100dvh; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 32px; text-align: center; background: var(--ink); }
+.fatal-screen button { padding: 12px 20px; background: var(--accent); color: var(--ink); border: 0; border-radius: 10px; cursor: pointer; }
+@media (max-width: 820px) {
+  .app-shell { min-height: 0; height: 100dvh; }
+  .overview-button span { display: none; }
+  .overview-button { min-width: 40px; justify-content: center; }
+  .dialog-header, .dialog-body { padding: 16px; }
+}
+@media (pointer: coarse) {
+  .mode-switch button, .import-button, .play-control, .secondary-control { min-height: 44px; }
+  .settings-content input[type=range] { min-height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-dialog, .map-recovery { animation: none; transition: none; }
+}

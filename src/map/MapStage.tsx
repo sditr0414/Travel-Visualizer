@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Map } from 'maplibre-gl';
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+// MapLibre 6 resolves its default worker next to the original module. Vite moves
+// that module into a chunk, so bundle the worker explicitly for production too.
+maplibregl.setWorkerUrl(mapWorkerUrl);
 import type { MapSourceConfig } from '../types';
 import { mapStyleFor } from './map-style';
 
@@ -19,6 +24,7 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
     let cancelled = false;
     let observer: ResizeObserver | null = null;
     let ready = false;
+    let reportedError = false;
     let fallbackTimeout = 0;
     const initTimeout = window.setTimeout(async () => {
       if (cancelled || !containerRef.current) return;
@@ -31,16 +37,16 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
       }
       if (cancelled || !containerRef.current) return;
       try {
-      map = new maplibregl.Map({
-        container: containerRef.current,
-        style,
-        center: [127.6, 36.2],
-        zoom: 5.4,
-        attributionControl: false,
-        cooperativeGestures: false,
-        cancelPendingTileRequestsWhileZooming: false,
-        maxTileCacheZoomLevels: 8
-      });
+        map = new maplibregl.Map({
+          container: containerRef.current,
+          style,
+          center: [127.6, 36.2],
+          zoom: 5.4,
+          attributionControl: false,
+          cooperativeGestures: false,
+          cancelPendingTileRequestsWhileZooming: false,
+          maxTileCacheZoomLevels: 8
+        });
 
       } catch {
         onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.');
@@ -63,7 +69,11 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
       map.once('style.load', markReady);
       map.on('error', event => {
         const message = event.error?.message;
-        if (message && /style|source|pmtiles|tile/i.test(message)) onError(message);
+        if (message && !reportedError) {
+          reportedError = true;
+          console.warn('[Travel Camera 지도]', message);
+          onError('배경 지도 요청에 실패했습니다. 인터넷 연결을 확인한 뒤 지도 다시 연결을 눌러 주세요.');
+        }
       });
       fallbackTimeout = window.setTimeout(() => {
         if (ready || !map) return;

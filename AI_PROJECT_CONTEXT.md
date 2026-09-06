@@ -16,19 +16,15 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 
 ## UI and accessibility
 
-- 첫 화면: Timeline 준비 안내, 명확한 파일 선택 CTA, 도움말, 개인정보 안내.
-- 헤더: 발자취/사진 여정 모드, 파일 조작, 도움말, 여행 설정. 헤더는 항상 표시합니다.
-- 하단: 재생·처음으로·시간 탐색. 사진 모드에서는 지도 영역 안에 배치합니다.
-- PC: 지도·사진 좌우 분할. 820px 이하: 상하 분할. 초기 지도 비율은 PC 38%, 모바일 34%. 분할선은 포인터와 방향키를 지원합니다.
-- 설정: native dialog, 제목·설명 연결, Esc·배경 클릭·닫기, focus trap/복원. `src/ui/Dialog.tsx`를 공통 사용합니다.
-- 모든 설정에 실제 효과·권장값·적용 시점을 설명합니다. 고급 항목은 details 아래 둡니다. 날짜 입력은 동일한 폭의 2행입니다.
-- 기간·항공·camera mode·pacing·길이는 경로 생성 후 적용합니다. 확대·따라가기·사진·영상 설정은 live 적용입니다. 최초 계획 실패에도 다시 만들 수 있어야 합니다.
-- 사진 목록은 24개씩 페이지를 나눕니다. 시각 출처와 위치 추정 여부를 표시합니다. 제외해도 원본은 변경하지 않습니다. 포함된 사진에서 대표 장면을 다시 선택합니다.
-- 스타일은 `src/styles.css` 하나에 v3 색·간격·크기 규칙을 관리합니다. 이전 polish override 파일은 제거했습니다.
-- 주요 조작 44px, 명확한 focus-visible, 모션 줄이기·forced-colors·safe-area 지원. 터치 환경은 조작을 숨기지 않습니다.
-- PC 재생 중 dock/context만 자동 숨김. 키보드 focus나 dock footprint hover로 복원하며 헤더/HUD는 유지합니다. `src/ui/playback-chrome.ts`가 이 상태를 관리합니다.
-- Space/방향키/Home 단축키는 입력·버튼·select·dialog 편집을 방해하지 않습니다. 문서가 숨겨지면 재생을 멈춥니다.
-- 감상 설정만 검증된 값으로 localStorage에 저장합니다. 개인 파일·날짜·사진 제외 목록은 영구 저장하지 않습니다.
+- 사용자가 v2 디자인 계승을 명시했습니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널, 기존 색상·간격을 유지합니다. 전면 재설계하지 않습니다.
+- `styles.css`, `ux-polish.css`, `settings-polish.css`는 v2 기준을 복원했습니다. 설명·복구·도움말 등 제한된 추가 스타일은 `usability-fixes.css`에 둡니다.
+- 설정 각 항목 아래 짧은 설명을 표시하고 aria-describedby로 연결합니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
+- 도움말·사진 목록은 공통 native Dialog를 사용합니다. 개인 파일·날짜는 저장하지 않고 검증한 감상 설정만 저장합니다.
+- 사진 목록은 촬영 정보 출처·위치 추정·감상 제외 기능을 유지합니다. 사진 여정 설정에서 엽니다.
+- PC 좌우/모바일 상하 분할과 모드별 커서는 유지합니다. 전체 경로 버튼은 커서 변경 없이 bounds를 맞춥니다.
+- MapLibre 6의 기본 Worker 경로는 Vite 배포 청크 옆에 존재하지 않습니다. `MapStage.tsx`에서 `maplibre-gl-worker.mjs?worker&url`을 import하고 setWorkerUrl을 호출해야 합니다. 스타일 로드 성공만으로 실제 지도 표시를 보장하지 않습니다.
+- 배포 Worker 누락 시 지도·GeoJSON 경로가 모두 비어 보일 수 있습니다. 첫 E2E에 Worker가 실제로 시작하는지 확인을 포함합니다. 존재하지 않는 정적 asset 요청을 index.html로 바꾸지 않습니다.
+- 키보드 단축키, 입력 중 기본 키 동작, 탭 숨김 일시정지, 터치 환경 컨트롤 유지, 모션 줄이기 지원을 보존합니다.
 
 ## Playback and camera invariants
 
@@ -63,4 +59,4 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 
 ## Validation
 
-사용자가 지정한 범위가 우선입니다. 이번 작업은 핵심 단위 흐름과 lint/build로 제한하고 실제 기기·브라우저 E2E를 실행하지 않았습니다. 변경별 검증과 남은 배포 확인은 V3_RELEASE_NOTES.md를 갱신합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.
+사용자가 지정한 범위가 우선입니다. 수정 후 App 핵심 검사와 lint/build를 확인하고, 배포 화면에서 초기 지도의 실제 렌더링을 확인했습니다. 390px 모바일 viewport의 가로 넘침도 확인했으며 실기기 검증과는 구별합니다. 변경별 검증과 남은 배포 확인은 V3_RELEASE_NOTES.md를 갱신합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.

@@ -390,6 +390,7 @@ function serveStatic(request, response, pathname) {
   let filePath = resolve(distDir, `.${safePath}`);
   const relativePath = relative(resolve(distDir), filePath);
   if (isAbsolute(relativePath) || relativePath.startsWith('..') || !existsSync(filePath) || !statSync(filePath).isFile()) {
+    if (extname(pathname) || pathname.startsWith('/assets/')) return text(response, 404, 'Asset not found');
     filePath = join(distDir, 'index.html');
   }
   if (!existsSync(filePath)) return text(response, 503, 'Run npm run build first');
@@ -406,6 +407,7 @@ function mimeType(extension) {
   return {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
     '.svg': 'image/svg+xml',

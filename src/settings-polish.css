@@ -1,0 +1,370 @@
+/* Focused settings and final interface refinements. Loaded after ux-polish.css. */
+
+/* Give playback chrome enough time to visibly fade instead of snapping between states. */
+.topbar,
+.settings-panel,
+.journey-hud,
+.player-dock {
+  transition:
+    opacity 480ms cubic-bezier(.25, .7, .18, 1),
+    transform 540ms cubic-bezier(.2, .78, .2, 1);
+}
+
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel {
+  transform: translateY(-10px) scale(.992);
+}
+
+.playback-active.playback-chrome-hidden .player-dock {
+  transform: translate(-50%, 12px) scale(.992);
+}
+
+.settings-panel[open] .settings-content {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(.2, .78, .2, 1);
+}
+
+.local-import-panel,
+.status-card {
+  animation-duration: 360ms;
+  animation-timing-function: cubic-bezier(.2, .72, .2, 1);
+}
+
+/* Keep outgoing and incoming media overlapped long enough for a perceptible dissolve. */
+.media-scene-layer.is-current {
+  animation-name: scene-crossfade-in;
+  animation-duration: var(--scene-transition-ms, 620ms);
+  animation-timing-function: cubic-bezier(.22, .72, .18, 1);
+  animation-fill-mode: both;
+}
+
+.media-scene-layer.is-previous {
+  animation-name: scene-crossfade-out;
+  animation-duration: var(--scene-transition-ms, 620ms);
+  animation-timing-function: cubic-bezier(.35, 0, .24, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes scene-crossfade-in {
+  0% { opacity: 0; transform: scale(1.012); }
+  38% { opacity: .48; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scene-crossfade-out {
+  0% { opacity: 1; transform: scale(1); }
+  58% { opacity: .52; }
+  100% { opacity: 0; transform: scale(.992); }
+}
+
+/* Full-frame date cue used when a photo journey crosses into a new active day. */
+.media-day-marker {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  width: min(680px, 88%);
+  min-height: 260px;
+  text-align: center;
+}
+
+.media-day-marker > span {
+  color: #aaa49d;
+  font-size: clamp(16px, 1.25vw, 19px);
+  font-weight: 760;
+  letter-spacing: .08em;
+}
+
+.media-day-marker > time {
+  color: var(--paper);
+  font-size: clamp(42px, 4.7vw, 68px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-day-marker > strong {
+  color: #d0cbc4;
+  font-size: clamp(22px, 2vw, 29px);
+  font-weight: 720;
+  line-height: 1.15;
+}
+
+/*
+ * Photo settings needs a scrollbar more often than route settings.
+ * Widen only by the classic desktop scrollbar footprint so the usable
+ * content width remains visually the same as the route settings panel.
+ */
+@media (min-width: 721px) {
+  .photo-mode .settings-content {
+    width: min(396px, calc(100vw - 32px));
+    scrollbar-gutter: stable;
+  }
+
+  /* Keep the photo caption and the full playback box on the same visual centerline. */
+  .media-card .media-caption {
+    transform: translateY(2px);
+  }
+
+  .photo-mode .player-dock,
+  .photo-mode .player-reveal-zone {
+    bottom: max(22px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Increase settings typography without changing the panel's content hierarchy. */
+.settings-panel summary {
+  font-size: 15px;
+}
+
+.settings-content {
+  font-size: 14px;
+}
+
+.settings-group-title {
+  font-size: 14px;
+}
+
+.settings-group-title output,
+.source-summary span {
+  font-size: 13px;
+}
+
+.source-summary strong {
+  font-size: 15px;
+}
+
+.form-grid label,
+.select-field {
+  font-size: 13px;
+}
+
+.range-field > span {
+  font-size: 14px;
+}
+
+.toggle-list label {
+  font-size: 14px;
+}
+
+.privacy-note {
+  font-size: 13px;
+}
+
+.media-import-row label {
+  font-size: 13px;
+}
+
+.plan-button {
+  font-size: 15px;
+}
+
+/* Treat the trip dates as one readable range control instead of cramped columns. */
+.trip-range-control {
+  gap: 13px;
+  padding: 15px;
+}
+
+.trip-range-heading {
+  display: grid;
+  gap: 11px;
+}
+
+.trip-range-heading > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.trip-range-heading span {
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.trip-range-heading strong {
+  min-width: 0;
+  color: #e8e3dc;
+  font-size: 15px;
+  font-weight: 780;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trip-range-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.trip-range-presets button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.trip-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+}
+
+.trip-range-fields label {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 7px 7px 7px 12px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.trip-range-fields label > span {
+  color: #d0cbc4;
+  font-size: 13px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+/* Native date text stays keyboard-editable; make its calendar affordance easier to hit. */
+.trip-range-fields input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px 0 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--paper);
+  background: #202428;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+  color-scheme: dark;
+}
+
+.trip-range-fields input[type="date"]::-webkit-datetime-edit {
+  padding: 10px 0;
+  cursor: text;
+}
+
+.trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 34px;
+  height: 32px;
+  margin: 0;
+  padding: 5px;
+  cursor: pointer;
+  opacity: .9;
+}
+
+.trip-range-fields input:focus {
+  border: 0;
+}
+
+.trip-range-arrow {
+  display: none;
+}
+
+/* Keep speed in the same text group as the date; do not absolutely position it. */
+.media-transit .movement-primary {
+  position: static;
+  gap: 21px;
+}
+
+.media-transit .movement-speed {
+  position: static;
+  margin: 0;
+  transform: none;
+}
+
+@media (max-width: 720px) {
+  .photo-mode .settings-content {
+    width: min(330px, calc(100vw - 20px));
+  }
+
+  .settings-panel summary {
+    font-size: 14px;
+  }
+
+  .settings-group-title {
+    font-size: 13px;
+  }
+
+  .form-grid label,
+  .select-field,
+  .privacy-note {
+    font-size: 13px;
+  }
+
+  .range-field > span,
+  .toggle-list label {
+    font-size: 13px;
+  }
+
+  .trip-range-control {
+    padding: 13px;
+  }
+
+  .trip-range-heading > div:first-child {
+    display: grid;
+    gap: 4px;
+  }
+
+  .trip-range-heading span {
+    font-size: 13px;
+  }
+
+  .trip-range-heading strong {
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .trip-range-fields label {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 8px;
+    padding-left: 10px;
+  }
+
+  .trip-range-fields label > span {
+    font-size: 12px;
+  }
+
+  .trip-range-fields input[type="date"] {
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+    width: 32px;
+    height: 30px;
+  }
+
+  .media-transit .movement-primary {
+    gap: 14px;
+  }
+
+  .media-day-marker {
+    gap: 11px;
+    min-height: 190px;
+    width: min(520px, 92%);
+  }
+
+  .media-day-marker > span {
+    font-size: 14px;
+  }
+
+  .media-day-marker > time {
+    font-size: clamp(34px, 9vw, 50px);
+  }
+
+  .media-day-marker > strong {
+    font-size: clamp(19px, 5vw, 24px);
+  }
+}

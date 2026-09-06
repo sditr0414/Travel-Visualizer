@@ -4,7 +4,10 @@ import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 const CURSOR_RESTORE_TOLERANCE_SEC = 0.12;
 
 test('local trip can be planned, played, paused and reset', async ({ page }) => {
+  const workerReady = page.waitForEvent('worker', { predicate: worker => worker.url().includes('maplibre-gl-worker'), timeout: 15_000 });
   await page.goto('/');
+  const mapWorker = await workerReady;
+  expect(await mapWorker.evaluate(() => typeof globalThis.postMessage)).toBe('function');
   await loadLocalTimeline(page);
   const play = page.getByRole('button', { name: '재생', exact: true });
   const position = page.getByLabel('재생 위치');
@@ -123,7 +126,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
 test('settings stay usable on a narrow screen with full-width trip dates', async ({ page }) => {
   await page.goto('/');
   await loadLocalTimeline(page);
-  const settings = page.getByRole('button', { name: '여행 설정', exact: true });
+  const settings = page.locator('.settings-panel summary');
   await settings.click();
   const startDate = page.getByLabel('여행 시작');
   const endDate = page.getByLabel('여행 마지막 날');
@@ -137,7 +140,7 @@ test('settings stay usable on a narrow screen with full-width trip dates', async
   expect(endBox).not.toBeNull();
   expect(Math.abs(startBox!.width - endBox!.width)).toBeLessThanOrEqual(1);
   expect(endBox!.y).toBeGreaterThan(startBox!.y + startBox!.height);
-  const contentBox = await page.locator('.settings-sheet .dialog-body').boundingBox();
+  const contentBox = await page.locator('.settings-panel .settings-content').boundingBox();
   expect(contentBox).not.toBeNull();
   expect(contentBox!.height).toBeGreaterThan(100);
   await expect(page.getByRole('button', { name: /경로 다시 만들기/ })).toBeVisible();

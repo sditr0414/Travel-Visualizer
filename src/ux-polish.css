@@ -1,0 +1,651 @@
+/* Layout refinements that depend on the current photo-journey composition. */
+
+/* Keep the Timeline picker visually separated from the independently positioned settings button. */
+.topbar {
+  right: 174px;
+}
+
+.topbar-actions {
+  gap: 10px;
+}
+
+/* Playback chrome is coordinated by React state. Edge zones only request a delayed reveal. */
+.topbar,
+.settings-panel,
+.journey-hud,
+.player-dock {
+  transition:
+    opacity 320ms cubic-bezier(.2, .72, .2, 1),
+    transform 360ms cubic-bezier(.16, .84, .24, 1);
+  will-change: opacity, transform;
+}
+
+.topbar-reveal-zone,
+.player-reveal-zone {
+  position: absolute;
+  z-index: 9;
+  pointer-events: auto;
+}
+
+.topbar-reveal-zone {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 68px;
+}
+
+/* When hidden, the invisible reveal target occupies the same footprint as the player dock. */
+.player-reveal-zone {
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: min(760px, calc(100vw - 32px));
+  height: 64px;
+  transform: translateX(-50%);
+}
+
+.photo-mode .player-reveal-zone {
+  left: calc(var(--photo-map-share, 60%) / 2);
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: min(760px, calc(var(--photo-map-share, 60%) - 32px));
+}
+
+.player-dock {
+  z-index: 12;
+}
+
+/* Align the photo caption line with the vertical center of the full playback box. */
+.photo-mode .player-dock {
+  bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.timeline-meta {
+  transform: translateY(2px);
+  font-size: 14px;
+}
+
+.player-status {
+  font-size: 12px;
+}
+
+/* Route-only mobility HUD is persistent; only generic playback chrome hides. */
+.route-persistent-hud {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel,
+.playback-active.playback-chrome-hidden .player-dock {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.playback-active.playback-chrome-hidden .topbar,
+.playback-active.playback-chrome-hidden .settings-panel {
+  transform: translateY(-14px) scale(.985);
+}
+
+.playback-active.playback-chrome-hidden .player-dock {
+  transform: translate(-50%, 16px) scale(.985);
+}
+
+.playback-chrome-visible .topbar,
+.playback-chrome-visible .settings-panel {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.playback-chrome-visible .player-dock {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  pointer-events: auto;
+}
+
+/* Give common controls restrained motion so the entire UI reacts consistently. */
+.mode-switch button,
+.import-button,
+.settings-panel summary,
+.settings-content,
+.settings-group,
+.secondary-control,
+.play-control,
+.plan-button,
+.local-import-primary,
+.local-import-secondary,
+.media-import-action,
+.media-import-row label,
+.form-grid input,
+.select-field select,
+.trip-range-control button,
+.trip-range-fields input,
+.photo-split-handle::after {
+  transition:
+    transform 170ms cubic-bezier(.2, .72, .2, 1),
+    opacity 170ms ease,
+    color 170ms ease,
+    background-color 170ms ease,
+    border-color 170ms ease,
+    box-shadow 200ms ease;
+}
+
+.settings-panel[open] .settings-content {
+  transform-origin: top right;
+  animation: ui-panel-in 240ms cubic-bezier(.16, .84, .24, 1) both;
+}
+
+/* Entrance animations must release opacity/transform when they finish so playback state can own them. */
+.journey-hud {
+  animation: ui-surface-in 280ms cubic-bezier(.16, .84, .24, 1);
+}
+
+.local-import-panel,
+.status-card {
+  animation: ui-overlay-in 260ms ease-out;
+}
+
+/* Reserve scrollbar space in both journey modes so the usable settings width does not change. */
+.settings-content {
+  scrollbar-gutter: stable;
+}
+
+.settings-group-title {
+  font-size: 14px;
+}
+
+.settings-group-title output,
+.source-summary span {
+  font-size: 13px;
+}
+
+.source-summary strong {
+  font-size: 15px;
+}
+
+.form-grid label,
+.select-field {
+  font-size: 13px;
+}
+
+.form-grid input,
+.select-field select {
+  font-size: 14px;
+}
+
+.range-field > span,
+.toggle-list label {
+  font-size: 14px;
+}
+
+.media-import-row label,
+.privacy-note {
+  font-size: 13px;
+}
+
+.media-progress > div,
+.media-progress p {
+  font-size: 12px;
+}
+
+.media-progress strong {
+  font-size: 13px;
+}
+
+.plan-button {
+  font-size: 15px;
+}
+
+.trip-range-control {
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.trip-range-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trip-range-heading > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trip-range-heading span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trip-range-heading strong {
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.trip-range-presets {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.trip-range-presets button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #ddd8d2;
+  background: rgba(255, 255, 255, .035);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+/* Start/end use full-width rows; the old narrow three-column arrow layout is intentionally removed. */
+.trip-range-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 10px;
+}
+
+.trip-range-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trip-range-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 44px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--paper);
+  background: #23272b;
+  color-scheme: dark;
+  font-size: 14px;
+  cursor: text;
+}
+
+.trip-range-fields input[type="date"]::-webkit-calendar-picker-indicator {
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  padding: 4px;
+  cursor: pointer;
+  opacity: .9;
+}
+
+.trip-range-arrow {
+  display: none;
+}
+
+@media (hover: hover) {
+  .mode-switch button:hover,
+  .import-button:hover,
+  .settings-panel summary:hover,
+  .secondary-control:hover,
+  .play-control:hover,
+  .plan-button:hover,
+  .local-import-primary:hover,
+  .local-import-secondary:hover,
+  .media-import-action:hover,
+  .media-import-row label:hover,
+  .trip-range-control button:hover {
+    transform: translateY(-1px);
+  }
+
+  .settings-group:hover,
+  .trip-range-control:hover {
+    border-color: rgba(255, 255, 255, .15);
+    background: rgba(255, 255, 255, .038);
+  }
+}
+
+.mode-switch button:active,
+.import-button:active,
+.settings-panel summary:active,
+.secondary-control:active,
+.play-control:active,
+.plan-button:active,
+.local-import-primary:active,
+.local-import-secondary:active,
+.media-import-action:active,
+.media-import-row label:active,
+.trip-range-control button:active {
+  transform: translateY(0) scale(.98);
+}
+
+.form-grid input:focus,
+.select-field select:focus,
+.trip-range-fields input:focus {
+  border-color: rgba(255, 114, 93, .72);
+  box-shadow: 0 0 0 3px rgba(255, 114, 93, .10);
+}
+
+@keyframes ui-panel-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-surface-in {
+  from { opacity: 0; transform: translateY(8px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Cross-dissolve outgoing and incoming photo/transit scenes in the same space. */
+.media-scene-stack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  isolation: isolate;
+}
+
+.media-scene-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+.media-scene-layer.is-current {
+  z-index: 2;
+  animation: scene-crossfade-in var(--scene-transition-ms, 480ms) cubic-bezier(.22, .61, .36, 1) both;
+}
+
+.media-scene-layer.is-previous {
+  z-index: 1;
+  pointer-events: none;
+  animation: scene-crossfade-out var(--scene-transition-ms, 480ms) cubic-bezier(.22, .61, .36, 1) both;
+}
+
+.media-card,
+.media-transit {
+  animation: none;
+}
+
+.media-frame img,
+.media-frame video {
+  backface-visibility: hidden;
+}
+
+@keyframes scene-crossfade-in {
+  from { opacity: 0; transform: scale(1.008); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes scene-crossfade-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(.996); }
+}
+
+/* Center photo metadata in the strip between the media frame and the pane bottom. */
+.media-card .media-caption {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 22px;
+  min-height: 84px;
+  padding: 12px 18px 0;
+  transform: translateY(2px);
+  flex-wrap: wrap;
+}
+
+.media-card .media-caption-place {
+  min-width: 0;
+  color: var(--paper);
+  font-size: clamp(21px, 1.65vw, 25px);
+  font-weight: 820;
+  line-height: 1.22;
+  white-space: nowrap;
+}
+
+.media-card .media-caption-date {
+  color: #d0cbc4;
+  font-size: clamp(20px, 1.55vw, 24px);
+  font-weight: 720;
+  line-height: 1.22;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Keep date and speed grouped so speed sits naturally below the date. */
+.media-transit {
+  grid-template-columns: minmax(132px, 166px) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "pictogram primary"
+    "mode route";
+  align-items: center;
+  column-gap: clamp(54px, 6vw, 88px);
+  row-gap: 30px;
+  width: min(720px, 90%);
+  text-align: left;
+}
+
+.media-transit .movement-pictogram {
+  grid-area: pictogram;
+  justify-self: center;
+  align-self: center;
+  margin: 0;
+  font-size: clamp(82px, 8vw, 112px);
+  line-height: 1;
+}
+
+.media-transit .movement-primary {
+  grid-area: primary;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 21px;
+  min-width: 0;
+}
+
+.media-transit .movement-mode {
+  grid-area: mode;
+  justify-self: center;
+  align-self: baseline;
+  transform: translateY(5px);
+  color: #ece7e0;
+  font-size: clamp(19px, 1.55vw, 23px);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+}
+
+.media-transit .movement-date {
+  color: var(--paper);
+  font-size: clamp(26px, 2.4vw, 34px);
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: -.035em;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-transit .movement-speed {
+  margin-top: 0;
+  color: #c7c1ba;
+  font-size: clamp(18px, 1.35vw, 21px);
+  font-weight: 700;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.media-transit .movement-route {
+  grid-area: route;
+  align-self: baseline;
+  justify-content: flex-start;
+  gap: 11px;
+  margin-top: 0;
+  transform: translateY(5px);
+  color: #e6e1da;
+  font-size: clamp(18px, 1.4vw, 22px);
+  font-weight: 780;
+  line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    right: 154px;
+  }
+
+  .topbar-actions {
+    gap: 7px;
+  }
+
+  .topbar-reveal-zone {
+    height: 60px;
+  }
+
+  .player-reveal-zone {
+    left: 50%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+    height: 64px;
+  }
+
+  .trip-range-heading {
+    display: grid;
+  }
+
+  .trip-range-presets {
+    justify-content: flex-start;
+  }
+
+  .trip-range-fields {
+    gap: 9px;
+  }
+
+  .trip-range-fields input {
+    min-height: 42px;
+    font-size: 14px;
+  }
+
+  .settings-group-title {
+    font-size: 13px;
+  }
+
+  .settings-group-title output,
+  .source-summary span,
+  .form-grid label,
+  .select-field,
+  .privacy-note {
+    font-size: 12px;
+  }
+
+  .source-summary strong,
+  .range-field > span,
+  .toggle-list label,
+  .plan-button {
+    font-size: 13px;
+  }
+
+  .media-card .media-caption {
+    gap: 14px;
+    min-height: 66px;
+    padding: 8px 10px 0;
+    transform: translateY(4px);
+  }
+
+  .media-card .media-caption-place {
+    font-size: 18px;
+  }
+
+  .media-card .media-caption-date {
+    font-size: 17px;
+  }
+
+  .media-transit {
+    grid-template-columns: minmax(84px, 106px) minmax(0, 1fr);
+    column-gap: 24px;
+    row-gap: 20px;
+    width: min(520px, 94%);
+  }
+
+  .media-transit .movement-pictogram {
+    font-size: clamp(58px, 16vw, 76px);
+  }
+
+  .media-transit .movement-primary {
+    gap: 14px;
+  }
+
+  .media-transit .movement-mode {
+    transform: translateY(4px);
+    font-size: 16px;
+  }
+
+  .media-transit .movement-date {
+    font-size: clamp(20px, 5.5vw, 26px);
+  }
+
+  .media-transit .movement-speed {
+    font-size: 15px;
+  }
+
+  .media-transit .movement-route {
+    gap: 8px;
+    transform: translateY(4px);
+    font-size: 15px;
+  }
+
+  .photo-mode .player-reveal-zone {
+    left: 50%;
+    top: auto;
+    bottom: calc(100% - var(--photo-map-share, 52%) + 10px);
+    width: calc(100vw - 20px);
+    height: 64px;
+  }
+
+  .photo-mode .player-dock {
+    bottom: calc(100% - var(--photo-map-share, 52%) + 10px);
+  }
+}
+
+@media (hover: none) {
+  .topbar-reveal-zone,
+  .player-reveal-zone {
+    pointer-events: none;
+  }
+
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel,
+  .playback-active.playback-chrome-hidden .player-dock {
+    opacity: 1;
+  }
+
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel {
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .playback-active.playback-chrome-hidden .player-dock {
+    transform: translate(-50%, 0) scale(1);
+    pointer-events: auto;
+  }
+}
