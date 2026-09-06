@@ -272,9 +272,10 @@ describe('photo journey stops', () => {
       controller.loadPlan(plan);
       controller.play();
       expect(scheduled).not.toBeNull();
-      (scheduled as unknown as FrameRequestCallback)(125);
+      for (let ms = 25; ms <= 125; ms += 25) (scheduled as unknown as FrameRequestCallback)(ms);
       const camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
-      expect(camera.zoom).toBeCloseTo(12, 4);
+      // The existing tile-level hysteresis may hold 0.001 below the boundary.
+      expect(Math.abs(camera.zoom - 12)).toBeLessThanOrEqual(0.0011);
     } finally {
       controller.pause();
       now.mockRestore();
@@ -414,5 +415,71 @@ describe('photo journey stops', () => {
     expect(camera.center[0]).toBeCloseTo(127.005, 3);
     expect(camera.center[1]).toBeCloseTo(37.505, 3);
     expect(camera.zoom).toBe(8);
+  });
+});
+describe('playback continuity', () => {
+  function playback() {
+    const jumpTo = vi.fn();
+    const setData = vi.fn();
+    const map = { getSource: () => ({ setData }), jumpTo } as unknown as Map;
+    let next: FrameRequestCallback = () => undefined;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { next = callback; return 1; }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const onFrame = vi.fn();
+    const onTransitionChange = vi.fn();
+    const player = new PlayerController(map, { onFrame, onTransitionChange });
+    return { player, jumpTo, setData, onFrame, onTransitionChange, tick: (ms: number) => next(ms) };
+  }
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('does not skip seconds of route after a blocked animation frame', () => {
+    const p = playback();
+    p.player.loadPlan(simplePlan());
+    p.player.play();
+    p.tick(16);
+    p.tick(2016);
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBeCloseTo(0.066, 6);
+    expect(p.player.isPlaying()).toBe(true);
+    p.player.dispose();
+  });
+
+  it.each([0, 1])('moves across recording gaps in scene %s without advancing content time and resumes after pause', sceneId => {
+    const p = playback();
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    if (first.kind !== 'TRAVEL') throw new Error('fixture');
+    plan.fps = 10;
+    plan.durationSec = 1;
+    plan.segments.push({ ...plan.segments[0], index: 1, sceneId: 1, start: { lng: 129, lat: 35 } });
+    plan.frames = [first, { ...first, sceneId, segmentIndex: 1, position: { lng: 129, lat: 35 }, center: { lng: 129, lat: 35 } }];
+    p.player.loadPlan(plan);
+    p.player.play();
+    p.tick(50); p.tick(100);
+    expect(p.onTransitionChange).toHaveBeenLastCalledWith('기록이 끊긴 구간 · 다음 위치로 이동 중');
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center).toEqual([127, 37.5]);
+    p.tick(150);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].zoom).toBeLessThan(12);
+    p.player.pause();
+    p.player.play();
+    for (let ms = 50; ms <= 2000; ms += 50) p.tick(ms);
+    expect(p.onTransitionChange).toHaveBeenLastCalledWith(null);
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBeCloseTo(0.1, 6);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center[0]).toBeCloseTo(129, 6);
+    p.player.seek(0);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center).toEqual([127, 37.5]);
+    p.player.dispose();
+  });
+
+  it('interpolates across the date line using the nearby world copy', () => {
+    const p = playback();
+    const plan = simplePlan();
+    const first = plan.frames[0];
+    if (first.kind !== 'TRAVEL') throw new Error('fixture');
+    plan.frames = [{ ...first, position: { lng: 179, lat: 30 } }, { ...first, position: { lng: -179, lat: 30 } }];
+    p.player.loadPlan(plan);
+    p.player.seek(0.25);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center[0]).toBeCloseTo(180, 6);
+    p.player.dispose();
   });
 });

@@ -49,3 +49,14 @@
 @media (prefers-reduced-motion: reduce) {
   .app-dialog, .map-recovery { animation: none; transition: none; }
 }
+.setting-with-help { position: relative; min-width: 0; padding-right: 32px; }
+.setting-help-button { position: absolute; right: -4px; top: -8px; width: 36px; height: 36px; border: 0; background: transparent; color: #bdbbb5; font: inherit; font-size: 13px; cursor: help; }
+.setting-help-button:hover, .setting-help-button[aria-expanded=true] { color: var(--accent); }
+.setting-help-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 6px; }
+.setting-tooltip { position: fixed; z-index: 100; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 13px 15px; border: 1px solid #555a60; border-radius: 8px; background: #20262d; color: #f6f1e9; box-shadow: 0 6px 20px #0004; font-size: 12px; line-height: 1.7; }
+.setting-tooltip strong { font-size: 13px; }
+.setting-tooltip p { margin: 5px 0 0; color: #d8d4cd; }
+.toggle-list > .setting-with-help { width: 100%; }
+@media (pointer: coarse) { .setting-help-button { width: 44px; height: 44px; right: -8px; top: -10px; } }
+.map-loading { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; padding: 8px 14px; border-radius: 8px; background: #20262ddd; color: #f6f1e9; font-size: 12px; pointer-events: none; }
+.camera-transition { position: absolute; top: 115px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 8px 14px; background: #20262ddd; color: #f6f1e9; border-radius: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }

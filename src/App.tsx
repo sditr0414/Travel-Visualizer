@@ -11,6 +11,7 @@ import { loadLocalMediaManifest } from './media/local-media-library';
 import { MediaJourneyPane } from './media/MediaJourneyPane';
 import { TimelineWorkerClient, type TimelineWorkerPort } from './services/timeline-worker-client';
 import { appReducer, initialAppState } from './state/app-reducer';
+import { SettingHelp } from './ui/SettingHelp';
 import { HelpDialog } from './ui/HelpDialog';
 import { MediaLibraryDialog } from './ui/MediaLibraryDialog';
 import { usePreferences } from './settings/preferences';
@@ -61,6 +62,7 @@ export function App({ workerClient }: AppProps) {
   const [excludedMedia, setExcludedMedia] = useState<Set<string>>(() => new Set());
   const [helpOpen, setHelpOpen] = useState(false);
   const [activeStopElapsed, setActiveStopElapsed] = useState(0);
+  const [cameraTransition, setCameraTransition] = useState<string | null>(null);
   const [mapNotice, setMapNotice] = useState<string | null>(null);
   const lastLoadedPlanRef = useRef<PlaybackPlan | null>(null);
   const [map, setMap] = useState<MapLibreMap | null>(null);
@@ -137,6 +139,7 @@ export function App({ workerClient }: AppProps) {
     let targetTimeSec = playbackPositionsRef.current[mode];
     journeyModeRef.current = mode;
     if (mode === 'PHOTOS' && resetTarget) minimizePhotoRoute();
+    setCameraTransition(null);
     setJourneyMode(mode);
     activeMediaRef.current = null;
     setActiveMediaId(null);
@@ -362,6 +365,7 @@ export function App({ workerClient }: AppProps) {
 
     const createController = (mode: JourneyMode, stops: PlaybackStop[]) => {
       const controller = new PlayerController(map, {
+        onTransitionChange: message => { if (mode === journeyModeRef.current) setCameraTransition(message); },
         onFrame: (frame, _frameIndex, timeSec, stopId, stopElapsedSec = 0) => {
           playbackPositionsRef.current[mode] = timeSec;
           if (mode !== journeyModeRef.current) return;
@@ -460,9 +464,7 @@ export function App({ workerClient }: AppProps) {
   }, [map, state.phase, state.plan]);
 
   const onMapReady = useCallback((nextMap: MapLibreMap) => setMap(nextMap), []);
-  const onMapError = useCallback((message: string) => {
-    setMapNotice(message.includes('브라우저') || message.includes('요청에 실패') ? message : message.includes('기본 배경') ? '배경 지도를 불러오지 못했습니다. 경로는 계속 사용할 수 있어요. 인터넷 연결을 확인한 뒤 지도를 다시 불러오세요.' : '일부 지도 정보를 불러오지 못했습니다. 연결을 확인하거나 설치된 지도로 변경해 주세요.');
-  }, []);
+  const onMapError = useCallback((message: string | null) => setMapNotice(message), []);
 
   const onFileSelected = async (file: File | undefined) => {
     if (!file) return;
@@ -509,8 +511,6 @@ export function App({ workerClient }: AppProps) {
       player.pause();
       dispatch({ type: 'PAUSE' });
     } else {
-      if (mode === 'PHOTOS') player.setStops(photoPlaybackStopsRef.current);
-      player.seek(playbackPositionsRef.current[mode]);
       player.play();
       dispatch({ type: 'PLAY' });
     }
@@ -646,7 +646,7 @@ export function App({ workerClient }: AppProps) {
       style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}
     >
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
-        <MapStage key={mapRevision} source={mapSource} onReady={onMapReady} onError={onMapError} />
+        <MapStage key={`${mapRevision}-${mapKind}`} source={mapSource} onReady={onMapReady} onError={onMapError} />
       </Suspense>
       {journeyMode === 'PHOTOS' && <>
         <MediaJourneyPane
@@ -748,7 +748,7 @@ export function App({ workerClient }: AppProps) {
       >
         <summary onClick={event => { event.preventDefault(); if (!settingsOpen) pausePlayback(); setSettingsOpen(!settingsOpen); }}><span><Layers3 size={16} /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" /></summary>
         <div className="settings-content">
-          <p className="setting-help">기간·화면 구성은 경로 다시 만들기로 적용하고, 지도 확대와 사진 설정은 바로 반영됩니다.</p>
+          <p className="setting-help">설정에 마우스를 올리거나 ? 버튼을 눌러 설명을 확인하세요.</p>
           <div className="source-summary">
             <FileJson size={18} />
             <div><span>현재 Timeline</span><strong>{state.source?.name ?? '준비 중'}</strong></div>
@@ -757,22 +757,19 @@ export function App({ workerClient }: AppProps) {
           <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setHelpOpen(true); }}>처음 사용하는 분을 위한 안내</button>
           <section className="settings-group">
             <div className="settings-group-title"><Camera size={14} /><span>카메라</span></div>
-            <label className="select-field">화면 구성
-              <select aria-describedby="hint-0" value={cameraMode} onChange={event => updatePreference('cameraMode', event.target.value as CameraMode)}>
+            <SettingHelp title="화면 구성" description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 경로 재생성 후 적용됩니다."><label className="select-field">화면 구성
+              <select aria-description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 경로 재생성 후 적용됩니다." value={cameraMode} onChange={event => updatePreference('cameraMode', event.target.value as CameraMode)}>
                 <option value="AUTO">자동 · 추천</option><option value="DAY">날짜별로 보기</option><option value="SEGMENT">이동 구간별로 보기</option>
               </select>
-            </label>
-            <p id="hint-0" className="setting-help">자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 경로 재생성 후 적용됩니다.</p>
-            <label className="range-field"><span><span>지도 확대</span><output>{formatSigned(zoomOffset)}</output></span>
-              <input aria-describedby="hint-1" type="range" min="-1.5" max="1.5" step="0.1" value={zoomOffset} onChange={event => updatePreference('zoomOffset', Number(event.target.value))} />
-            </label>
-            <p id="hint-1" className="setting-help">왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다.</p>
-            <label className="select-field">구간별 재생 시간
-              <select aria-describedby="hint-2" value={pacingMode} onChange={event => updatePreference('pacingMode', event.target.value as PacingMode)}>
+            </label></SettingHelp>
+            <SettingHelp title="지도 확대" description="왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다."><label className="range-field"><span><span>지도 확대</span><output>{formatSigned(zoomOffset)}</output></span>
+              <input aria-description="왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다." type="range" min="-1.5" max="1.5" step="0.1" value={zoomOffset} onChange={event => updatePreference('zoomOffset', Number(event.target.value))} />
+            </label></SettingHelp>
+            <SettingHelp title="구간별 재생 시간" description="날짜마다 비슷하게: 짧은 여행일도 충분히 보여줍니다. 이동 거리에 맞게: 긴 이동에 더 많은 시간을 배분합니다. 변경 후 경로 다시 만들기로 적용합니다."><label className="select-field">구간별 재생 시간
+              <select aria-description="날짜마다 비슷하게: 짧은 여행일도 충분히 보여줍니다. 이동 거리에 맞게: 긴 이동에 더 많은 시간을 배분합니다. 변경 후 경로 다시 만들기로 적용합니다." value={pacingMode} onChange={event => updatePreference('pacingMode', event.target.value as PacingMode)}>
                 <option value="LOCAL_DAYS">날짜마다 비슷하게 · 추천</option><option value="GLOBAL">이동 거리에 맞게</option>
               </select>
-            </label>
-            <p id="hint-2" className="setting-help">날짜별 균형은 짧은 여행일도 충분히 보여줍니다. 이동 거리 기준은 긴 이동에 더 많은 시간을 배분합니다.</p>
+            </label></SettingHelp>
           </section>
 
           {journeyMode === 'PHOTOS' && <section className="settings-group">
@@ -787,48 +784,41 @@ export function App({ workerClient }: AppProps) {
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}
-            <label className="select-field">사진 표시 범위
-              <select aria-describedby="hint-3" aria-label="사진 표시 범위" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
+            <SettingHelp title="사진 표시 범위" description="미리보기는 비슷한 시간·장소의 사진 중 대표 장면만, 전체 보기는 연결된 사진을 모두 보여줍니다."><label className="select-field">사진 표시 범위
+              <select aria-description="미리보기는 비슷한 시간·장소의 사진 중 대표 장면만, 전체 보기는 연결된 사진을 모두 보여줍니다." aria-label="사진 표시 범위" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
                 <option value="PREVIEW">미리보기 · 대표 {mediaLibrary.preview.length}개</option>
                 <option value="ALL">전체 보기 · {mediaLibrary.all.length}개</option>
               </select>
-            </label>
-            <p id="hint-3" className="setting-help">미리보기는 비슷한 시간·장소의 사진 중 대표 장면만, 전체 보기는 연결된 사진을 모두 보여줍니다.</p>
-            <label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
-              <input aria-describedby="hint-4" type="range" min="1" max="10" step="0.5" value={photoDisplaySec} onChange={event => updatePreference('photoDisplaySec', Number(event.target.value))} />
-            </label>
-            <p id="hint-4" className="setting-help">사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다.</p>
-            <label className="select-field">사진 경로 확대
-              <select aria-describedby="hint-5" aria-label="사진 경로 확대" value={photoDetailZoomMode} onChange={event => updatePreference('photoDetailZoomMode', event.target.value as 'AUTO' | 'OFF')}>
+            </label></SettingHelp>
+            <SettingHelp title="사진 표시 시간" description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다."><label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
+              <input aria-description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다." type="range" min="1" max="10" step="0.5" value={photoDisplaySec} onChange={event => updatePreference('photoDisplaySec', Number(event.target.value))} />
+            </label></SettingHelp>
+            <SettingHelp title="사진 경로 확대" description="좁은 지역 상세 확대: 사진을 감상하는 좁은 지역을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다."><label className="select-field">사진 경로 확대
+              <select aria-description="좁은 지역 상세 확대: 사진을 감상하는 좁은 지역을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다." aria-label="사진 경로 확대" value={photoDetailZoomMode} onChange={event => updatePreference('photoDetailZoomMode', event.target.value as 'AUTO' | 'OFF')}>
                 <option value="AUTO">좁은 지역 상세 확대 · 추천</option><option value="OFF">기본 확대만</option>
               </select>
-            </label>
-            <p id="hint-5" className="setting-help">사진을 감상하는 좁은 지역의 지도를 더 자세히 보여줍니다. 비행 중에는 확대하지 않습니다.</p>
-            {photoDetailZoomMode === 'AUTO' && <><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
-              <input aria-describedby="hint-6" aria-label="상세 확대 강도" type="range" min="0.5" max="1.5" step="0.1" value={photoDetailZoomStrength} onChange={event => updatePreference('photoDetailZoomStrength', Number(event.target.value))} />
-            </label>
-            <p id="hint-6" className="setting-help">1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요.</p></>}
+            </label></SettingHelp>
+            {photoDetailZoomMode === 'AUTO' && <><SettingHelp title="상세 확대 강도" description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요."><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
+              <input aria-description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요." aria-label="상세 확대 강도" type="range" min="0.5" max="1.5" step="0.1" value={photoDetailZoomStrength} onChange={event => updatePreference('photoDetailZoomStrength', Number(event.target.value))} />
+            </label></SettingHelp></>}
             <div className="toggle-list photo-day-toggle">
-              <label><input type="checkbox" aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></label>
+              <SettingHelp title="날짜 변경 표시" description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다."><label><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></label></SettingHelp>
             </div>
-            {showDayMarkers && <><label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
-              <input aria-describedby="hint-7" aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => updatePreference('dayMarkerSec', Number(event.target.value))} />
-            </label>
-            <p id="hint-7" className="setting-help">여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다.</p></>}
-            <label className="select-field">영상 재생
-              <select aria-describedby="hint-8" aria-label="영상 재생" value={videoMode} onChange={event => updatePreference('videoMode', event.target.value as 'THUMBNAIL' | 'PLAY')}>
+            {showDayMarkers && <><SettingHelp title="날짜 표시 시간" description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다."><label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
+              <input aria-description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다." aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => updatePreference('dayMarkerSec', Number(event.target.value))} />
+            </label></SettingHelp></>}
+            <SettingHelp title="영상 재생" description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 대표 장면만은 영상의 첫 화면을 보여줍니다."><label className="select-field">영상 재생
+              <select aria-description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 대표 장면만은 영상의 첫 화면을 보여줍니다." aria-label="영상 재생" value={videoMode} onChange={event => updatePreference('videoMode', event.target.value as 'THUMBNAIL' | 'PLAY')}>
                 <option value="PLAY">자동 재생</option><option value="THUMBNAIL">대표 장면만</option>
               </select>
-            </label>
-            <p id="hint-8" className="setting-help">자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 대표 장면만은 영상의 첫 화면을 보여줍니다.</p>
+            </label></SettingHelp>
             {videoMode === 'PLAY' && <>
               <div className="toggle-list">
-                <label><input type="checkbox" aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></label>
+                <SettingHelp title="영상 소리 재생" description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요."><label><input type="checkbox" aria-description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요." aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></label></SettingHelp>
               </div>
-              <label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
-                <input aria-describedby="hint-9" type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
-              </label>
-            <p id="hint-9" className="setting-help">긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다.</p>
+              <SettingHelp title="영상 최대 재생" description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다."><label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
+                <input aria-description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다." type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
+              </label></SettingHelp>
             </>}
             <p className="privacy-note">사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.</p>
           </section>}
@@ -855,9 +845,9 @@ export function App({ workerClient }: AppProps) {
             </div>
           </section>
 
-          <label className="range-field">
+          <SettingHelp title="경로 재생 길이" description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."><label className="range-field">
             <span><span>경로 재생 길이</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '중앙값'}</output></span>
-            <input aria-describedby="hint-10"
+            <input aria-description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."
               type="range"
               min={state.plan?.durationLimits.minSeconds ?? 45}
               max={state.plan?.durationLimits.maxSeconds ?? 300}
@@ -868,23 +858,21 @@ export function App({ workerClient }: AppProps) {
                 setTargetDurationSec(Number(event.target.value));
               }}
             />
-          </label>
-            <p id="hint-10" className="setting-help">실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다.</p>
+          </label></SettingHelp>
 
-          <label className="select-field">지도 소스
-            <select aria-describedby="hint-11" value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
+          <SettingHelp title="지도 소스" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 일부 글꼴에는 인터넷이 필요합니다."><label className="select-field">지도 소스
+            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 일부 글꼴에는 인터넷이 필요합니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
               <option value="online">온라인 지도</option>
               <option value="local-pmtiles" disabled={!state.mapStatus?.ready}>설치형 지도{!state.mapStatus?.ready ? " · 설치 필요" : ""}</option>
             </select>
-          </label>
-            <p id="hint-11" className="setting-help">온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 일부 글꼴에는 인터넷이 필요합니다.</p>
+          </label></SettingHelp>
 
           <div className="toggle-list">
-            <label><input type="checkbox" checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></label>
-            <label><input type="checkbox" checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></label>
+            <SettingHelp title="항공 경로 포함" description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><label><input type="checkbox" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></label></SettingHelp>
+            <SettingHelp title="현재 위치 따라가기" description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다."><label><input type="checkbox" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></label></SettingHelp>
           </div>
 
-          <p className="setting-help">항공 경로는 비행 구간의 포함 여부입니다. 현재 위치 따라가기는 이동 위치를 지도 중앙에 둡니다.</p>
+
           <button className="settings-help-link" type="button" onClick={() => { resetPreferences(); setTargetDurationSec(0); durationCustomizedRef.current = false; }}>감상 설정 기본값 복원</button>
           <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map || !planNeedsRebuild || !startDate || !endDate || startDate > endDate}>
             <Route size={16} /> {state.plan ? '경로 다시 만들기' : '경로 만들기'}
@@ -935,6 +923,7 @@ export function App({ workerClient }: AppProps) {
           </div>
         </div>
       </footer>}
+      {cameraTransition && <div className="camera-transition" role="status">{cameraTransition}</div>}
       {mapNotice && <aside className="map-recovery" role="status"><p>{mapNotice}</p><button type="button" onClick={() => { pausePlayback(); setMap(null); setMapNotice(null); setMapRevision(value => value + 1); }}>지도 다시 연결</button><button type="button" onClick={() => setMapNotice(null)} aria-label="지도 안내 닫기">닫기</button></aside>}
       <MediaLibraryDialog open={libraryOpen} onClose={() => setLibraryOpen(false)} media={mediaLibrary.all} excluded={excludedMedia}
         onToggle={id => setExcludedMedia(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} onIncludeAll={() => setExcludedMedia(new Set())} />

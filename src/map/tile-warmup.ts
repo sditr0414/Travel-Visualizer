@@ -4,7 +4,7 @@ import type { Coordinate } from '../types';
 const DEFAULT_TILE_SIZE = 512;
 const WARMUP_INTERVAL_MS = 320;
 const WARMUP_CACHE_TTL_MS = 45_000;
-const MAX_CONCURRENT_REQUESTS = 4;
+const MAX_CONCURRENT_REQUESTS = 2;
 const MAX_TASKS_PER_PASS = 36;
 const NEXT_TILE_LEVEL_THRESHOLD = 0.62;
 const MAX_MERCATOR_LAT = 85.05112878;
@@ -27,10 +27,11 @@ interface WarmupTile {
 
 interface WarmupTask {
   key: string;
-  run: () => Promise<void>;
+  run: (signal: AbortSignal) => Promise<void>;
 }
 
 class MapTileWarmup {
+  private readonly abort = new AbortController();
   private lastWarmAt = -Infinity;
   private queue: WarmupTask[] = [];
   private queuedKeys = new Set<string>();
@@ -40,6 +41,7 @@ class MapTileWarmup {
   constructor(private readonly map: MapLibreMap) {}
 
   warm(center: Coordinate, zoom: number): void {
+    if (this.abort.signal.aborted) return;
     if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || !Number.isFinite(zoom)) return;
     const now = nowMs();
     if (now - this.lastWarmAt < WARMUP_INTERVAL_MS) return;
@@ -65,12 +67,19 @@ class MapTileWarmup {
     this.pump();
   }
 
+  dispose(): void {
+    this.abort.abort();
+    this.queue = [];
+    this.queuedKeys.clear();
+    this.recentlyWarmed.clear();
+  }
+
   private pump(): void {
-    while (this.inFlightKeys.size < MAX_CONCURRENT_REQUESTS && this.queue.length) {
+    while (!this.abort.signal.aborted && this.inFlightKeys.size < MAX_CONCURRENT_REQUESTS && this.queue.length) {
       const task = this.queue.shift()!;
       this.queuedKeys.delete(task.key);
       this.inFlightKeys.add(task.key);
-      void task.run()
+      void task.run(this.abort.signal)
         .then(() => this.recentlyWarmed.set(task.key, nowMs()))
         .catch(() => undefined)
         .finally(() => {
@@ -88,6 +97,11 @@ class MapTileWarmup {
 }
 
 const warmups = new WeakMap<MapLibreMap, MapTileWarmup>();
+
+export function disposeMapTileWarmup(map: MapLibreMap): void {
+  warmups.get(map)?.dispose();
+  warmups.delete(map);
+}
 
 export function warmMapTilesAhead(map: MapLibreMap, center: Coordinate, zoom: number): void {
   const candidate = map as Partial<MapLibreMap>;
@@ -143,9 +157,21 @@ function collectWarmupTasks(
           const url = renderTileTemplate(template, tile, source.scheme ?? 'xyz', map.getPixelRatio());
           tasks.push({
             key: `http:${url}`,
-            run: async () => {
-              const response = await fetch(url, { cache: 'force-cache' });
-              if (!response.ok) throw new Error(`Tile warmup failed: ${response.status}`);
+            run: async signal => {
+              const request = new AbortController();
+              const abort = () => request.abort();
+              signal.addEventListener('abort', abort, { once: true });
+              const timeout = setTimeout(abort, 4000);
+              try {
+                if (signal.aborted) request.abort();
+                const response = await fetch(url, { cache: 'force-cache', signal: request.signal, priority: 'low' });
+                if (!response.ok) { await response.body?.cancel(); throw new Error(`Tile warmup failed: ${response.status}`); }
+                // Headers alone do not mean the transfer or browser cache is ready.
+                await response.arrayBuffer();
+              } finally {
+                clearTimeout(timeout);
+                signal.removeEventListener('abort', abort);
+              }
             }
           });
           break;
