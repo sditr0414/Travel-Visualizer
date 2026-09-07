@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 function replaceOnce(path, oldText, newText) {
   const source = readFileSync(path, 'utf8');
   const count = source.split(oldText).length - 1;
-  if (count !== 1) throw new Error(`${path}: expected one match, found ${count}: ${oldText}`);
+  if (count !== 1) throw new Error(`${path}: expected one match, found ${count}`);
   writeFileSync(path, source.replace(oldText, newText));
 }
 
@@ -38,16 +38,8 @@ export interface TimelineScanResult extends TimelineDateRange {
 }`
 );
 
-replaceOnce(
-  'src/App.tsx',
-  '      const preferred = preferredTripRange(scan.startDate, scan.endDate);',
-  '      const preferred = preferredTripRange(scan);'
-);
-replaceOnce(
-  'src/App.tsx',
-  '<p className="setting-help">설정에 마우스를 올리거나 ? 버튼을 눌러 설명을 확인하세요.</p>',
-  '<p className="setting-help">? 버튼에 마우스를 올리거나 눌러 설명을 확인하세요.</p>'
-);
+replaceOnce('src/App.tsx', '      const preferred = preferredTripRange(scan.startDate, scan.endDate);', '      const preferred = preferredTripRange(scan);');
+replaceOnce('src/App.tsx', '<p className="setting-help">설정에 마우스를 올리거나 ? 버튼을 눌러 설명을 확인하세요.</p>', '<p className="setting-help">? 버튼에 마우스를 올리거나 눌러 설명을 확인하세요.</p>');
 
 replaceOnce(
   'src/App.tsx',
@@ -90,7 +82,7 @@ replaceOnce(
                   setStartDate(candidate.startDate);
                   setEndDate(candidate.endDate);
                 }}>
-                  <span><strong>{candidate.destinationHint ?? `추천 여행 ${index + 1}`}</strong><small>{formatTripRange(candidate.startDate, candidate.endDate)}</small></span>
+                  <span><strong>{candidate.destinationHint ?? ('추천 여행 ' + (index + 1))}</strong><small>{formatTripRange(candidate.startDate, candidate.endDate)}</small></span>
                   <span className="trip-candidate-meta">{formatTripCandidateSummary(candidate)}</span>
                 </button>;
               })}
@@ -120,12 +112,12 @@ replaceOnce(
 }
 
 function formatTripCandidateSummary(candidate: import('./types').TimelineTripCandidate): string {
-  const start = Date.parse(`${candidate.startDate}T00:00:00Z`);
-  const end = Date.parse(`${candidate.endDate}T00:00:00Z`);
+  const start = Date.parse(candidate.startDate + 'T00:00:00Z');
+  const end = Date.parse(candidate.endDate + 'T00:00:00Z');
   const days = Number.isFinite(start) && Number.isFinite(end) ? Math.max(1, Math.round((end - start) / 86_400_000) + 1) : Math.max(1, candidate.activeDays);
   const distanceKm = candidate.distanceMeters / 1_000;
-  const distance = distanceKm >= 10 ? `${Math.round(distanceKm)}km` : `${distanceKm.toFixed(1)}km`;
-  return `${days}일 · 이동 약 ${distance}`;
+  const distance = distanceKm >= 10 ? Math.round(distanceKm) + 'km' : distanceKm.toFixed(1) + 'km';
+  return days + '일 · 이동 약 ' + distance;
 }`
 );
 
