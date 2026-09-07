@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
-async function shot(page: Parameters<typeof test>[0] extends never ? never : any, name: string) {
+async function shot(page: Page, name: string) {
   const project = test.info().project.name;
   await page.screenshot({ path: `ui-audit/${project}-${name}.png`, fullPage: true });
 }
