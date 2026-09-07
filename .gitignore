@@ -12,6 +12,7 @@ coverage/
 client_secret_*.json
 *client-secret*.json
 /타임라인.json
+/여행 사진/
 data/*.json
 data/timeline-parts/
 maps/*.pmtiles
