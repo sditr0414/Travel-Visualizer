@@ -49,6 +49,18 @@ describe('resolvePhotoPlaceLabel', () => {
     expect(resolvePhotoPlaceLabel(map, { lat: 51.508, lng: -0.12 })).toBe('London');
   });
 
+  it('prefers Korean, then the local native name, before an English fallback', () => {
+    const korean = placeMap([
+      point(2.3522, 48.8566, { place: 'city', 'name:ko': '파리', name: 'Paris', 'name:en': 'Paris' })
+    ]);
+    expect(resolvePhotoPlaceLabel(korean, { lat: 48.8566, lng: 2.3522 })).toBe('파리');
+
+    const native = placeMap([
+      point(139.6917, 35.6895, { place: 'city', name: '東京都', 'name:en': 'Tokyo' })
+    ]);
+    expect(resolvePhotoPlaceLabel(native, { lat: 35.6895, lng: 139.6917 })).toBe('東京都');
+  });
+
   it('returns unresolved when the nearest city feature is too far from the photo', () => {
     const map = placeMap([
       point(127.58, 37.31, { place: 'city', name: '멀리 있는 도시' }),

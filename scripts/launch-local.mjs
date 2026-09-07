@@ -36,13 +36,15 @@ async function main() {
   }
 
   console.log(`[Travel Camera] 서버를 시작합니다: ${url}`);
-  const child = spawn(npmCommand, ['start', '--', ...serverArgs], {
+  run(process.execPath, [join(root, 'scripts', 'ensure-build.mjs')]);
+  const child = spawn(process.execPath, [join(root, 'server.mjs'), '--production', ...serverArgs], {
     cwd: root,
     env: process.env,
     stdio: 'inherit'
   });
   const exitPromise = new Promise(resolveExit => {
     child.once('exit', code => resolveExit(code ?? 1));
+    child.once('error', () => resolveExit(1));
   });
 
   child.on('error', error => {
@@ -128,13 +130,13 @@ function resolvePort(values, environmentPort) {
 async function waitForServer(url, child) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (child.exitCode != null) return false;
+    if (child.exitCode != null || !child.pid) return false;
     try {
       const response = await fetch(url, {
         method: 'HEAD',
         signal: AbortSignal.timeout(800)
       });
-      if (response.status > 0) return true;
+      if (response.ok) return true;
     } catch {
       // Server startup is still in progress.
     }
@@ -185,7 +187,10 @@ function run(command, commandArgs, options = {}) {
     console.log(`[Travel Camera] dry-run: ${command} ${commandArgs.join(' ')}`);
     return { status: 0 };
   }
-  const result = spawnSync(command, commandArgs, {
+  const isWindowsNpm = process.platform === 'win32' && command === 'npm.cmd';
+  // npm arguments are fixed internal commands, never user-provided shell text.
+  if (isWindowsNpm && commandArgs.join(' ') !== 'ci') throw new Error('Unsupported npm launcher command');
+  const result = spawnSync(isWindowsNpm ? (process.env.ComSpec || 'cmd.exe') : command, isWindowsNpm ? ['/d', '/s', '/c', 'npm.cmd ci'] : commandArgs, {
     cwd: root,
     env: process.env,
     stdio: 'inherit',

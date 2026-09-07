@@ -6,6 +6,7 @@ export interface EmbeddedMetadata {
   takenMs: number | null;
   lat: number | null;
   lng: number | null;
+  gpsAccuracyM: number | null;
 }
 
 export function parseFilenameTimestamp(name: string): number | null {
@@ -62,7 +63,7 @@ export function parseQuickTimeMetadataChunks(chunks: ArrayBuffer[]): EmbeddedMet
   }
 
   if (takenMs == null && !coordinate) return null;
-  return { takenMs, lat: coordinate?.lat ?? null, lng: coordinate?.lng ?? null };
+  return { takenMs, lat: coordinate?.lat ?? null, lng: coordinate?.lng ?? null, gpsAccuracyM: null };
 }
 
 async function readQuickTimeChunks(file: File): Promise<ArrayBuffer[]> {
@@ -126,7 +127,7 @@ function validEmbeddedTimestamp(value: number): boolean {
   return Number.isFinite(value) && value > Date.UTC(2000, 0, 1) && value < Date.UTC(2101, 0, 1);
 }
 
-function parseJpegExif(buffer: ArrayBuffer): EmbeddedMetadata | null {
+export function parseJpegExif(buffer: ArrayBuffer): EmbeddedMetadata | null {
   if (buffer.byteLength < 16) return null;
   const view = new DataView(buffer);
   if (view.getUint16(0, false) !== 0xffd8) return null;
@@ -160,8 +161,14 @@ function parseTiff(view: DataView, base: number, end: number): EmbeddedMetadata 
   const zone = readAscii(view, base, end, exif?.get(0x9011) ?? exif?.get(0x9012), little);
   const takenMs = parseExifDate(dateText, zone);
   const coordinate = readGps(view, base, end, gps, little);
+  const gpsAccuracyM = readRationals(view, base, end, gps?.get(0x001f), little)?.[0] ?? null;
   if (takenMs == null && !coordinate) return null;
-  return { takenMs, lat: coordinate?.lat ?? null, lng: coordinate?.lng ?? null };
+  return {
+    takenMs,
+    lat: coordinate?.lat ?? null,
+    lng: coordinate?.lng ?? null,
+    gpsAccuracyM: Number.isFinite(gpsAccuracyM) && gpsAccuracyM! >= 0 ? gpsAccuracyM : null
+  };
 }
 
 interface IfdEntry { start: number; type: number; count: number }

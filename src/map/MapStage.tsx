@@ -1,26 +1,35 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Map } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+// MapLibre 6 resolves its default worker next to the original module. Vite moves
+// that module into a chunk, so bundle the worker explicitly for production too.
+maplibregl.setWorkerUrl(mapWorkerUrl);
 import type { MapSourceConfig } from '../types';
+import { disposeMapTileWarmup } from './tile-warmup';
 import { mapStyleFor } from './map-style';
 
 interface MapStageProps {
   source: MapSourceConfig;
   onReady: (map: Map) => void;
-  onError: (message: string) => void;
+  onError: (message: string | null) => void;
 }
 
 export function MapStage({ source, onReady, onError }: MapStageProps) {
+  const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
     let map: Map | null = null;
+    let cancelled = false;
+    let observer: ResizeObserver | null = null;
     let ready = false;
+    let reportedError = false;
     let fallbackTimeout = 0;
     const initTimeout = window.setTimeout(async () => {
-      if (!containerRef.current) return;
+      if (cancelled || !containerRef.current) return;
       let style;
       try {
         style = await mapStyleFor(source);
@@ -28,18 +37,26 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
         onError('지도 구성을 준비하지 못해 기본 배경으로 전환했습니다.');
         style = fallbackStyle();
       }
-      if (!containerRef.current) return;
-      map = new maplibregl.Map({
-        container: containerRef.current,
-        style,
-        center: [127.6, 36.2],
-        zoom: 5.4,
-        attributionControl: false,
-        cooperativeGestures: false,
-        cancelPendingTileRequestsWhileZooming: false,
-        maxTileCacheZoomLevels: 8
-      });
+      if (cancelled || !containerRef.current) return;
+      try {
+        map = new maplibregl.Map({
+          container: containerRef.current,
+          style,
+          center: [127.6, 36.2],
+          zoom: 5.4,
+          attributionControl: false,
+          cooperativeGestures: false,
+          cancelPendingTileRequestsWhileZooming: false,
+          maxTileCacheZoomLevels: 8
+        });
 
+      } catch {
+        setLoading(false);
+        onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.');
+        return;
+      }
+      observer = new ResizeObserver(() => map?.resize());
+      observer.observe(containerRef.current);
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
       collapseAttribution(map);
@@ -47,32 +64,36 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
       const markReady = () => {
         if (ready || !map) return;
         ready = true;
-        window.clearTimeout(fallbackTimeout);
         ensureRouteLayers(map);
         collapseAttribution(map);
         onReady(map);
       };
+      map.once('load', () => { window.clearTimeout(fallbackTimeout); setLoading(false); if (!reportedError) onError(null); });
       map.once('style.load', markReady);
       map.on('error', event => {
         const message = event.error?.message;
-        if (message && /style|source|pmtiles|tile/i.test(message)) onError(message);
+        if (message && !reportedError) {
+          reportedError = true;
+          console.warn('[Travel Camera 지도]', message);
+          onError('배경 지도 요청에 실패했습니다. 인터넷 연결을 확인한 뒤 지도 다시 연결을 눌러 주세요.');
+        }
       });
       fallbackTimeout = window.setTimeout(() => {
-        if (ready || !map) return;
-        onError('온라인 지도를 불러오지 못해 기본 배경으로 전환했습니다.');
-        map.setStyle(fallbackStyle());
-        map.once('style.load', markReady);
-      }, 5_000);
+        if (!map || map.loaded()) return;
+        onError('지도 로딩이 지연되고 있습니다. 계속 불러오는 중이며, 연결 상태를 확인하거나 다시 연결할 수 있습니다.');
+      }, 12_000);
     }, 0);
 
     return () => {
+      cancelled = true;
+      observer?.disconnect();
       window.clearTimeout(initTimeout);
       window.clearTimeout(fallbackTimeout);
-      map?.remove();
+      if (map) { disposeMapTileWarmup(map); map.remove(); }
     };
   }, [source, onError, onReady]);
 
-  return <div ref={containerRef} className="map-canvas" aria-label="여행 경로 지도" data-testid="map-stage" />;
+  return <><div ref={containerRef} className="map-canvas" aria-label="여행 경로 지도" data-testid="map-stage" />{loading && <div className="map-loading" role="status">지도를 불러오는 중…</div>}</>;
 }
 
 function collapseAttribution(map: Map): void {

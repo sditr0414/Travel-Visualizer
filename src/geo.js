@@ -24,7 +24,7 @@ export function pathDistanceMeters(points) {
 export function interpolatePoint(a, b, t) {
   return {
     lat: a.lat + (b.lat - a.lat) * t,
-    lng: a.lng + (b.lng - a.lng) * t,
+    lng: a.lng + shortestLongitudeDelta(a.lng, b.lng) * t,
     timeMs: Number.isFinite(a.timeMs) && Number.isFinite(b.timeMs)
       ? a.timeMs + (b.timeMs - a.timeMs) * t
       : undefined
@@ -32,7 +32,7 @@ export function interpolatePoint(a, b, t) {
 }
 
 export function smoothPath(points, { maxSegmentMeters = 300 } = {}) {
-  const clean = (points || []).filter(p => Number.isFinite(p?.lat) && Number.isFinite(p?.lng));
+  const clean = unwrapPath((points || []).filter(p => Number.isFinite(p?.lat) && Number.isFinite(p?.lng)));
   if (clean.length < 2) return clean.map(p => ({ ...p }));
   if (clean.length === 2) return densifyLine(clean[0], clean[1], maxSegmentMeters);
 
@@ -84,6 +84,7 @@ export function inferredBridgePath(start, end, {
   distanceMeters = haversineMeters(start, end),
   mode = 'UNKNOWN'
 } = {}) {
+  end = { ...end, lng: start.lng + shortestLongitudeDelta(start.lng, end.lng) };
   const distanceKm = distanceMeters / 1000;
   const steps = clamp(Math.ceil(distanceKm * 1.2), 10, 100);
   const midLat = (start.lat + end.lat) / 2;
@@ -196,3 +197,16 @@ function dedupeSpatial(points) {
 
 function toRad(deg) { return deg * Math.PI / 180; }
 function toDeg(rad) { return rad * 180 / Math.PI; }
+
+export function shortestLongitudeDelta(from, to) {
+  return ((to - from + 180) % 360 + 360) % 360 - 180;
+}
+
+export function unwrapPath(points, previousLongitude = null) {
+  let previous = previousLongitude;
+  return points.map(point => {
+    const lng = previous === null ? point.lng : previous + shortestLongitudeDelta(previous, point.lng);
+    previous = lng;
+    return { ...point, lng };
+  });
+}

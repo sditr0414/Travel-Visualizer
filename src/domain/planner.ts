@@ -33,6 +33,9 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
     viewportHeight: options.viewportHeight
   });
   plan.zoomOffset = resolvedZoomOffset;
+  plan.selectedRange = { startDate: options.startDate, endDate: options.endDate };
+  plan.viewportWidth = options.viewportWidth;
+  plan.viewportHeight = options.viewportHeight;
 
   if (plan.cameraMode !== 'AUTO') return plan;
   for (const frame of plan.frames) {

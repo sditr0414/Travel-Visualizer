@@ -24,6 +24,7 @@ export function scanTimeline(json: TimelineRoot): TimelineScanResult {
   let end = Number.NEGATIVE_INFINITY;
   const segments = json.semanticSegments ?? [];
   for (const segment of segments) {
+    if (!segment || typeof segment !== 'object') continue;
     const startMs = Date.parse(String(segment.startTime ?? ''));
     const endMs = Date.parse(String(segment.endTime ?? segment.startTime ?? ''));
     if (Number.isFinite(startMs)) start = Math.min(start, startMs);

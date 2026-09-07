@@ -13,6 +13,7 @@ const media: JourneyMedia = {
   takenMs: Date.parse('2026-03-18T11:11:22+09:00'),
   lat: 33.883,
   lng: 130.875,
+  gpsAccuracyM: 8,
   metadataSource: 'embedded-exif',
   playbackSec: 1,
   matchedLat: 33.883,

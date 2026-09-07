@@ -25,3 +25,35 @@ describe('tile warmup', () => {
       .toBe('https://tiles/3/2/6.pbf');
   });
 });
+
+it('keeps prefetch slots occupied until bodies finish and aborts requests when the map is removed', async () => {
+  const { warmMapTilesAhead, disposeMapTileWarmup } = await import('./tile-warmup');
+  const transfers: Array<{ finish: () => void; signal: AbortSignal }> = [];
+  const fetchMock = vi.fn((_url: string, options: RequestInit) => Promise.resolve({
+    ok: true,
+    arrayBuffer: () => new Promise<void>((resolve, reject) => {
+      const signal = options.signal!;
+      transfers.push({ finish: resolve, signal });
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    })
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  const map = {
+    getCanvas: () => ({ clientWidth: 1200, clientHeight: 800 }),
+    getStyle: () => ({ sources: { tiles: {} }, layers: [{ source: 'tiles', type: 'line' }] }),
+    getSource: () => ({ type: 'vector', tiles: ['https://example.com/{z}/{x}/{y}.pbf'] }),
+    getPixelRatio: () => 1
+  } as unknown as import('maplibre-gl').Map;
+  try {
+    warmMapTilesAhead(map, { lng: 127, lat: 37 }, 12);
+    await vi.waitFor(() => expect(transfers).toHaveLength(2));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    transfers[0].finish();
+    await vi.waitFor(() => expect(transfers).toHaveLength(3));
+    disposeMapTileWarmup(map);
+    expect(transfers[1].signal.aborted).toBe(true);
+    expect(transfers[2].signal.aborted).toBe(true);
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally { disposeMapTileWarmup(map); vi.unstubAllGlobals(); }
+});
