@@ -103,10 +103,40 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
     fireEvent.change(screen.getByLabelText('여행 시작'), { target: { value: '2026-03-02' } });
     expect(rebuildButton).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: '추천 기간' }));
+    fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
     expect(rebuildButton).toBeDisabled();
+  });
+
+
+  it('offers multiple recommended trips with destination hints and lets the user select one', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({
+        startDate: '2026-03-01', endDate: '2026-07-03', semanticSegments: 40,
+        recommendedRange: { startDate: '2026-07-01', endDate: '2026-07-03' },
+        tripCandidates: [
+          { id: 'japan', startDate: '2026-07-01', endDate: '2026-07-03', activeDays: 3, distanceMeters: 2300000, destinationHint: '일본', representativeCoordinate: { lat: 35.67, lng: 139.65 } },
+          { id: 'gangneung', startDate: '2026-05-02', endDate: '2026-05-04', activeDays: 3, distanceMeters: 380000, destinationHint: '강릉', representativeCoordinate: { lat: 37.75, lng: 128.88 } }
+        ]
+      }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(),
+      dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-07-01', endDate: '2026-07-03' }), expect.any(Function));
+
+    fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByRole('button', { name: /일본/ })).toHaveAttribute('aria-pressed', 'true');
+    const gangneung = screen.getByRole('button', { name: /강릉/ });
+    fireEvent.click(gangneung);
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-05-02');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-05-04');
+    expect(gangneung).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '경로 다시 만들기' })).toBeEnabled();
   });
 
   it('keeps live camera settings out of rebuild state and rebuilds only after a planned camera change', async () => {

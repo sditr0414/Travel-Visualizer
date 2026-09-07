@@ -49,8 +49,8 @@
 @media (prefers-reduced-motion: reduce) {
   .app-dialog, .map-recovery { animation: none; transition: none; }
 }
-.setting-with-help { position: relative; min-width: 0; padding-right: 32px; }
-.setting-help-button { position: absolute; right: -4px; top: -8px; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }
+.setting-with-help { position: relative; min-width: 0; padding-right: 26px; }
+.setting-help-button { position: absolute; right: 0; top: -2px; width: 24px; height: 24px; border: 0; padding: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }
 .setting-help-button:hover, .setting-help-button[aria-expanded=true] { color: var(--accent); }
 .setting-help-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 6px; }
 .setting-tooltip { position: fixed; z-index: 100; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--paper); box-shadow: 0 6px 20px #0004; font-size: 12px; line-height: 1.7; }
