@@ -20,6 +20,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/temporary-apply-help-range.mjs
+      - name: Clean internal candidate score
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/domain/timeline.ts')
+          text = path.read_text()
+          old = "    .slice(0, MAX_TRIP_CANDIDATES)\n    .map(({ score: _score, ...candidate }) => candidate);"
+          new = "    .slice(0, MAX_TRIP_CANDIDATES);"
+          if text.count(old) != 1:
+              raise SystemExit('candidate score cleanup target missing')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Focused checks
         run: |
           npm run typecheck
