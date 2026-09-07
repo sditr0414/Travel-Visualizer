@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat scripts/.v3-place-patch-01 scripts/.v3-place-patch-02 | base64 -d | gzip -d > /tmp/v3-place.patch
+          cat scripts/.v3p-0 scripts/.v3p-1 scripts/.v3p-2 scripts/.v3p-3 scripts/.v3p-4 | base64 -d | gzip -d > /tmp/v3-place.patch
           echo 'de8575edb077927624b11d413eaa8fa2a0301ef97de47bb7706bd915372e1968  /tmp/v3-place.patch' | sha256sum -c -
           git apply --check /tmp/v3-place.patch
           git apply /tmp/v3-place.patch
@@ -141,7 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f scripts/.v3-place-patch-01 scripts/.v3-place-patch-02
+          rm -f scripts/.v3-place-patch-01 scripts/.v3-place-patch-02 scripts/.v3p-0 scripts/.v3p-1 scripts/.v3p-2 scripts/.v3p-3 scripts/.v3p-4
           rm -f e2e/ui-audit.spec.ts
           rm -f .github/workflows/source-snapshot.yml .github/workflows/ui-audit.yml .github/workflows/apply-v3-place.yml
           git diff --check
