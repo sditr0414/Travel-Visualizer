@@ -1,0 +1,30 @@
+name: temporary-ui-audit
+
+on:
+  push:
+    branches: [ai/v3-ui-place-audit]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test e2e/ui-audit.spec.ts --project=desktop --project=mobile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-audit
+          path: |
+            ui-audit
+            playwright-report
+          if-no-files-found: warn
