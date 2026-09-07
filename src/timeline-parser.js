@@ -1,4 +1,4 @@
-import { haversineMeters, inferredBridgePath, pathDistanceMeters, smoothPath } from './geo.js';
+import { haversineMeters, inferredBridgePath, pathDistanceMeters, smoothPath, interpolatePoint, unwrapPath } from './geo.js';
 
 const LATLNG_RE = /(-?\d+(?:\.\d+)?)°?\s*,\s*(-?\d+(?:\.\d+)?)°?/;
 
@@ -23,6 +23,7 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
   const visits = [];
 
   for (const segment of semanticSegments) {
+    if (!segment || typeof segment !== 'object') continue;
     const segmentStart = parseTime(segment.startTime);
     const segmentEnd = parseTime(segment.endTime) || segmentStart;
     if (!overlaps(segmentStart, segmentEnd, startMs, endMs)) continue;
@@ -30,12 +31,12 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
     if (Array.isArray(segment.timelinePath)) {
       const points = segment.timelinePath
         .map(item => {
+          if (!item || typeof item !== 'object') return null;
           const p = parseLatLng(item.point);
           const timeMs = parseTime(item.time);
           return p && Number.isFinite(timeMs) ? { ...p, timeMs } : null;
         })
         .filter(Boolean)
-        .filter(p => p.timeMs >= startMs && p.timeMs < endMs)
         .sort((a, b) => a.timeMs - b.timeMs);
       if (points.length) timelinePaths.push({ startMs: segmentStart, endMs: segmentEnd, points });
     }
@@ -91,8 +92,15 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
     .flatMap(path => path.points)
     .sort((a, b) => a.timeMs - b.timeMs);
 
-  const enriched = activities.map(activity => enrichActivityWithPath(activity, allTimelinePoints));
+  const enriched = activities.map(activity => clipMovement(enrichActivityWithPath(activity, allTimelinePoints), startMs, endMs)).filter(Boolean);
   const movements = bridgeMovementGaps(enriched, allTimelinePoints, includeFlights);
+  let previousLongitude = null;
+  for (const movement of movements) {
+    movement.points = unwrapPath(movement.points, previousLongitude);
+    movement.start = stripTime(movement.points[0]);
+    movement.end = stripTime(movement.points.at(-1));
+    previousLongitude = movement.end.lng;
+  }
   const routePoints = dedupeChronological(movements.flatMap(m => m.points));
   return { movements, routePoints, visits, timelinePaths };
 }
@@ -299,7 +307,7 @@ function parseTime(value) {
 function overlaps(aStart, aEnd, bStart, bEnd) {
   if (!Number.isFinite(aStart)) return false;
   const end = Number.isFinite(aEnd) ? aEnd : aStart;
-  return end >= bStart && aStart < bEnd;
+  return end > bStart && aStart < bEnd;
 }
 
 function calendarDateToUtcMs(yyyyMmDd, endExclusive) {
@@ -309,4 +317,26 @@ function calendarDateToUtcMs(yyyyMmDd, endExclusive) {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
   return Date.parse(`${yy}-${mm}-${dd}T00:00:00+09:00`);
+}
+
+function clipMovement(movement, rangeStart, rangeEnd) {
+  const startMs = Math.max(movement.startMs, rangeStart);
+  const endMs = Math.min(movement.endMs, rangeEnd);
+  if (!(endMs > startMs)) return null;
+  if (startMs === movement.startMs && endMs === movement.endMs) return movement;
+  const points = movement.points.filter(point => Number.isFinite(point.timeMs)).sort((a, b) => a.timeMs - b.timeMs);
+  const pointAtTime = timeMs => {
+    if (!points.length) return { ...movement.start, timeMs };
+    if (timeMs <= points[0].timeMs) return { ...points[0], timeMs };
+    for (let index = 1; index < points.length; index += 1) {
+      if (points[index].timeMs >= timeMs) return { ...interpolatePoint(points[index - 1], points[index], (timeMs - points[index - 1].timeMs) / Math.max(1, points[index].timeMs - points[index - 1].timeMs)), timeMs };
+    }
+    return { ...points.at(-1), timeMs };
+  };
+  const clipped = [pointAtTime(startMs), ...points.filter(point => point.timeMs > startMs && point.timeMs < endMs), pointAtTime(endMs)];
+  const pathMeters = pathDistanceMeters(clipped);
+  const ratio = movement.pathDistanceMeters > 0 ? pathMeters / movement.pathDistanceMeters : (endMs - startMs) / Math.max(1, movement.endMs - movement.startMs);
+  const distanceMeters = movement.distanceMeters * Math.min(1, Math.max(0, ratio));
+  const durationSec = (endMs - startMs) / 1000;
+  return { ...movement, startMs, endMs, start: stripTime(clipped[0]), end: stripTime(clipped.at(-1)), points: clipped, distanceMeters, pathDistanceMeters: pathMeters, durationSec, avgSpeedKmh: distanceMeters / durationSec * 3.6 };
 }

@@ -1,11 +1,11 @@
 {
   "name": "travel-camera-visualizer",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "description": "A local-first cinematic travel route player for Google Timeline exports.",
   "scripts": {
-    "start": "node server.mjs",
+    "start": "node server.mjs --production",
     "dev": "node server.mjs",
     "launch": "node scripts/launch-local.mjs",
     "launch:no-update": "node scripts/launch-local.mjs --no-update",
@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build",
     "map:setup": "node scripts/setup-local-map.mjs",
-    "map:setup:force": "node scripts/setup-local-map.mjs --force"
+    "map:setup:force": "node scripts/setup-local-map.mjs --force",
+    "prestart": "node scripts/ensure-build.mjs"
   },
   "engines": {
     "node": ">=24"

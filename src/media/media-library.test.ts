@@ -143,6 +143,7 @@ describe('local media matching', () => {
       takenMs: start + index * 20_000,
       lat: 37.5,
       lng: 127,
+      gpsAccuracyM: 8,
       metadataSource: 'embedded-exif',
       playbackSec: index / 10,
       matchedLat: 37.5,

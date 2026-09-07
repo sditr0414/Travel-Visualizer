@@ -139,6 +139,9 @@ export interface OutroFrame {
 export type PlaybackFrame = TravelFrame | OutroFrame;
 
 export interface PlaybackPlan {
+  selectedRange?: TimelineDateRange;
+  viewportWidth?: number;
+  viewportHeight?: number;
   frames: PlaybackFrame[];
   segments: PlaybackSegment[];
   fps: number;
@@ -177,6 +180,7 @@ export interface JourneyMedia {
   takenMs: number;
   lat: number | null;
   lng: number | null;
+  gpsAccuracyM: number | null;
   metadataSource: MediaMetadataSource;
   playbackSec: number;
   matchedLat: number;
@@ -198,6 +202,7 @@ export interface LocalMediaManifestItem {
     takenMs: number;
     lat: number | null;
     lng: number | null;
+    gpsAccuracyM?: number | null;
     source: MediaMetadataSource;
     embeddedScanned?: boolean;
   } | null;
@@ -220,6 +225,7 @@ export interface MediaMetadataRecord {
   takenMs: number;
   lat: number | null;
   lng: number | null;
+  gpsAccuracyM: number | null;
   source: MediaMetadataSource;
 }
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
@@ -16,8 +17,17 @@ const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
 const localTimeline = configuredPath('TRAVEL_TIMELINE_PATH', resolve(root, '..', '타임라인.json'));
 const localMediaRoot = configuredPath('TRAVEL_MEDIA_DIR', resolve(root, '..', '여행 사진'));
 const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
-const MEDIA_CACHE_VERSION = 2;
+const photoPlaceCachePath = configuredPath('TRAVEL_PLACE_CACHE', join(root, '.cache', 'photo-places.json'));
+const mapGlyphCacheDir = configuredPath('TRAVEL_GLYPH_CACHE_DIR', join(root, '.cache', 'map-glyphs'));
+const glyphBaseUrl = process.env.TRAVEL_GLYPH_BASE_URL?.trim() || 'https://protomaps.github.io/basemaps-assets/fonts/';
+const placeProvider = resolvePlaceProvider();
+const MEDIA_CACHE_VERSION = 4;
+const PLACE_CACHE_VERSION = 1;
 let localMediaCache = null;
+let photoPlaceCache = null;
+let placeLookupQueue = Promise.resolve();
+let lastPlaceLookupAt = 0;
+const glyphDownloads = new Map();
 
 const vite = isProduction
   ? null
@@ -55,6 +65,28 @@ async function handleRequest(request, response) {
       worldBytes: world.bytes,
       regionBytes: region.bytes
     });
+  }
+
+  if (url.pathname === '/api/photo-place-status') {
+    if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+      response.setHeader('Allow', 'GET, HEAD');
+      return text(response, 405, 'Method not allowed');
+    }
+    const status = {
+      available: Boolean(placeProvider),
+      provider: placeProvider?.label ?? null,
+      cache: true
+    };
+    if (request.method === 'HEAD') return response.writeHead(200).end();
+    return json(response, 200, status);
+  }
+
+  if (url.pathname === '/api/photo-place') {
+    return servePhotoPlaceLookup(request, response);
+  }
+
+  if (url.pathname.startsWith('/api/map-glyphs/')) {
+    return serveMapGlyph(request, response, url.pathname.slice('/api/map-glyphs/'.length));
   }
 
   if (url.pathname === '/api/local-timeline') {
@@ -116,7 +148,7 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     response.setHeader('Allow', 'GET, HEAD');
     return text(response, 405, 'Method not allowed');
   }
-  if (!existsSync(path)) return text(response, 404, 'Map archive not found');
+  if (!existsSync(path) || !statSync(path).isFile()) return text(response, 404, 'File not found');
   const size = statSync(path).size;
   const range = request.headers.range;
   response.setHeader('Accept-Ranges', 'bytes');
@@ -127,11 +159,11 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
   if (!range) {
     response.writeHead(200, { 'Content-Length': size });
     if (request.method === 'HEAD') return response.end();
-    return createReadStream(path).pipe(response);
+    return pipeFile(path, response);
   }
 
   const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match) {
+  if (!match || (!match[1] && !match[2])) {
     response.writeHead(416, { 'Content-Range': `bytes */${size}` });
     return response.end();
   }
@@ -158,7 +190,248 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
     'Content-Length': end - start + 1
   });
   if (request.method === 'HEAD') return response.end();
-  return createReadStream(path, { start, end }).pipe(response);
+  return pipeFile(path, response, { start, end });
+}
+
+async function serveMapGlyph(request, response, rawPath) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    response.setHeader('Allow', 'GET, HEAD');
+    return text(response, 405, 'Method not allowed');
+  }
+  const slash = rawPath.lastIndexOf('/');
+  if (slash <= 0) return text(response, 404, 'Glyph not found');
+  let fontstack;
+  let range;
+  try {
+    fontstack = decodeURIComponent(rawPath.slice(0, slash));
+    range = decodeURIComponent(rawPath.slice(slash + 1));
+  } catch {
+    return text(response, 400, 'Invalid glyph path');
+  }
+  if (!fontstack || fontstack.length > 120 || /[\\/\0\r\n]/.test(fontstack) || !/^\d{1,6}-\d{1,6}\.pbf$/.test(range)) {
+    return text(response, 400, 'Invalid glyph path');
+  }
+
+  const fontKey = createHash('sha256').update(fontstack).digest('hex').slice(0, 24);
+  const cachedPath = join(mapGlyphCacheDir, fontKey, range);
+  if (!existsSync(cachedPath)) {
+    let pending = glyphDownloads.get(cachedPath);
+    if (!pending) {
+      pending = cacheMapGlyph(fontstack, range, cachedPath);
+      glyphDownloads.set(cachedPath, pending);
+      void pending.then(
+        () => glyphDownloads.delete(cachedPath),
+        () => glyphDownloads.delete(cachedPath)
+      );
+    }
+    try {
+      await pending;
+    } catch {
+      return text(response, 502, 'Glyph download failed');
+    }
+  }
+  return serveRangeFile(request, response, cachedPath, 'application/x-protobuf', 'private, max-age=31536000, immutable');
+}
+
+async function cacheMapGlyph(fontstack, range, cachedPath) {
+  const base = new URL(glyphBaseUrl.endsWith('/') ? glyphBaseUrl : `${glyphBaseUrl}/`);
+  if (!['http:', 'https:'].includes(base.protocol)) throw new Error('Invalid glyph base URL');
+  const upstream = new URL(`${encodeURIComponent(fontstack)}/${range}`, base);
+  const upstreamResponse = await fetch(upstream, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(15_000),
+    headers: { 'user-agent': 'travel-camera-visualizer/3.0' }
+  });
+  if (!upstreamResponse.ok) throw new Error(`Glyph HTTP ${upstreamResponse.status}`);
+  const bytes = Buffer.from(await upstreamResponse.arrayBuffer());
+  if (!bytes.length || bytes.length > 4_000_000) throw new Error('Invalid glyph response');
+  mkdirSync(dirname(cachedPath), { recursive: true });
+  const temporary = `${cachedPath}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, bytes);
+  renameSync(temporary, cachedPath);
+}
+
+async function servePhotoPlaceLookup(request, response) {
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST');
+    return text(response, 405, 'Method not allowed');
+  }
+  if (!isSameOriginRequest(request)) return text(response, 403, 'Same-origin request required');
+  if (!placeProvider) return json(response, 503, { available: false, found: false });
+
+  let payload;
+  try {
+    payload = await readJsonBody(request, 16_000);
+  } catch (error) {
+    return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid place lookup payload' });
+  }
+  const lat = Number(payload?.lat);
+  const lng = Number(payload?.lng);
+  const gpsAccuracyM = payload?.gpsAccuracyM == null ? null : Number(payload.gpsAccuracyM);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return json(response, 400, { error: 'Invalid coordinate' });
+  }
+  if (gpsAccuracyM != null && (!Number.isFinite(gpsAccuracyM) || gpsAccuracyM < 0 || gpsAccuracyM > 100_000)) {
+    return json(response, 400, { error: 'Invalid GPS accuracy' });
+  }
+
+  const key = `${placeProvider.cacheNamespace}:${lat.toFixed(5)},${lng.toFixed(5)}`;
+  const cache = loadPhotoPlaceCache();
+  const cached = cache.entries[key];
+  if (cached?.result) return json(response, 200, { ...cached.result, cached: true });
+
+  const lookup = async () => {
+    const waitMs = placeProvider.minIntervalMs - (Date.now() - lastPlaceLookupAt);
+    if (waitMs > 0) await new Promise(resolveWait => setTimeout(resolveWait, waitMs));
+    const result = await lookupPhotoPlace(placeProvider, lat, lng, gpsAccuracyM);
+    lastPlaceLookupAt = Date.now();
+    cache.entries[key] = { queriedAt: new Date().toISOString(), result };
+    savePhotoPlaceCache(cache);
+    return result;
+  };
+  const pending = placeLookupQueue.then(lookup, lookup);
+  placeLookupQueue = pending.then(() => undefined, () => undefined);
+  try {
+    return json(response, 200, { ...(await pending), cached: false });
+  } catch (error) {
+    console.warn(`Photo place lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+    return json(response, 502, { available: true, found: false, provider: placeProvider.label, error: 'Place lookup failed' });
+  }
+}
+
+async function lookupPhotoPlace(provider, lat, lng, gpsAccuracyM) {
+  const endpoint = new URL(provider.url);
+  endpoint.searchParams.set('format', 'jsonv2');
+  endpoint.searchParams.set('lat', String(lat));
+  endpoint.searchParams.set('lon', String(lng));
+  endpoint.searchParams.set('zoom', '18');
+  endpoint.searchParams.set('addressdetails', '1');
+  endpoint.searchParams.set('namedetails', '1');
+  endpoint.searchParams.set('accept-language', 'ko,en');
+
+  const upstream = await fetch(endpoint, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      accept: 'application/json',
+      'user-agent': provider.userAgent
+    }
+  });
+  if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+  const value = await upstream.json();
+  const category = String(value?.category ?? value?.class ?? '').toLowerCase();
+  const type = String(value?.type ?? '').toLowerCase();
+  const name = preferredPlaceName(value);
+  const resultLat = Number(value?.lat);
+  const resultLng = Number(value?.lon);
+  const distanceMeters = Number.isFinite(resultLat) && Number.isFinite(resultLng)
+    ? haversineMeters({ lat, lng }, { lat: resultLat, lng: resultLng })
+    : null;
+  const acceptDistance = Math.min(80, Math.max(20, (gpsAccuracyM ?? 10) * 2 + 10));
+  const namedPoi = name && isNamedPoiCategory(category, type);
+  const withinRange = distanceMeters == null || distanceMeters <= acceptDistance;
+  if (!namedPoi || !withinRange) {
+    return {
+      available: true,
+      found: false,
+      provider: provider.label,
+      confidence: 'LOW',
+      distanceMeters: distanceMeters == null ? null : Math.round(distanceMeters)
+    };
+  }
+  const highDistance = Math.max(12, (gpsAccuracyM ?? 8) * 1.5);
+  return {
+    available: true,
+    found: true,
+    provider: provider.label,
+    name,
+    address: compactAddress(value?.address),
+    confidence: distanceMeters == null || distanceMeters <= highDistance ? 'HIGH' : 'MEDIUM',
+    distanceMeters: distanceMeters == null ? null : Math.round(distanceMeters)
+  };
+}
+
+function resolvePlaceProvider() {
+  const raw = process.env.TRAVEL_PLACE_REVERSE_URL?.trim();
+  if (!raw) return null;
+  let url;
+  try { url = new URL(raw); }
+  catch { console.warn('TRAVEL_PLACE_REVERSE_URL is not a valid URL; online place lookup is disabled.'); return null; }
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    console.warn('TRAVEL_PLACE_REVERSE_URL must use http or https; online place lookup is disabled.');
+    return null;
+  }
+  const isPublicOsmf = url.hostname.toLowerCase() === 'nominatim.openstreetmap.org';
+  if (isPublicOsmf && process.env.TRAVEL_ALLOW_PUBLIC_NOMINATIM !== '1') {
+    console.warn('Public OSMF Nominatim is not enabled for personal photo coordinates. Set TRAVEL_ALLOW_PUBLIC_NOMINATIM=1 only after reviewing its privacy/usage policy.');
+    return null;
+  }
+  const configuredInterval = Number(process.env.TRAVEL_PLACE_MIN_INTERVAL_MS);
+  const minIntervalMs = Number.isFinite(configuredInterval) && configuredInterval >= 0
+    ? Math.min(60_000, configuredInterval)
+    : isPublicOsmf ? 1100 : 0;
+  const label = process.env.TRAVEL_PLACE_PROVIDER_LABEL?.trim() || url.hostname;
+  return {
+    url: url.toString(),
+    label,
+    minIntervalMs,
+    userAgent: process.env.TRAVEL_PLACE_USER_AGENT?.trim() || 'travel-camera-visualizer/3.0 (local travel journal)',
+    cacheNamespace: createHash('sha256').update(url.origin + url.pathname).digest('hex').slice(0, 12)
+  };
+}
+
+function loadPhotoPlaceCache() {
+  if (photoPlaceCache) return photoPlaceCache;
+  try {
+    const value = JSON.parse(readFileSync(photoPlaceCachePath, 'utf8'));
+    if (value?.version === PLACE_CACHE_VERSION && value.entries && typeof value.entries === 'object') {
+      photoPlaceCache = value;
+      return value;
+    }
+  } catch {
+    // Missing or invalid cache starts empty.
+  }
+  photoPlaceCache = { version: PLACE_CACHE_VERSION, entries: {} };
+  return photoPlaceCache;
+}
+
+function savePhotoPlaceCache(value) {
+  mkdirSync(dirname(photoPlaceCachePath), { recursive: true });
+  const temporary = `${photoPlaceCachePath}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(value), 'utf8');
+  renameSync(temporary, photoPlaceCachePath);
+}
+
+function preferredPlaceName(value) {
+  const names = value?.namedetails ?? {};
+  const candidate = names['name:ko'] ?? names['name:en'] ?? value?.name;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
+function isNamedPoiCategory(category, type) {
+  if (['amenity', 'tourism', 'shop', 'leisure', 'historic', 'office', 'craft', 'building', 'railway', 'aeroway', 'natural', 'man_made'].includes(category)) return true;
+  return ['hotel', 'museum', 'attraction', 'station', 'terminal', 'park', 'monument', 'memorial', 'castle', 'temple', 'church'].includes(type);
+}
+
+function compactAddress(address) {
+  if (!address || typeof address !== 'object') return null;
+  const parts = [
+    address.road,
+    address.neighbourhood ?? address.suburb,
+    address.city_district ?? address.borough,
+    address.city ?? address.town ?? address.village,
+    address.state
+  ].filter(value => typeof value === 'string' && value.trim());
+  return [...new Set(parts)].join(' · ') || null;
+}
+
+function haversineMeters(left, right) {
+  const toRad = value => value * Math.PI / 180;
+  const dLat = toRad(right.lat - left.lat);
+  const dLng = toRad(right.lng - left.lng);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(left.lat)) * Math.cos(toRad(right.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function serveLocalTimeline(request, response) {
@@ -175,7 +448,7 @@ function serveLocalTimeline(request, response) {
     'X-Content-Type-Options': 'nosniff'
   });
   if (request.method === 'HEAD') return response.end();
-  return createReadStream(localTimeline).pipe(response);
+  return pipeFile(localTimeline, response);
 }
 
 function serveLocalMediaManifest(request, response) {
@@ -260,13 +533,13 @@ function buildLocalMediaCache(refresh = false) {
   }
   paths.sort((a, b) => relative(localMediaRoot, a).localeCompare(relative(localMediaRoot, b), 'ko'));
   const metadata = loadMediaMetadataCache();
-  const items = paths.map((path, index) => {
+  const items = paths.map(path => {
     const stats = statSync(path);
     const extension = extname(path).toLowerCase();
     const name = relative(localMediaRoot, path).replaceAll('\\', '/');
     const cached = metadata.entries[name];
     return {
-      id: String(index),
+      id: createHash('sha256').update(`${name}\0${stats.size}\0${stats.mtimeMs}`).digest('hex').slice(0, 32),
       path,
       name,
       size: stats.size,
@@ -301,6 +574,7 @@ function buildLocalMediaCache(refresh = false) {
         ...parsed.metadata,
         lat: parsed.metadata.lat ?? item.metadata?.lat ?? null,
         lng: parsed.metadata.lng ?? item.metadata?.lng ?? null,
+        gpsAccuracyM: item.metadata?.gpsAccuracyM ?? null,
         embeddedScanned: parsed.metadata.lat != null || item.metadata?.embeddedScanned === true
       };
       metadata.entries[item.name] = { size: item.size, lastModified: item.lastModified, ...item.metadata };
@@ -335,11 +609,13 @@ function validMediaMetadata(value) {
   const takenMs = Number(value?.takenMs);
   const lat = value?.lat == null ? null : Number(value.lat);
   const lng = value?.lng == null ? null : Number(value.lng);
+  const gpsAccuracyM = value?.gpsAccuracyM == null ? null : Number(value.gpsAccuracyM);
   const sources = new Set(['takeout-sidecar', 'embedded-exif', 'filename-time', 'file-time']);
   if (!Number.isFinite(takenMs) || takenMs <= Date.UTC(2000, 0, 1) || !sources.has(value?.source)) return null;
   if ((lat == null) !== (lng == null)) return null;
   if (lat != null && (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return null;
-  return { takenMs, lat, lng, source: value.source, embeddedScanned: value?.embeddedScanned === true };
+  if (gpsAccuracyM != null && (!Number.isFinite(gpsAccuracyM) || gpsAccuracyM < 0 || gpsAccuracyM > 100_000)) return null;
+  return { takenMs, lat, lng, gpsAccuracyM, source: value.source, embeddedScanned: value?.embeddedScanned === true };
 }
 
 function parseTakeoutSidecar(value) {
@@ -348,7 +624,7 @@ function parseTakeoutSidecar(value) {
   const numeric = /^\d+(?:\.\d+)?$/.test(String(timestamp ?? '')) ? Number(timestamp) : NaN;
   const takenMs = Number.isFinite(numeric) ? (numeric > 10_000_000_000 ? numeric : numeric * 1000) : Date.parse(String(timestamp ?? ''));
   const gps = validSidecarGps(value.geoDataExif) ?? validSidecarGps(value.geoData);
-  const metadata = validMediaMetadata({ takenMs, lat: gps?.lat ?? null, lng: gps?.lng ?? null, source: 'takeout-sidecar' });
+  const metadata = validMediaMetadata({ takenMs, lat: gps?.lat ?? null, lng: gps?.lng ?? null, gpsAccuracyM: null, source: 'takeout-sidecar' });
   return metadata ? { title: String(value.title || ''), metadata } : null;
 }
 
@@ -389,6 +665,7 @@ function serveStatic(request, response, pathname) {
   let filePath = resolve(distDir, `.${safePath}`);
   const relativePath = relative(resolve(distDir), filePath);
   if (isAbsolute(relativePath) || relativePath.startsWith('..') || !existsSync(filePath) || !statSync(filePath).isFile()) {
+    if (extname(pathname) || pathname.startsWith('/assets/')) return text(response, 404, 'Asset not found');
     filePath = join(distDir, 'index.html');
   }
   if (!existsSync(filePath)) return text(response, 503, 'Run npm run build first');
@@ -397,7 +674,7 @@ function serveStatic(request, response, pathname) {
     'Cache-Control': extname(filePath) === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable'
   });
   if (request.method === 'HEAD') return response.end();
-  createReadStream(filePath).pipe(response);
+  pipeFile(filePath, response);
 }
 
 function mimeType(extension) {
@@ -405,6 +682,7 @@ function mimeType(extension) {
   return {
     '.html': 'text/html; charset=utf-8',
     '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
     '.svg': 'image/svg+xml',
@@ -440,7 +718,7 @@ function isAllowedHost(host) {
 
 function isSameOriginRequest(request) {
   const origin = request.headers.origin;
-  if (!origin) return true;
+  if (!origin) return !request.headers['sec-fetch-site'] || request.headers['sec-fetch-site'] === 'same-origin';
   try {
     return new URL(origin).host === request.headers.host && isAllowedHost(request.headers.host);
   } catch {
@@ -476,4 +754,11 @@ function json(response, status, value) {
 function text(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end(body);
+}
+
+function pipeFile(path, response, options) {
+  const stream = createReadStream(path, options);
+  stream.on('error', () => response.destroy());
+  response.on('close', () => stream.destroy());
+  stream.pipe(response);
 }

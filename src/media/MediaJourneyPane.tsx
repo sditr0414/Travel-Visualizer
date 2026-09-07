@@ -1,4 +1,4 @@
-import { Film, ImageOff, ImagePlus } from 'lucide-react';
+import { Film, ImageOff, ImagePlus, Play } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { dayMarkerCueFromId } from './day-markers';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
@@ -7,6 +7,8 @@ import type { JourneyMedia, MobilityClass } from '../types';
 interface Props {
   media: JourneyMedia[];
   activeId: string | null;
+  playing?: boolean;
+  elapsedSec?: number;
   videoMode: 'THUMBNAIL' | 'PLAY';
   videoMuted: boolean;
   photoDisplaySec: number;
@@ -46,7 +48,7 @@ interface PreloadHandle {
 const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
-export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
+export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
   const dayCue = useMemo(() => dayMarkerCueFromId(activeId), [activeId]);
   const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
@@ -82,7 +84,7 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
     }
     return { kind: 'empty', key: 'empty' };
   }, [active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
-  const canEnterScene = desiredScene.kind !== 'photo' || !activeAsset || activeAsset.status !== 'loading';
+  const canEnterScene = desiredScene.kind !== 'photo' || activeAsset?.status === 'ready' || activeAsset?.status === 'error';
   const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
   const buffering = desiredScene.kind === 'photo' && desiredScene.key !== currentScene.key;
@@ -96,22 +98,23 @@ export function MediaJourneyPane({ media, activeId, videoMode, videoMuted, photo
         data-media-buffering={buffering ? 'true' : 'false'}
         aria-live="polite"
       >
+        {buffering && <span className="media-buffering" role="status">사진·영상 준비 중…</span>}
         {previousScene && (
           <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true">
-            <SceneContent scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} />
+            <SceneContent playing={false} elapsedSec={Number.NaN} scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} />
           </div>
         )}
         <div key={currentScene.key} className="media-scene-layer is-current">
-          <SceneContent scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} />
+          <SceneContent playing={playing && currentScene.key === desiredScene.key} elapsedSec={elapsedSec} scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} />
         </div>
       </div>
     </aside>
   );
 }
 
-function SceneContent({ scene, videoMode, videoMuted, onFiles }: { scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
+function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedSec }: { playing: boolean; elapsedSec: number; scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
   if (scene.kind === 'photo') {
-    return <PhotoScene item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
+    return <PhotoScene playing={playing} elapsedSec={elapsedSec} item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
   }
   if (scene.kind === 'day') {
     const formatted = formatDayMarker(scene.dayKey);
@@ -151,7 +154,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles }: { scene: SceneD
   );
 }
 
-function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted }: { item: JourneyMedia; place: string; preloadedUrl: string | null; videoMode: Props['videoMode']; videoMuted: boolean }) {
+function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted, playing, elapsedSec }: { playing: boolean; elapsedSec: number; item: JourneyMedia; place: string; preloadedUrl: string | null; videoMode: Props['videoMode']; videoMuted: boolean }) {
   const fallbackObjectUrl = useMemo(() => {
     if (preloadedUrl || item.sourceUrl || !item.file || typeof URL.createObjectURL !== 'function') return null;
     return URL.createObjectURL(item.file);
@@ -165,7 +168,7 @@ function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted }: { item
   return (
     <article className="media-card">
       <div className="media-frame">
-        {url && <MediaAsset item={item} url={url} videoMode={videoMode} videoMuted={videoMuted} />}
+        {url && <MediaAsset playing={playing} elapsedSec={elapsedSec} item={item} url={url} videoMode={videoMode} videoMuted={videoMuted} />}
         {item.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 대표 장면</span>}
       </div>
       <footer className="media-caption">
@@ -187,36 +190,34 @@ const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> =
   UNKNOWN: { icon: '●', label: '기타' }
 };
 
-function MediaAsset({ item, url, videoMode, videoMuted }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean }) {
+function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean; playing: boolean; elapsedSec: number }) {
   const [failed, setFailed] = useState(false);
-  const [showControls, setShowControls] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-
+  const playRequested = playing && videoMode === 'PLAY';
   useEffect(() => {
-    if (item.kind !== 'video' || videoMode !== 'PLAY') return;
-    const playback = videoRef.current?.play();
-    if (playback) void playback.catch(() => undefined);
-  }, [item.kind, url, videoMode, videoMuted]);
+    const video = videoRef.current;
+    if (!video || item.kind !== 'video') return;
+    const synchronize = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
+      const target = !Number.isFinite(elapsedSec) ? video.currentTime : videoMode === 'PLAY' ? Math.min(Math.max(0, elapsedSec), Math.max(0, duration - 0.01)) : 0;
+      if (video.readyState >= 1 && Math.abs(video.currentTime - target) > 0.45) video.currentTime = target;
+      if (!playRequested || elapsedSec >= duration) video.pause();
+      else if (video.paused && !blocked) void video.play().catch(() => setBlocked(true));
+    };
+    synchronize();
+    video.addEventListener('loadedmetadata', synchronize);
+    return () => video.removeEventListener('loadedmetadata', synchronize);
+  }, [item.kind, url, videoMode, videoMuted, playRequested, elapsedSec, blocked]);
 
-  if (failed) {
-    return <div className="media-load-error" role="status"><ImageOff size={24} /><span>이 형식은 브라우저에서 미리 볼 수 없습니다.</span></div>;
-  }
+  if (failed) return <div className="media-load-error" role="status"><ImageOff size={24} /><strong>이 파일을 표시할 수 없어요</strong><span>지원되지 않는 형식이거나 파일을 읽을 수 없습니다. JPEG·PNG 또는 브라우저에서 재생되는 영상으로 바꿔 주세요.</span></div>;
   return item.kind === 'image'
     ? <img src={url} alt={item.title} decoding="async" onError={() => setFailed(true)} />
-    : <video
-        ref={videoRef}
-        src={url}
-        muted={videoMuted}
-        playsInline
-        autoPlay={videoMode === 'PLAY'}
-        controls={videoMode === 'PLAY' && showControls}
-        preload="auto"
-        onPointerEnter={() => setShowControls(true)}
-        onPointerLeave={() => setShowControls(false)}
-        onFocus={() => setShowControls(true)}
-        onBlur={() => setShowControls(false)}
-        onError={() => setFailed(true)}
-      />;
+    : <><video ref={videoRef} src={url} aria-label={item.title} muted={videoMuted} playsInline preload="auto" onError={() => setFailed(true)} />
+      {blocked && playRequested && <button className="video-play-prompt" type="button" onClick={() => {
+        const video = videoRef.current;
+        if (video) void video.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
+      }}><Play size={18} />영상 재생 허용</button>}</>;
 }
 
 function useMediaPreload(
@@ -396,17 +397,20 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
     const showFrame = window.requestAnimationFrame(() => {
       setTransition({ currentScene: desiredScene, previousScene: prior, transitionMs });
     });
-    const hideTimer = window.setTimeout(() => {
-      setTransition(current => current.previousScene?.key === prior.key
-        ? { ...current, previousScene: null }
-        : current);
-    }, transitionMs + 60);
-
     return () => {
       window.cancelAnimationFrame(showFrame);
-      window.clearTimeout(hideTimer);
     };
   }, [canEnterScene, desiredScene, photoDisplaySec]);
+
+  const previousSceneKey = transition.previousScene?.key;
+  useEffect(() => {
+    if (!previousSceneKey) return;
+    const previousKey = previousSceneKey;
+    const timer = window.setTimeout(() => {
+      setTransition(current => current.previousScene?.key === previousKey ? { ...current, previousScene: null } : current);
+    }, transition.transitionMs + 60);
+    return () => window.clearTimeout(timer);
+  }, [previousSceneKey, transition.currentScene.key, transition.transitionMs]);
 
   useLayoutEffect(() => {
     if (enteredAtRef.current === null) enteredAtRef.current = performance.now();

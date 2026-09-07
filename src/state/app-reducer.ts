@@ -45,7 +45,7 @@ export const initialAppState: AppState = {
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'LOAD_START':
-      return { ...state, phase: 'loading', source: action.source, plan: null, progress: 0, error: null, statusMessage: 'Timeline을 읽고 있어요.' };
+      return { ...state, phase: 'loading', source: action.source, scan: null, plan: null, progress: 0, error: null, statusMessage: 'Timeline을 읽고 있어요.' };
     case 'PROGRESS':
       return { ...state, progress: action.progress, statusMessage: action.message };
     case 'SCAN_SUCCESS':

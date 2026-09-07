@@ -6,6 +6,11 @@ describe('resolveCityLabel', () => {
     expect(resolveCityLabel(map, { lat: 37.56, lng: 126.97 })).toBe('서울');
   });
 
+  it('keeps the native city name ahead of an English fallback when Korean is absent', () => {
+    const map = fakeMap([{ geometry: { type: 'Point', coordinates: [139.69, 35.69] }, properties: { class: 'city', name: '東京都', 'name:en': 'Tokyo' } }]);
+    expect(resolveCityLabel(map, { lat: 35.69, lng: 139.69 })).toBe('東京都');
+  });
+
   it('does not expose district or neighborhood labels', () => {
     const map = fakeMap([
       { layer: { id: 'place-city-label' }, properties: { class: 'district', name: '강남구' } },

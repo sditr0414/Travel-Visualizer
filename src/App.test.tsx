@@ -10,7 +10,8 @@ const fakeMap = {
   getSource: () => ({ setData: vi.fn() }),
   getLayer: () => ({}),
   setLayoutProperty: vi.fn(),
-  jumpTo: vi.fn()
+  jumpTo: vi.fn(),
+  fitBounds: vi.fn()
 };
 
 vi.mock('./map/MapStage', () => ({
@@ -22,6 +23,7 @@ vi.mock('./map/MapStage', () => ({
 
 describe('App integration', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
       status: url.includes('/api/local-timeline') ? 404 : 200,
       ok: !url.includes('/api/local-timeline'),
@@ -76,7 +78,7 @@ describe('App integration', () => {
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
     expect(worker.scan).toHaveBeenCalled();
     expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({
-      startDate: '2026-03-17', endDate: '2026-03-31', cameraMode: 'AUTO', zoomOffset: 0,
+      startDate: '2026-03-01', endDate: '2026-04-11', cameraMode: 'AUTO', zoomOffset: 0,
       pacingMode: 'LOCAL_DAYS', targetDurationSec: 0
     }), expect.any(Function));
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
@@ -89,8 +91,8 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
     const zoomSlider = screen.getAllByRole('slider').find(element => element.getAttribute('min') === '-1.5');
     expect(zoomSlider).toHaveValue('0');
-    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
-    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
     const followCurrentPosition = screen.getByLabelText('현재 위치 따라가기');
     fireEvent.click(followCurrentPosition);
     expect(screen.queryByText('따라가기 반응 속도')).not.toBeInTheDocument();
@@ -98,10 +100,12 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+    expect(rebuildButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('여행 시작'), { target: { value: '2026-03-02' } });
     expect(rebuildButton).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '추천 기간' }));
-    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-17');
-    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-03-31');
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
     expect(rebuildButton).toBeDisabled();
   });
 
@@ -136,6 +140,36 @@ describe('App integration', () => {
     expect(worker.plan).toHaveBeenLastCalledWith(expect.objectContaining({ cameraMode: 'DAY', zoomOffset: 1.2 }), expect.any(Function));
     await waitFor(() => expect(rebuildButton).toBeDisabled());
     await waitFor(() => expect(fakeMap.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13.2 })));
+  });
+
+  it('keeps exact online place lookup opt-in live and out of rebuild state', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+      status: url.includes('/api/local-timeline') ? 404 : 200,
+      ok: !url.includes('/api/local-timeline'),
+      json: () => Promise.resolve(url.includes('/api/photo-place-status')
+        ? { available: true, provider: '테스트 장소 서비스', cache: true }
+        : { ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
+      text: () => Promise.resolve('')
+    })));
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(),
+      dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
+    fireEvent.click(screen.getByText('여행 설정'));
+
+    const exactPlace = await screen.findByLabelText('정확한 장소 온라인 확인');
+    await waitFor(() => expect(exactPlace).toBeEnabled());
+    const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuildButton).toBeDisabled();
+    fireEvent.click(exactPlace);
+    expect(exactPlace).toBeChecked();
+    expect(rebuildButton).toBeDisabled();
   });
 
   it('pauses playback whenever the journey presentation mode changes', async () => {
@@ -222,7 +256,8 @@ describe('App integration', () => {
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
     expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
-    expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
+    expect(screen.getByText(/사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText('정확한 장소 온라인 확인')).toBeDisabled();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
     expect(screen.getByLabelText('사진 경로 확대')).toHaveValue('AUTO');

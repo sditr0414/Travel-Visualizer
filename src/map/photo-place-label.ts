@@ -106,13 +106,13 @@ function featureHint(feature: MapFeature): string {
 
 function featureName(feature: MapFeature): string | null {
   const properties = feature.properties ?? {};
-  const name = properties['name:ko'] ?? properties.name_ko ?? properties['name:en'] ?? properties.name_en ?? properties.name;
+  const name = properties['name:ko'] ?? properties.name_ko ?? properties.name ?? properties['name:en'] ?? properties.name_en;
   return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 
 function hasFineAdministrativeName(feature: MapFeature): boolean {
   const properties = feature.properties ?? {};
-  return [properties['name:ko'], properties.name_ko, properties['name:ja'], properties.name_ja, properties.name]
+  return [properties['name:ja'], properties.name_ja, properties.name]
     .some(value => typeof value === 'string' && isFineAdministrativeName(value.trim()));
 }
 
