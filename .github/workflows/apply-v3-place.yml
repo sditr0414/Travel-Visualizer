@@ -23,6 +23,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cat > /tmp/chunks.sha256 <<'EOF'
+          2f441c7d5221db1f0315cc695cd04e682f242f16025be3259a2d567c8dd187bd  scripts/.v3p-0
+          2ee75625c0536442438cffae27014142965d2f6b5a4ba8e5ce1e6a51dd510ee4  scripts/.v3p-1
+          f6ebb32916bd50923c5613bbd168d53e1efacacf6734465089992cea40a6d5e7  scripts/.v3p-2
+          5d8dbf818a474eda7a0cd3cd045f3f03952658cd72edd7ed4a0f65c0743b3bd6  scripts/.v3p-3
+          033ce2ceccba5ae683839cc31313b677446296a58113eda26bc9e7ed415af5d6  scripts/.v3p-4
+          EOF
+          sha256sum -c /tmp/chunks.sha256
           cat scripts/.v3p-0 scripts/.v3p-1 scripts/.v3p-2 scripts/.v3p-3 scripts/.v3p-4 | base64 -d | gzip -d > /tmp/v3-place.patch
           echo 'de8575edb077927624b11d413eaa8fa2a0301ef97de47bb7706bd915372e1968  /tmp/v3-place.patch' | sha256sum -c -
           git apply --check /tmp/v3-place.patch
@@ -73,15 +81,7 @@ jobs:
               return;
             }
             if (url.pathname === '/reverse') {
-              const body = JSON.stringify({
-                lat: url.searchParams.get('lat') || '37.5',
-                lon: url.searchParams.get('lon') || '127',
-                category: 'tourism',
-                type: 'attraction',
-                name: 'Test Place',
-                namedetails: { 'name:ko': '테스트 장소', 'name:en': 'Test Place' },
-                address: { city: '서울' }
-              });
+              const body = JSON.stringify({ lat: url.searchParams.get('lat') || '37.5', lon: url.searchParams.get('lon') || '127', category: 'tourism', type: 'attraction', name: 'Test Place', namedetails: { 'name:ko': '테스트 장소', 'name:en': 'Test Place' }, address: { city: '서울' } });
               response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) });
               response.end(body);
               return;
@@ -92,39 +92,23 @@ jobs:
           NODE
           node /tmp/fake-provider.mjs > /tmp/fake-provider.log 2>&1 &
           provider_pid=$!
-          TRAVEL_PLACE_REVERSE_URL='http://127.0.0.1:5530/reverse' \
-          TRAVEL_PLACE_PROVIDER_LABEL='테스트 장소 서비스' \
-          TRAVEL_PLACE_MIN_INTERVAL_MS=0 \
-          TRAVEL_GLYPH_BASE_URL='http://127.0.0.1:5530/fonts/' \
-          node server.mjs --no-local-data --port 5529 > /tmp/travel-server.log 2>&1 &
+          TRAVEL_PLACE_REVERSE_URL='http://127.0.0.1:5530/reverse' TRAVEL_PLACE_PROVIDER_LABEL='테스트 장소 서비스' TRAVEL_PLACE_MIN_INTERVAL_MS=0 TRAVEL_GLYPH_BASE_URL='http://127.0.0.1:5530/fonts/' node server.mjs --no-local-data --port 5529 > /tmp/travel-server.log 2>&1 &
           app_pid=$!
           cleanup() { kill "$app_pid" "$provider_pid" 2>/dev/null || true; }
           trap cleanup EXIT
-          for _ in $(seq 1 80); do
-            if curl -fsS http://127.0.0.1:5529/api/photo-place-status > /tmp/status.json; then break; fi
-            sleep 0.25
-          done
+          for _ in $(seq 1 80); do if curl -fsS http://127.0.0.1:5529/api/photo-place-status > /tmp/status.json; then break; fi; sleep 0.25; done
           node -e "const v=JSON.parse(require('fs').readFileSync('/tmp/status.json')); if(!v.available || v.provider!=='테스트 장소 서비스') process.exit(1)"
-          curl -fsS -H 'Origin: http://127.0.0.1:5529' -H 'Content-Type: application/json' \
-            -d '{"lat":37.5,"lng":127,"gpsAccuracyM":8}' \
-            http://127.0.0.1:5529/api/photo-place > /tmp/place-first.json
+          curl -fsS -H 'Origin: http://127.0.0.1:5529' -H 'Content-Type: application/json' -d '{"lat":37.5,"lng":127,"gpsAccuracyM":8}' http://127.0.0.1:5529/api/photo-place > /tmp/place-first.json
           node -e "const v=JSON.parse(require('fs').readFileSync('/tmp/place-first.json')); if(!v.found || v.name!=='테스트 장소' || v.cached) process.exit(1)"
           curl -fsS 'http://127.0.0.1:5529/api/map-glyphs/Noto%20Sans/0-255.pbf' -o /tmp/glyph-first.pbf
-          kill "$provider_pid"
-          wait "$provider_pid" 2>/dev/null || true
-          provider_pid=''
-          curl -fsS -H 'Origin: http://127.0.0.1:5529' -H 'Content-Type: application/json' \
-            -d '{"lat":37.5,"lng":127,"gpsAccuracyM":8}' \
-            http://127.0.0.1:5529/api/photo-place > /tmp/place-cached.json
+          kill "$provider_pid"; wait "$provider_pid" 2>/dev/null || true; provider_pid=''
+          curl -fsS -H 'Origin: http://127.0.0.1:5529' -H 'Content-Type: application/json' -d '{"lat":37.5,"lng":127,"gpsAccuracyM":8}' http://127.0.0.1:5529/api/photo-place > /tmp/place-cached.json
           node -e "const v=JSON.parse(require('fs').readFileSync('/tmp/place-cached.json')); if(!v.found || !v.cached || v.name!=='테스트 장소') process.exit(1)"
           curl -fsS 'http://127.0.0.1:5529/api/map-glyphs/Noto%20Sans/0-255.pbf' -o /tmp/glyph-cached.pbf
           cmp /tmp/glyph-first.pbf /tmp/glyph-cached.pbf
           test -s .cache/photo-places.json
           find .cache/map-glyphs -type f -name '0-255.pbf' -size +0c | grep -q .
-          kill "$app_pid"
-          wait "$app_pid" 2>/dev/null || true
-          app_pid=''
-          trap - EXIT
+          kill "$app_pid"; wait "$app_pid" 2>/dev/null || true; app_pid=''; trap - EXIT
       - name: Recheck desktop and mobile UI
         shell: bash
         run: |
