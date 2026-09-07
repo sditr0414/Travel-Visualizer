@@ -1,0 +1,453 @@
+name: temporary-help-range-final
+
+on:
+  push:
+    branches:
+      - ai/help-tooltip-recommended-range
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > src/ui/SettingHelp.tsx <<'TS'
+          import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+          import { createPortal } from 'react-dom';
+
+          const CLOSE_DELAY_MS = 80;
+
+          /** Desktop hover belongs only to the explicit ? button; click/focus keep touch and keyboard access. */
+          export function SettingHelp({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+            const id = useId();
+            const [open, setOpen] = useState(false);
+            const button = useRef<HTMLButtonElement>(null);
+            const bubble = useRef<HTMLDivElement>(null);
+            const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+            const cancelClose = () => {
+              if (!timer.current) return;
+              clearTimeout(timer.current);
+              timer.current = null;
+            };
+            const closeSoon = () => {
+              cancelClose();
+              timer.current = setTimeout(() => {
+                timer.current = null;
+                setOpen(false);
+              }, CLOSE_DELAY_MS);
+            };
+
+            useEffect(() => () => cancelClose(), []);
+            useEffect(() => {
+              if (!open) return;
+              const outside = (event: PointerEvent) => {
+                if (!button.current?.contains(event.target as Node) && !bubble.current?.contains(event.target as Node)) setOpen(false);
+              };
+              const escape = (event: KeyboardEvent) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  setOpen(false);
+                }
+              };
+              document.addEventListener('pointerdown', outside);
+              document.addEventListener('keydown', escape, true);
+              return () => {
+                document.removeEventListener('pointerdown', outside);
+                document.removeEventListener('keydown', escape, true);
+              };
+            }, [open]);
+            useLayoutEffect(() => {
+              if (!open) return;
+              const position = () => {
+                const anchor = button.current;
+                const tip = bubble.current;
+                if (!anchor || !tip) return;
+                const rect = anchor.getBoundingClientRect();
+                const width = tip.offsetWidth;
+                const height = tip.offsetHeight;
+                const below = rect.bottom + 8;
+                tip.style.left = `${Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12))}px`;
+                tip.style.top = `${Math.max(12, Math.min(below + height < window.innerHeight - 12 ? below : rect.top - height - 8, window.innerHeight - height - 12))}px`;
+              };
+              position();
+              window.addEventListener('resize', position);
+              window.addEventListener('scroll', position, true);
+              return () => {
+                window.removeEventListener('resize', position);
+                window.removeEventListener('scroll', position, true);
+              };
+            }, [open, description]);
+
+            return <div className="setting-with-help">
+              {children}
+              <button
+                ref={button}
+                type="button"
+                className="setting-help-button"
+                aria-label={`${title} 설명`}
+                aria-expanded={open}
+                aria-describedby={id}
+                onMouseEnter={() => { cancelClose(); setOpen(true); }}
+                onMouseLeave={closeSoon}
+                onFocus={event => {
+                  if (event.currentTarget.matches(':focus-visible')) {
+                    cancelClose();
+                    setOpen(true);
+                  }
+                }}
+                onBlur={event => {
+                  if (!bubble.current?.contains(event.relatedTarget as Node | null)) closeSoon();
+                }}
+                onClick={() => { cancelClose(); setOpen(value => !value); }}
+              >?</button>
+              {createPortal(<div
+                ref={bubble}
+                id={id}
+                role="tooltip"
+                className="setting-tooltip"
+                hidden={!open}
+                onMouseEnter={cancelClose}
+                onMouseLeave={closeSoon}
+              >
+                <strong>{title}</strong><p>{description}</p>
+              </div>, document.body)}
+            </div>;
+          }
+          TS
+
+          cat > src/ui/SettingHelp.test.tsx <<'TS'
+          import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+          import { SettingHelp } from './SettingHelp';
+
+          describe('SettingHelp', () => {
+            it('opens only from the question-mark control and closes after leaving it', async () => {
+              render(<SettingHelp title="지도 확대" description="설명"><label>지도 확대<input aria-label="지도 확대 값" /></label></SettingHelp>);
+              const help = screen.getByRole('button', { name: '지도 확대 설명' });
+              const field = screen.getByLabelText('지도 확대 값');
+
+              fireEvent.mouseEnter(field);
+              expect(help).toHaveAttribute('aria-expanded', 'false');
+
+              fireEvent.mouseEnter(help);
+              expect(help).toHaveAttribute('aria-expanded', 'true');
+              expect(screen.getByRole('tooltip')).toHaveTextContent('설명');
+
+              fireEvent.mouseLeave(help);
+              await waitFor(() => expect(help).toHaveAttribute('aria-expanded', 'false'));
+            });
+          });
+          TS
+
+          cat > src/domain/timeline.ts <<'TS'
+          import { parseLatLng, parseTimeline as parseLegacyTimeline } from '../timeline-parser.js';
+          import type { ParsedTrip, TimelineDateRange, TimelineScanResult } from '../types';
+
+          type TimelineRoot = { semanticSegments?: Array<Record<string, unknown>> };
+          type ActiveDay = { date: string; ordinal: number; distanceMeters: number };
+
+          const MEANINGFUL_ACTIVITY_METERS = 1_000;
+          const MAX_RECOMMENDED_DAYS = 30;
+
+          export function parseTimelineJson(text: string): TimelineRoot {
+            let value: unknown;
+            try {
+              value = JSON.parse(text);
+            } catch {
+              throw new Error('올바른 JSON 파일이 아닙니다.');
+            }
+            if (!value || typeof value !== 'object' || !Array.isArray((value as TimelineRoot).semanticSegments)) {
+              throw new Error('Google Timeline의 semanticSegments를 찾을 수 없습니다.');
+            }
+            if (!(value as TimelineRoot).semanticSegments?.length) {
+              throw new Error('Timeline에 이동 기록이 없습니다.');
+            }
+            return value as TimelineRoot;
+          }
+
+          export function scanTimeline(json: TimelineRoot): TimelineScanResult {
+            let start = Number.POSITIVE_INFINITY;
+            let end = Number.NEGATIVE_INFINITY;
+            const segments = json.semanticSegments ?? [];
+            const distanceByDay = new Map<string, number>();
+
+            for (const segment of segments) {
+              if (!segment || typeof segment !== 'object') continue;
+              const startMs = Date.parse(String(segment.startTime ?? ''));
+              const endMs = Date.parse(String(segment.endTime ?? segment.startTime ?? ''));
+              if (Number.isFinite(startMs)) start = Math.min(start, startMs);
+              if (Number.isFinite(endMs)) end = Math.max(end, endMs);
+              if (!Number.isFinite(startMs)) continue;
+
+              const distanceMeters = activityDistanceMeters(segment);
+              if (distanceMeters < MEANINGFUL_ACTIVITY_METERS) continue;
+              const date = toKoreaDate(startMs);
+              distanceByDay.set(date, (distanceByDay.get(date) ?? 0) + distanceMeters);
+            }
+
+            if (!Number.isFinite(start) || !Number.isFinite(end)) {
+              throw new Error('Timeline에서 유효한 날짜를 찾을 수 없습니다.');
+            }
+            const fullRange = { startDate: toKoreaDate(start), endDate: toKoreaDate(end) };
+            return {
+              ...fullRange,
+              semanticSegments: segments.length,
+              recommendedRange: recommendTripRange(distanceByDay, fullRange)
+            };
+          }
+
+          export function buildParsedTrip(
+            json: TimelineRoot,
+            range: TimelineDateRange,
+            includeFlights: boolean,
+            availableRange: TimelineDateRange = range
+          ): ParsedTrip {
+            const parsed = parseLegacyTimeline(json, { ...range, includeFlights });
+            return { ...parsed, availableRange };
+          }
+
+          function activityDistanceMeters(segment: Record<string, unknown>): number {
+            const activity = segment.activity;
+            if (!activity || typeof activity !== 'object') return 0;
+            const value = activity as Record<string, unknown>;
+            const stated = Number(value.distanceMeters);
+            if (Number.isFinite(stated) && stated > 0) return stated;
+            const start = readActivityCoordinate(value.start);
+            const end = readActivityCoordinate(value.end);
+            return start && end ? directDistanceMeters(start, end) : 0;
+          }
+
+          function readActivityCoordinate(value: unknown): { lat: number; lng: number } | null {
+            if (!value || typeof value !== 'object') return null;
+            return parseLatLng((value as Record<string, unknown>).latLng);
+          }
+
+          function recommendTripRange(distanceByDay: Map<string, number>, fullRange: TimelineDateRange): TimelineDateRange {
+            const days: ActiveDay[] = [...distanceByDay.entries()]
+              .map(([date, distanceMeters]) => ({ date, distanceMeters, ordinal: dateOrdinal(date) }))
+              .filter(day => Number.isFinite(day.ordinal))
+              .sort((a, b) => a.ordinal - b.ordinal);
+            if (!days.length) return fullRange;
+
+            let left = 0;
+            let windowDistance = 0;
+            let best = { left: 0, right: 0, distanceMeters: -1, spanDays: Number.POSITIVE_INFINITY };
+            for (let right = 0; right < days.length; right += 1) {
+              windowDistance += days[right].distanceMeters;
+              while (days[right].ordinal - days[left].ordinal + 1 > MAX_RECOMMENDED_DAYS) {
+                windowDistance -= days[left].distanceMeters;
+                left += 1;
+              }
+              const spanDays = days[right].ordinal - days[left].ordinal + 1;
+              const betterDistance = windowDistance > best.distanceMeters;
+              const equalDistance = Math.abs(windowDistance - best.distanceMeters) < 0.001;
+              if (betterDistance || (equalDistance && spanDays < best.spanDays) || (equalDistance && spanDays === best.spanDays && days[right].ordinal > days[best.right].ordinal)) {
+                best = { left, right, distanceMeters: windowDistance, spanDays };
+              }
+            }
+            return { startDate: days[best.left].date, endDate: days[best.right].date };
+          }
+
+          function dateOrdinal(date: string): number {
+            return Date.parse(`${date}T00:00:00Z`) / 86_400_000;
+          }
+
+          function directDistanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+            const rad = Math.PI / 180;
+            const dLat = (b.lat - a.lat) * rad;
+            const dLng = (b.lng - a.lng) * rad;
+            const lat1 = a.lat * rad;
+            const lat2 = b.lat * rad;
+            const sinLat = Math.sin(dLat / 2);
+            const sinLng = Math.sin(dLng / 2);
+            const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+            return 6_371_000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+          }
+
+          function toKoreaDate(ms: number): string {
+            return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+          }
+          TS
+
+          cat > src/domain/timeline.test.ts <<'TS'
+          import { buildParsedTrip, parseTimelineJson, scanTimeline } from './timeline';
+
+          const validTimeline = JSON.stringify({
+            semanticSegments: [{
+              startTime: '2026-04-10T09:00:00+09:00',
+              endTime: '2026-04-10T09:30:00+09:00',
+              activity: {
+                start: { latLng: '37.5000°, 127.0000°' },
+                end: { latLng: '37.5100°, 127.0100°' },
+                distanceMeters: 1800,
+                topCandidate: { type: 'WALKING', probability: 0.9 },
+                probability: 0.9
+              }
+            }]
+          });
+
+          describe('Timeline domain', () => {
+            it('scans the available date range, recommendation and segment count', () => {
+              const result = scanTimeline(parseTimelineJson(validTimeline));
+              expect(result).toEqual({
+                startDate: '2026-04-10', endDate: '2026-04-10', semanticSegments: 1,
+                recommendedRange: { startDate: '2026-04-10', endDate: '2026-04-10' }
+              });
+            });
+
+            it('recommends the up-to-30-day period with the most meaningful movement', () => {
+              const json = parseTimelineJson(JSON.stringify({ semanticSegments: [
+                { startTime: '2026-03-01T09:00:00+09:00', endTime: '2026-03-01T10:00:00+09:00', visit: {} },
+                { startTime: '2026-03-10T09:00:00+09:00', endTime: '2026-03-10T10:00:00+09:00', activity: { distanceMeters: 3000 } },
+                { startTime: '2026-03-11T09:00:00+09:00', endTime: '2026-03-11T10:00:00+09:00', activity: { distanceMeters: 4000 } },
+                { startTime: '2026-04-10T09:00:00+09:00', endTime: '2026-04-10T10:00:00+09:00', activity: { distanceMeters: 20000 } },
+                { startTime: '2026-04-20T09:00:00+09:00', endTime: '2026-04-20T10:00:00+09:00', activity: { distanceMeters: 22000 } },
+                { startTime: '2026-05-01T09:00:00+09:00', endTime: '2026-05-01T10:00:00+09:00', activity: { distanceMeters: 200 } }
+              ] }));
+              const result = scanTimeline(json);
+              expect(result.startDate).toBe('2026-03-01');
+              expect(result.endDate).toBe('2026-05-01');
+              expect(result.recommendedRange).toEqual({ startDate: '2026-04-10', endDate: '2026-04-20' });
+            });
+
+            it('falls back to the full range when no movement clears the noise threshold', () => {
+              const json = parseTimelineJson(JSON.stringify({ semanticSegments: [
+                { startTime: '2026-03-01T09:00:00+09:00', endTime: '2026-03-01T10:00:00+09:00', activity: { distanceMeters: 200 } },
+                { startTime: '2026-03-05T09:00:00+09:00', endTime: '2026-03-05T10:00:00+09:00', visit: {} }
+              ] }));
+              const result = scanTimeline(json);
+              expect(result.recommendedRange).toEqual({ startDate: '2026-03-01', endDate: '2026-03-05' });
+            });
+
+            it('keeps the existing parser behavior behind the typed boundary', () => {
+              const json = parseTimelineJson(validTimeline);
+              const trip = buildParsedTrip(json, { startDate: '2026-04-10', endDate: '2026-04-10' }, true);
+              expect(trip.movements).toHaveLength(1);
+              expect(trip.movements[0].googleType).toBe('WALKING');
+              expect(trip.routePoints.length).toBeGreaterThan(1);
+            });
+
+            it('keeps the full data range separate from the selected trip range', () => {
+              const json = parseTimelineJson(validTimeline);
+              const trip = buildParsedTrip(
+                json,
+                { startDate: '2026-04-10', endDate: '2026-04-10' },
+                true,
+                { startDate: '2026-03-01', endDate: '2026-05-01' }
+              );
+              expect(trip.availableRange).toEqual({ startDate: '2026-03-01', endDate: '2026-05-01' });
+            });
+
+            it.each(['not json', '{}', '{"semanticSegments":[]}'])(
+              'rejects invalid or empty Timeline input',
+              value => expect(() => parseTimelineJson(value)).toThrow()
+            );
+          });
+          TS
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'unexpected match count in {path}: {text.count(old)} for {old!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              'src/types.ts',
+              'export interface TimelineScanResult extends TimelineDateRange {\n  semanticSegments: number;\n}',
+              'export interface TimelineScanResult extends TimelineDateRange {\n  semanticSegments: number;\n  recommendedRange?: TimelineDateRange;\n}'
+          )
+          replace(
+              'src/App.tsx',
+              '      const preferred = preferredTripRange(scan.startDate, scan.endDate);',
+              '      const preferred = preferredTripRange(scan);'
+          )
+          replace(
+              'src/App.tsx',
+              '                  const recommended = preferredTripRange(state.scan!.startDate, state.scan!.endDate);',
+              '                  const recommended = preferredTripRange(state.scan!);'
+          )
+          replace(
+              'src/App.tsx',
+              "function preferredTripRange(availableStart: string, availableEnd: string): { startDate: string; endDate: string } {\n  return { startDate: availableStart, endDate: availableEnd };\n}",
+              "function preferredTripRange(scan: import('./types').TimelineScanResult): { startDate: string; endDate: string } {\n  const recommended = scan.recommendedRange;\n  if (recommended && recommended.startDate >= scan.startDate && recommended.endDate <= scan.endDate && recommended.startDate <= recommended.endDate) return recommended;\n  return { startDate: scan.startDate, endDate: scan.endDate };\n}"
+          )
+          replace(
+              'src/usability-fixes.css',
+              '.setting-with-help { position: relative; min-width: 0; padding-right: 32px; }\n.setting-help-button { position: absolute; right: -4px; top: -8px; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }',
+              '.setting-with-help { position: relative; min-width: 0; padding-right: 26px; }\n.setting-help-button { position: absolute; right: 0; top: -2px; width: 24px; height: 24px; border: 0; padding: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }'
+          )
+
+          p = Path('src/App.test.tsx')
+          text = p.read_text()
+          marker = "\n  it('keeps live camera settings out of rebuild state and rebuilds only after a planned camera change', async () => {"
+          addition = """
+
+  it('uses the scanned recommendation and restores it after selecting the full range', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({
+        startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 20,
+        recommendedRange: { startDate: '2026-04-04', endDate: '2026-04-11' }
+      }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(),
+      dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+      target: { files: [timelineFile()] }
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    expect(worker.plan).toHaveBeenCalledWith(
+      expect.objectContaining({ startDate: '2026-04-04', endDate: '2026-04-11' }),
+      expect.any(Function)
+    );
+    fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-04-04');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+    fireEvent.click(screen.getByRole('button', { name: '전체 기간' }));
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
+    fireEvent.click(screen.getByRole('button', { name: '추천 기간' }));
+    expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-04-04');
+    expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+  });
+          """
+          if marker not in text:
+              raise SystemExit('App test insertion marker missing')
+          p.write_text(text.replace(marker, addition + marker, 1))
+          PY
+
+          rm -f src/App.recommended-range.test.tsx
+          git diff --check
+      - name: Focused checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npx eslint src/ui/SettingHelp.tsx src/ui/SettingHelp.test.tsx src/domain/timeline.ts src/domain/timeline.test.ts src/App.tsx src/App.test.tsx
+          npx vitest run src/ui/SettingHelp.test.tsx src/domain/timeline.test.ts src/App.test.tsx
+      - name: Commit validated product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/temporary-help-range-final.yml
+          git diff --check
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -A
+          git commit -m 'Fix setting help hover and recommended trip range [skip ci]'
+          git push origin HEAD:ai/help-tooltip-recommended-range
