@@ -40,6 +40,7 @@ export interface TimelineDateRange {
 
 export interface TimelineScanResult extends TimelineDateRange {
   semanticSegments: number;
+  recommendedRange?: TimelineDateRange;
 }
 
 export interface Movement {
