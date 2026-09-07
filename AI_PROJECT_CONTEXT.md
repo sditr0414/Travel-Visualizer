@@ -16,7 +16,7 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 
 ## UI and accessibility
 
-- 사용자가 v2 디자인 계승을 명시했습니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널, 기존 색상·간격을 유지합니다. 전면 재설계하지 않습니다.
+- 사용자가 v2 디자인 계승을 명시했습니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널, 기존 색상·간격을 유지합니다. 색상 기준도 v2 토큰(`--ink #171a1d`, `--surface rgba(24,27,30,.92)`, `--paper #f7f3ed`, `--muted #aaa7a2`, `--accent #ff725d`)을 따르며 새 UI가 별도 청회색 팔레트를 만들지 않습니다. 전면 재설계하지 않습니다.
 - `styles.css`, `ux-polish.css`, `settings-polish.css`는 v2 기준을 복원했습니다. 설명·복구·도움말 등 제한된 추가 스타일은 `usability-fixes.css`에 둡니다.
 - 설정 각 항목 아래 짧은 설명을 표시하고 aria-describedby로 연결합니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
 - 도움말·사진 목록은 공통 native Dialog를 사용합니다. 개인 파일·날짜는 저장하지 않고 검증한 감상 설정만 저장합니다.
@@ -60,7 +60,7 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 - POST `/api/local-media-metadata-cache` (same-origin)
 - GET/HEAD `/maps/*.pmtiles` (허용된 파일만)
 
-로컬 데이터 기본 경로·환경변수는 README를 따릅니다. stream 오류·클라이언트 연결 종료를 처리합니다. 개인 데이터·캐시·지도는 커밋하지 않습니다.
+로컬 데이터 기본 경로·환경변수는 README를 따릅니다. v2처럼 저장소 루트의 `타임라인.json` / `여행 사진/`을 먼저 확인하고 없으면 상위 폴더를 확인하며, 환경변수 지정은 항상 이 자동 탐색보다 우선합니다. stream 오류·클라이언트 연결 종료를 처리합니다. 개인 데이터·캐시·지도는 커밋하지 않습니다.
 
 ## Validation
 

@@ -1,5 +1,5 @@
 /* v2 is the visual baseline. Only targeted usability and recovery additions. */
-.setting-help { margin: -3px 0 12px; color: #c6c3be; font-size: 12px; line-height: 1.65; }
+.setting-help { margin: -3px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .settings-help-link { padding: 8px 0; border: 0; background: transparent; color: var(--paper); font: inherit; font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 40px; }
 .overview-button { color: var(--paper); cursor: pointer; }
 .import-button:focus-within, .local-import-actions label:focus-within, .media-import-row label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -20,7 +20,7 @@
 .help-steps { padding-left: 22px; margin: 0; }
 .help-steps li + li, .help-section { margin-top: 20px; }
 .help-section h3 { margin: 0; font-size: 15px; }
-.help-steps p, .help-section p, .library-description, .empty-note { font-size: 13px; line-height: 1.7; color: #ccc8c2; }
+.help-steps p, .help-section p, .library-description, .empty-note { font-size: 13px; line-height: 1.7; color: #d8d4ce; }
 .shortcut-list > div { display: flex; gap: 18px; font-size: 13px; line-height: 1.8; }
 .shortcut-list dd { margin: 0; }
 .shortcut-list dt { min-width: 70px; }
@@ -29,7 +29,7 @@
 .library-info { min-width: 0; display: grid; gap: 5px; font-size: 12px; }
 .library-info strong { font-size: 13px; overflow-wrap: anywhere; }
 .library-info time, .library-info > span { color: var(--muted); }
-.library-info .metadata-estimated { color: #ffbb93; }
+.library-info .metadata-estimated { color: var(--accent); }
 .library-row.is-excluded { opacity: .55; }
 .library-footer, .library-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
 .video-play-prompt { position: absolute; z-index: 4; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 12px 16px; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--paper); cursor: pointer; white-space: nowrap; }
@@ -50,14 +50,14 @@
   .app-dialog, .map-recovery { animation: none; transition: none; }
 }
 .setting-with-help { position: relative; min-width: 0; padding-right: 32px; }
-.setting-help-button { position: absolute; right: -4px; top: -8px; width: 36px; height: 36px; border: 0; background: transparent; color: #bdbbb5; font: inherit; font-size: 13px; cursor: help; }
+.setting-help-button { position: absolute; right: -4px; top: -8px; width: 36px; height: 36px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }
 .setting-help-button:hover, .setting-help-button[aria-expanded=true] { color: var(--accent); }
 .setting-help-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 6px; }
-.setting-tooltip { position: fixed; z-index: 100; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 13px 15px; border: 1px solid #555a60; border-radius: 8px; background: #20262d; color: #f6f1e9; box-shadow: 0 6px 20px #0004; font-size: 12px; line-height: 1.7; }
+.setting-tooltip { position: fixed; z-index: 100; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--paper); box-shadow: 0 6px 20px #0004; font-size: 12px; line-height: 1.7; }
 .setting-tooltip strong { font-size: 13px; }
-.setting-tooltip p { margin: 5px 0 0; color: #d8d4cd; }
+.setting-tooltip p { margin: 5px 0 0; color: var(--muted); }
 .toggle-list > .setting-with-help { width: 100%; }
 .toggle-list label:has(input:disabled) { opacity: .58; cursor: not-allowed; }
 @media (pointer: coarse) { .setting-help-button { width: 44px; height: 44px; right: -8px; top: -10px; } }
-.map-loading { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; padding: 8px 14px; border-radius: 8px; background: #20262ddd; color: #f6f1e9; font-size: 12px; pointer-events: none; }
-.camera-transition { position: absolute; top: 115px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 8px 14px; background: #20262ddd; color: #f6f1e9; border-radius: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+.map-loading { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; padding: 8px 14px; border-radius: 8px; background: var(--surface-raised); color: var(--paper); font-size: 12px; pointer-events: none; }
+.camera-transition { position: absolute; top: 115px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 8px 14px; background: var(--surface-raised); color: var(--paper); border-radius: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }

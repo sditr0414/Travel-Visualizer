@@ -14,8 +14,8 @@ const mapsDir = join(root, 'maps');
 const distDir = join(root, 'dist');
 const worldMap = join(mapsDir, 'world-z5.pmtiles');
 const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
-const localTimeline = configuredPath('TRAVEL_TIMELINE_PATH', resolve(root, '..', '타임라인.json'));
-const localMediaRoot = configuredPath('TRAVEL_MEDIA_DIR', resolve(root, '..', '여행 사진'));
+const localTimeline = configuredPreferredPath('TRAVEL_TIMELINE_PATH', [join(root, '타임라인.json'), resolve(root, '..', '타임라인.json')], 'file');
+const localMediaRoot = configuredPreferredPath('TRAVEL_MEDIA_DIR', [join(root, '여행 사진'), resolve(root, '..', '여행 사진')], 'directory');
 const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
 const photoPlaceCachePath = configuredPath('TRAVEL_PLACE_CACHE', join(root, '.cache', 'photo-places.json'));
 const mapGlyphCacheDir = configuredPath('TRAVEL_GLYPH_CACHE_DIR', join(root, '.cache', 'map-glyphs'));
@@ -729,6 +729,20 @@ function isSameOriginRequest(request) {
 function configuredPath(environmentName, fallback) {
   const value = process.env[environmentName]?.trim();
   return value ? resolve(value) : fallback;
+}
+
+function configuredPreferredPath(environmentName, candidates, kind) {
+  const value = process.env[environmentName]?.trim();
+  if (value) return resolve(value);
+  for (const candidate of candidates) {
+    try {
+      const stats = statSync(candidate);
+      if ((kind === 'file' && stats.isFile()) || (kind === 'directory' && stats.isDirectory())) return candidate;
+    } catch {
+      // Missing candidates are expected; try the next v2-compatible location.
+    }
+  }
+  return candidates[0];
 }
 
 function publicMediaItem(item) {
