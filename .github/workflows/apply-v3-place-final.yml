@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Apply verified patch and normalize cached GPS accuracy
+      - name: Apply verified patch and normalize compatibility edges
         shell: bash
         run: |
           set -euo pipefail
@@ -29,13 +29,22 @@ jobs:
           git apply /tmp/v3-place.patch
           python - <<'PY'
           from pathlib import Path
-          path = Path('src/media/local-media-library.ts')
-          text = path.read_text()
+
+          metadata_path = Path('src/media/local-media-library.ts')
+          text = metadata_path.read_text()
           old = "return { item, metadata: { ...cached, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };"
           new = "return { item, metadata: { ...cached, gpsAccuracyM: cached.gpsAccuracyM ?? null, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };"
           if old not in text:
               raise SystemExit('expected cached metadata line not found')
-          path.write_text(text.replace(old, new))
+          metadata_path.write_text(text.replace(old, new))
+
+          place_path = Path('src/map/photo-place-label.ts')
+          text = place_path.read_text()
+          old = "return [properties['name:ko'], properties.name_ko, properties['name:ja'], properties.name_ja, properties.name]"
+          new = "return [properties['name:ja'], properties.name_ja, properties.name]"
+          if old not in text:
+              raise SystemExit('expected fine-administrative name list not found')
+          place_path.write_text(text.replace(old, new))
           PY
           git diff --check
           node --check server.mjs
