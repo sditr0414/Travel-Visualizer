@@ -214,8 +214,7 @@ function detectTripCandidates(
     .map((group, index) => buildTripCandidate(group, orderedDays, visits, home, index))
     .filter((candidate): candidate is TimelineTripCandidate & { score: number } => Boolean(candidate))
     .sort((a, b) => b.score - a.score || b.startDate.localeCompare(a.startDate))
-    .slice(0, MAX_TRIP_CANDIDATES)
-    .map(({ score: _score, ...candidate }) => candidate);
+    .slice(0, MAX_TRIP_CANDIDATES);
 }
 
 function isTravelDay(day: DayEvidence, home: Coordinate | null): boolean {
