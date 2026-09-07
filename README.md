@@ -50,8 +50,10 @@ PC의 `127.0.0.1` 주소는 휴대폰에서 열 수 없습니다. 모바일 제�
 | Timeline | 저장소 상위 폴더의 `타임라인.json` |
 | 사진·영상 | 저장소 상위 폴더의 `여행 사진` |
 | 메타데이터 캐시 | `.cache/media-metadata.json` |
+| 확인한 장소 캐시 | `.cache/photo-places.json` |
+| 설치형 지도 글꼴 캐시 | `.cache/map-glyphs/` |
 
-기본 파일이 없어도 파일 선택기로 사용할 수 있습니다. 경로는 `TRAVEL_TIMELINE_PATH`, `TRAVEL_MEDIA_DIR`, `TRAVEL_METADATA_CACHE` 환경변수로 변경할 수 있습니다.
+기본 파일이 없어도 파일 선택기로 사용할 수 있습니다. 경로는 `TRAVEL_TIMELINE_PATH`, `TRAVEL_MEDIA_DIR`, `TRAVEL_METADATA_CACHE`, `TRAVEL_PLACE_CACHE`, `TRAVEL_GLYPH_CACHE_DIR` 환경변수로 변경할 수 있습니다.
 
 ```powershell
 $env:TRAVEL_TIMELINE_PATH = 'D:\My Travel\timeline.json'
@@ -59,9 +61,21 @@ $env:TRAVEL_MEDIA_DIR = 'D:\My Travel\photos'
 npm start
 ```
 
-Timeline과 사진 원본은 외부로 업로드하지 않습니다. 온라인 지도 타일은 외부 지도 서버에서 받습니다. 일부 지도 글꼴도 인터넷을 사용합니다. 감상 설정만 브라우저에 저장하고, 직접 선택한 파일과 날짜는 저장하지 않습니다. 새로고침하면 직접 선택한 파일을 다시 선택해야 합니다.
+Timeline과 사진 원본은 외부로 업로드하지 않습니다. 온라인 지도 타일은 외부 지도 서버에서 받습니다. 설치형 지도의 지명 글꼴은 필요한 범위를 최초 사용 시 내려받아 이 PC에 캐시합니다. 감상 설정만 브라우저에 저장하고, 직접 선택한 파일과 날짜는 저장하지 않습니다. 새로고침하면 직접 선택한 파일을 다시 선택해야 합니다.
 
-촬영 정보는 Takeout 보조 파일 → JPEG EXIF/QuickTime → 파일명 → 파일 수정 시각 순으로 보완합니다. GPS가 없으면 Timeline에서 위치를 추정합니다. 시간대가 없는 촬영 정보는 기기의 시간대를 따르며, 화면 표시는 한국 시간입니다. 큰 영상은 앞·뒤 최대 1MB씩만 읽어 메타데이터를 찾으므로 모든 파일의 내장 정보를 읽을 수 있다고 보장하지 않습니다.
+촬영 정보는 Takeout 보조 파일 → JPEG EXIF/QuickTime → 파일명 → 파일 수정 시각 순으로 보완합니다. JPEG에 `GPSHPositioningError`가 있으면 수평 GPS 오차도 읽어 장소 판정에 사용합니다. GPS가 없으면 Timeline에서 위치를 추정합니다. 시간대가 없는 촬영 정보는 기기의 시간대를 따르며, 화면 표시는 한국 시간입니다. 큰 영상은 앞·뒤 최대 1MB씩만 읽어 메타데이터를 찾으므로 모든 파일의 내장 정보를 읽을 수 있다고 보장하지 않습니다.
+
+### 정확한 장소 온라인 확인
+
+이 기능은 **기본으로 꺼져 있고**, 서버에 Nominatim 호환 역지오코딩 서비스를 직접 설정한 경우에만 활성화됩니다. 사진 원본이나 Timeline은 보내지 않고, GPS가 충분히 신뢰되는 사진의 좌표만 사용합니다. 10분/80m 안에서 여러 사진이 안정적으로 모이면 중앙 좌표를 사용하고, 단일 GPS의 오차가 크거나 Timeline 위치와 지나치게 다르면 정확한 장소를 확정하지 않습니다. 비행·기차·페리와 빠른 차량/대중교통 이동 중에는 주변 POI보다 `비행 중`, `기차 이동 중` 같은 이동 상태를 우선합니다. 확인 결과는 `.cache/photo-places.json`에 저장해 같은 좌표를 반복 조회하지 않습니다.
+
+```powershell
+$env:TRAVEL_PLACE_REVERSE_URL = 'https://YOUR-GEOCODER.example/reverse'
+$env:TRAVEL_PLACE_PROVIDER_LABEL = '내 장소 서비스'
+npm start
+```
+
+`TRAVEL_PLACE_USER_AGENT`, `TRAVEL_PLACE_MIN_INTERVAL_MS`로 공급자 요구사항에 맞출 수 있습니다. OSMF의 공개 `nominatim.openstreetmap.org`는 개인 사진 좌표를 위한 기본 서비스로 연결하지 않습니다. 해당 주소를 직접 지정하더라도 `TRAVEL_ALLOW_PUBLIC_NOMINATIM=1`을 추가로 설정해야 하며, 그 전에 OSMF의 현재 사용량·개인정보 정책을 직접 확인해야 합니다. 공급자의 저장/재사용 약관이 로컬 캐시를 허용하는지도 확인하세요.
 
 HEIC/HEIF와 일부 영상 코덱은 브라우저에서 표시되지 않을 수 있습니다. 실패 안내에 따라 JPEG·PNG 또는 브라우저 지원 영상으로 변환하세요. 영상은 앱의 일시정지·탐색과 함께 동작하며, 자동 재생이 차단되면 영상 안에 재생 버튼이 나타납니다.
 
@@ -79,7 +93,7 @@ HEIC/HEIF와 일부 영상 코덱은 브라우저에서 표시되지 않을 수 
 npm run map:setup
 ```
 
-설정에서 **이 PC에 설치된 지도**를 선택합니다. 세계 지도의 해상도는 낮고 상세 지도는 설치 지역에 한정됩니다. 상세 범위 밖에는 세계 지도를 유지하지만 일부 지명 글꼴에는 인터넷이 필요하므로 완전한 오프라인 모드를 뜻하지 않습니다.
+설정에서 **이 PC에 설치된 지도**를 선택합니다. 세계 지도의 해상도는 낮고 상세 지도는 설치 지역에 한정됩니다. 필요한 한국어/다국어 glyph는 최초 사용 시 `.cache/map-glyphs/`에 저장되므로 한 번 표시한 글꼴 범위는 다음 실행부터 로컬에서 읽습니다. 아직 캐시되지 않은 글꼴 범위는 인터넷이 필요할 수 있으므로, 모든 지역을 처음부터 완전히 오프라인으로 보장하는 방식은 아닙니다.
 
 ## 구조와 검증
 

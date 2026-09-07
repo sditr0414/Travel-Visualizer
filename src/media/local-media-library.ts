@@ -7,6 +7,7 @@ interface CachedMetadataUpdate {
   takenMs: number;
   lat: number | null;
   lng: number | null;
+  gpsAccuracyM: number | null;
   source: MediaMetadataSource;
   embeddedScanned: boolean;
 }
@@ -40,6 +41,7 @@ export async function loadLocalMediaManifest(
       takenMs: metadata.takenMs,
       lat: metadata.lat,
       lng: metadata.lng,
+      gpsAccuracyM: metadata.gpsAccuracyM,
       metadataSource: metadata.source,
       playbackSec,
       matchedLat: matched.lat,
@@ -74,7 +76,7 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
   const supportsEmbedded = isJpeg(item) || isQuickTimeVideo(item);
   const shouldReadEmbedded = supportsEmbedded && (!cached || cached.embeddedScanned !== true);
   if (cached && !shouldReadEmbedded) {
-    return { item, metadata: { ...cached, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };
+    return { item, metadata: { ...cached, gpsAccuracyM: cached.gpsAccuracyM ?? null, embeddedScanned: cached.embeddedScanned ?? true }, shouldCache: false };
   }
 
   let embedded = null;
@@ -104,6 +106,7 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
         : embedded?.takenMs ?? cached?.takenMs ?? filenameTime ?? item.lastModified,
       lat: cached?.lat ?? embedded?.lat ?? null,
       lng: cached?.lng ?? embedded?.lng ?? null,
+      gpsAccuracyM: cached?.gpsAccuracyM ?? embedded?.gpsAccuracyM ?? null,
       source: cached?.source === 'takeout-sidecar'
         ? 'takeout-sidecar'
         : embedded?.takenMs != null

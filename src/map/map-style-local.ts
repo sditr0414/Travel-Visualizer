@@ -6,7 +6,7 @@ import type { MapSourceConfig } from '../types';
 
 type LocalMapSource = Extract<MapSourceConfig, { kind: 'local-pmtiles' }>;
 
-const GLYPHS_URL = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+const GLYPHS_URL = '/api/map-glyphs/{fontstack}/{range}.pbf';
 let protocol: Protocol | null = null;
 const archives = new Map<string, PMTiles>();
 

@@ -11,6 +11,7 @@ export interface Preferences {
   photoDisplaySec: number;
   photoDetailZoomMode: 'AUTO' | 'OFF';
   photoDetailZoomStrength: number;
+  onlinePlaceLookup: boolean;
   showDayMarkers: boolean;
   dayMarkerSec: number;
   videoMode: 'PLAY' | 'THUMBNAIL';
@@ -20,7 +21,7 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   cameraMode: 'AUTO', pacingMode: 'LOCAL_DAYS', zoomOffset: 0, lockToPosition: true,
   includeFlights: true, photoViewMode: 'PREVIEW', photoDisplaySec: 3,
-  photoDetailZoomMode: 'AUTO', photoDetailZoomStrength: 1, showDayMarkers: true,
+  photoDetailZoomMode: 'AUTO', photoDetailZoomStrength: 1, onlinePlaceLookup: false, showDayMarkers: true,
   dayMarkerSec: 2.5, videoMode: 'PLAY', videoMuted: true, videoMaxSec: 5
 };
 const KEY = 'travel-camera.preferences.v3';

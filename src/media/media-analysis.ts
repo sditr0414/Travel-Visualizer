@@ -40,6 +40,7 @@ export async function analyzeMediaFilesInline(
       takenMs: embedded?.takenMs ?? filenameTime ?? Number(file.lastModified),
       lat: embedded?.lat ?? null,
       lng: embedded?.lng ?? null,
+      gpsAccuracyM: embedded?.gpsAccuracyM ?? null,
       source,
       title: cleanTitle(file.name)
     });
@@ -71,7 +72,7 @@ export async function analyzeMediaFilesInline(
   return records.filter(record => Number.isFinite(record.takenMs) && record.takenMs > Date.UTC(2000, 0, 1));
 }
 
-export function parseTakeoutSidecar(data: unknown, sidecarName = ''): { title: string; takenMs: number; lat: number | null; lng: number | null } | null {
+export function parseTakeoutSidecar(data: unknown, sidecarName = ''): { title: string; takenMs: number; lat: number | null; lng: number | null; gpsAccuracyM: number | null } | null {
   if (!data || typeof data !== 'object') return null;
   const value = data as Record<string, unknown>;
   const photoTakenTime = value.photoTakenTime as Record<string, unknown> | undefined;
@@ -84,19 +85,21 @@ export function parseTakeoutSidecar(data: unknown, sidecarName = ''): { title: s
     title: String(value.title || stripSidecarName(sidecarName) || '여행 미디어'),
     takenMs,
     lat: gps?.lat ?? null,
-    lng: gps?.lng ?? null
+    lng: gps?.lng ?? null,
+    gpsAccuracyM: null
   };
 }
 
 export function mergeSidecarMetadata(
   record: MediaMetadataRecord,
-  sidecar: { title: string; takenMs: number; lat: number | null; lng: number | null }
+  sidecar: { title: string; takenMs: number; lat: number | null; lng: number | null; gpsAccuracyM: number | null }
 ): MediaMetadataRecord {
   return {
     ...record,
     ...sidecar,
     lat: sidecar.lat ?? record.lat,
     lng: sidecar.lng ?? record.lng,
+    gpsAccuracyM: sidecar.gpsAccuracyM ?? record.gpsAccuracyM,
     source: 'takeout-sidecar'
   };
 }

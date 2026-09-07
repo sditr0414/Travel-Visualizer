@@ -9,6 +9,7 @@ import { buildDayMarkerStops } from './media/day-markers';
 import { loadJourneyMedia, organizeJourneyMedia } from './media/media-library';
 import { loadLocalMediaManifest } from './media/local-media-library';
 import { MediaJourneyPane } from './media/MediaJourneyPane';
+import { loadPhotoPlaceLookupStatus, lookupOnlinePhotoPlace, photoPlaceDecision, type PhotoPlaceLookupStatus } from './media/photo-place-resolver';
 import { TimelineWorkerClient, type TimelineWorkerPort } from './services/timeline-worker-client';
 import { appReducer, initialAppState } from './state/app-reducer';
 import { SettingHelp } from './ui/SettingHelp';
@@ -57,7 +58,7 @@ export function App({ workerClient }: AppProps) {
   const [client] = useState<TimelineWorkerPort>(() => workerClient ?? new TimelineWorkerClient());
 
   const { preferences, update: updatePreference, reset: resetPreferences } = usePreferences();
-  const { includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
+  const { includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, onlinePlaceLookup, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [excludedMedia, setExcludedMedia] = useState<Set<string>>(() => new Set());
   const [helpOpen, setHelpOpen] = useState(false);
@@ -81,6 +82,7 @@ export function App({ workerClient }: AppProps) {
   const [desktopMapShare, setDesktopMapShare] = useState(PHOTO_MAP_MIN_DESKTOP);
   const [mobileMapShare, setMobileMapShare] = useState(PHOTO_MAP_MIN_MOBILE);
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
+  const [placeLookupStatus, setPlaceLookupStatus] = useState<PhotoPlaceLookupStatus>({ available: false, provider: null, cache: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appliedPlanSettings, setAppliedPlanSettings] = useState<AppliedPlanSettings | null>(null);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', originCity: null, destinationCity: null });
@@ -98,7 +100,11 @@ export function App({ workerClient }: AppProps) {
   const lastLocalMediaPlanRef = useRef<PlaybackPlan | null>(null);
   const mediaLibraryLoadedRef = useRef(false);
   const mediaRef = useRef<JourneyMedia[]>([]);
+  const allMediaRef = useRef<JourneyMedia[]>([]);
   const activeMediaRef = useRef<string | null>(null);
+  const placeLookupOperationRef = useRef(0);
+  const onlinePlaceLookupRef = useRef(onlinePlaceLookup);
+  const placeLookupStatusRef = useRef(placeLookupStatus);
   const shellRef = useRef<HTMLElement>(null);
   const lastHudUpdateRef = useRef(0);
   const cityRouteCacheRef = useRef(new Map<number, { originCity: string | null; destinationCity: string | null; lastAttemptMs: number }>());
@@ -299,6 +305,10 @@ export function App({ workerClient }: AppProps) {
   }, []);
 
   useEffect(() => {
+    void loadPhotoPlaceLookupStatus().then(setPlaceLookupStatus);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     fetch('/api/local-timeline', { cache: 'no-store' })
       .then(async response => {
@@ -334,6 +344,23 @@ export function App({ workerClient }: AppProps) {
   useEffect(() => {
     mediaRef.current = media;
   }, [media]);
+
+  useEffect(() => {
+    allMediaRef.current = mediaLibrary.all;
+  }, [mediaLibrary.all]);
+
+  useEffect(() => {
+    onlinePlaceLookupRef.current = onlinePlaceLookup;
+    placeLookupOperationRef.current += 1;
+    if (!onlinePlaceLookup && map && activeMediaRef.current) {
+      const item = mediaRef.current.find(candidate => candidate.id === activeMediaRef.current);
+      if (item) setActivePlaceName(resolvePlaceName(map, item));
+    }
+  }, [map, onlinePlaceLookup]);
+
+  useEffect(() => {
+    placeLookupStatusRef.current = placeLookupStatus;
+  }, [placeLookupStatus]);
 
   useEffect(() => {
     photoPlaybackStopsRef.current = photoPlaybackStops;
@@ -373,7 +400,26 @@ export function App({ workerClient }: AppProps) {
             activeMediaRef.current = stopId;
             setActiveMediaId(stopId);
             const item = stopId ? mediaRef.current.find(candidate => candidate.id === stopId) : null;
-            setActivePlaceName(item ? resolvePlaceName(map, item) : null);
+            if (!item) {
+              placeLookupOperationRef.current += 1;
+              setActivePlaceName(null);
+            } else {
+              const decision = photoPlaceDecision(item, allMediaRef.current, state.plan!, frame);
+              const fallbackPlace = resolvePlaceName(map, item, decision.kind === 'fallback' ? decision.coordinate : undefined);
+              if (decision.kind === 'movement') {
+                placeLookupOperationRef.current += 1;
+                setActivePlaceName(decision.label);
+              } else {
+                setActivePlaceName(fallbackPlace);
+                if (decision.kind === 'lookup' && onlinePlaceLookupRef.current && placeLookupStatusRef.current.available) {
+                  const lookupOperation = ++placeLookupOperationRef.current;
+                  void lookupOnlinePhotoPlace(decision).then(result => {
+                    if (lookupOperation !== placeLookupOperationRef.current || activeMediaRef.current !== stopId || !onlinePlaceLookupRef.current) return;
+                    if (result?.found && result.name) setActivePlaceName(result.name);
+                  });
+                }
+              }
+            }
           }
           if (playersRef.current[mode]?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
           lastHudUpdateRef.current = performance.now();
@@ -801,6 +847,19 @@ export function App({ workerClient }: AppProps) {
             {photoDetailZoomMode === 'AUTO' && <><SettingHelp title="상세 확대 강도" description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요."><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
               <input aria-description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요." aria-label="상세 확대 강도" type="range" min="0.5" max="1.5" step="0.1" value={photoDetailZoomStrength} onChange={event => updatePreference('photoDetailZoomStrength', Number(event.target.value))} />
             </label></SettingHelp></>}
+            <div className="toggle-list">
+              <SettingHelp title="정확한 장소 온라인 확인" description={placeLookupStatus.available
+                ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다. 사진 원본과 Timeline은 보내지 않으며 결과는 이 PC에 캐시합니다.`
+                : '서버에 Nominatim 호환 역지오코딩 주소를 설정하면 사용할 수 있습니다. 개인정보 때문에 외부 장소 서비스는 기본으로 연결하지 않습니다.'}>
+                <label><input
+                  type="checkbox"
+                  aria-label="정확한 장소 온라인 확인"
+                  checked={placeLookupStatus.available && onlinePlaceLookup}
+                  disabled={!placeLookupStatus.available}
+                  onChange={event => updatePreference('onlinePlaceLookup', event.target.checked)}
+                /><span>정확한 장소 온라인 확인{placeLookupStatus.available && placeLookupStatus.provider ? ` · ${placeLookupStatus.provider}` : ' · 설정 필요'}</span></label>
+              </SettingHelp>
+            </div>
             <div className="toggle-list photo-day-toggle">
               <SettingHelp title="날짜 변경 표시" description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다."><label><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></label></SettingHelp>
             </div>
@@ -820,7 +879,7 @@ export function App({ workerClient }: AppProps) {
                 <input aria-description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다." type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
               </label></SettingHelp>
             </>}
-            <p className="privacy-note">사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.</p>
+            <p className="privacy-note">사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다. ‘정확한 장소 온라인 확인’을 직접 켠 경우에만 신뢰 가능한 GPS 좌표가 설정한 장소 서비스로 전송됩니다.</p>
           </section>}
 
           <section className="trip-range-control" aria-labelledby="trip-range-title">
@@ -860,8 +919,8 @@ export function App({ workerClient }: AppProps) {
             />
           </label></SettingHelp>
 
-          <SettingHelp title="지도 소스" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 일부 글꼴에는 인터넷이 필요합니다."><label className="select-field">지도 소스
-            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 일부 글꼴에는 인터넷이 필요합니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
+          <SettingHelp title="지도 소스" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 필요한 지명 글꼴은 최초 사용 후 이 PC에 캐시합니다."><label className="select-field">지도 소스
+            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 필요한 지명 글꼴은 최초 사용 후 이 PC에 캐시합니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
               <option value="online">온라인 지도</option>
               <option value="local-pmtiles" disabled={!state.mapStatus?.ready}>설치형 지도{!state.mapStatus?.ready ? " · 설치 필요" : ""}</option>
             </select>
@@ -982,9 +1041,10 @@ function progressValue(progress: MediaImportProgress | null): number {
   return start + (end - start) * ratio;
 }
 
-function resolvePlaceName(map: MapLibreMap, item: JourneyMedia): string {
-  const label = resolvePhotoPlaceLabel(map, { lat: item.matchedLat, lng: item.matchedLng });
+function resolvePlaceName(map: MapLibreMap, item: JourneyMedia, coordinate?: { lat: number; lng: number }): string {
+  const label = resolvePhotoPlaceLabel(map, coordinate ?? { lat: item.matchedLat, lng: item.matchedLng });
   if (label) return label;
+  if (coordinate) return 'Timeline 위치';
   return item.positionSource === 'gps' ? '촬영 위치' : 'Timeline 위치';
 }
 

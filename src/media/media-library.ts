@@ -37,6 +37,7 @@ export async function loadJourneyMedia(
       takenMs: record.takenMs,
       lat: record.lat,
       lng: record.lng,
+      gpsAccuracyM: record.gpsAccuracyM,
       metadataSource: record.source,
       playbackSec,
       matchedLat: matched.lat,

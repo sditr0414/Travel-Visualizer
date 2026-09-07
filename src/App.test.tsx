@@ -142,6 +142,36 @@ describe('App integration', () => {
     await waitFor(() => expect(fakeMap.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13.2 })));
   });
 
+  it('keeps exact online place lookup opt-in live and out of rebuild state', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+      status: url.includes('/api/local-timeline') ? 404 : 200,
+      ok: !url.includes('/api/local-timeline'),
+      json: () => Promise.resolve(url.includes('/api/photo-place-status')
+        ? { available: true, provider: '테스트 장소 서비스', cache: true }
+        : { ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
+      text: () => Promise.resolve('')
+    })));
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(),
+      dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
+    fireEvent.click(screen.getByText('여행 설정'));
+
+    const exactPlace = await screen.findByLabelText('정확한 장소 온라인 확인');
+    await waitFor(() => expect(exactPlace).toBeEnabled());
+    const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuildButton).toBeDisabled();
+    fireEvent.click(exactPlace);
+    expect(exactPlace).toBeChecked();
+    expect(rebuildButton).toBeDisabled();
+  });
+
   it('pauses playback whenever the journey presentation mode changes', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
@@ -226,7 +256,8 @@ describe('App integration', () => {
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
     expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
-    expect(screen.getByText('사진과 영상은 이 PC의 로컬 서버에서만 제공되며 외부로 업로드되지 않습니다.')).toBeInTheDocument();
+    expect(screen.getByText(/사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText('정확한 장소 온라인 확인')).toBeDisabled();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
     expect(screen.getByLabelText('사진 경로 확대')).toHaveValue('AUTO');

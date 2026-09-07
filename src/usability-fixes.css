@@ -57,6 +57,7 @@
 .setting-tooltip strong { font-size: 13px; }
 .setting-tooltip p { margin: 5px 0 0; color: #d8d4cd; }
 .toggle-list > .setting-with-help { width: 100%; }
+.toggle-list label:has(input:disabled) { opacity: .58; cursor: not-allowed; }
 @media (pointer: coarse) { .setting-help-button { width: 44px; height: 44px; right: -8px; top: -10px; } }
 .map-loading { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; padding: 8px 14px; border-radius: 8px; background: #20262ddd; color: #f6f1e9; font-size: 12px; pointer-events: none; }
 .camera-transition { position: absolute; top: 115px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 8px 14px; background: #20262ddd; color: #f6f1e9; border-radius: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }

@@ -76,7 +76,7 @@ function cityName(feature: MapFeature): string | null {
 }
 
 function preferredName(properties: Record<string, unknown>): string | null {
-  const name = properties['name:ko'] ?? properties.name_ko ?? properties['name:en'] ?? properties.name_en ?? properties.name;
+  const name = properties['name:ko'] ?? properties.name_ko ?? properties.name ?? properties['name:en'] ?? properties.name_en;
   return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 

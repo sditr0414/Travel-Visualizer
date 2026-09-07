@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Film, Image, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Dialog } from './Dialog';
+import { gpsAccuracyLabel } from '../media/photo-place-resolver';
 import type { JourneyMedia } from '../types';
 
 const PAGE_SIZE = 24;
@@ -18,7 +19,7 @@ export function MediaLibraryDialog({ open, onClose, media, excluded, onToggle, o
     {!media.length && <p className="empty-note">여행 기간에 연결된 사진이 없어요. 촬영 날짜와 여행 기간을 확인하거나 다른 사진을 선택해 주세요.</p>}
     <div className="library-list">{visible.map(item => <label key={item.id} className={`library-row ${excluded.has(item.id) ? 'is-excluded' : ''}`}><input type="checkbox" checked={!excluded.has(item.id)} onChange={() => onToggle(item.id)} aria-label={`${item.title} 감상에 포함`} />
       <span className="library-kind" aria-label={item.kind === 'video' ? '영상' : '사진'}>{item.kind === 'video' ? <Film size={19} /> : <Image size={19} />}</span>
-      <span className="library-info"><strong>{item.title}</strong><time dateTime={new Date(item.takenMs).toISOString()}>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(item.takenMs)}</time><span className={item.metadataSource === 'file-time' || item.metadataSource === 'filename-time' ? 'metadata-estimated' : ''}>{SOURCES[item.metadataSource]} · {item.positionSource === 'gps' ? 'GPS 위치' : 'Timeline 추정 위치'}</span></span>
+      <span className="library-info"><strong>{item.title}</strong><time dateTime={new Date(item.takenMs).toISOString()}>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(item.takenMs)}</time><span className={item.metadataSource === 'file-time' || item.metadataSource === 'filename-time' ? 'metadata-estimated' : ''}>{SOURCES[item.metadataSource]} · {item.positionSource === 'gps' ? `GPS 위치${gpsAccuracyLabel(item.gpsAccuracyM) ? ` · ${gpsAccuracyLabel(item.gpsAccuracyM)}` : ''}` : 'Timeline 추정 위치'}</span></span>
     </label>)}</div>
   </Dialog>;
 }
