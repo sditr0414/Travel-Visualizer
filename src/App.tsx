@@ -172,7 +172,7 @@ export function App({ workerClient }: AppProps) {
     try {
       const scan = await client.scan(source, text, reportProgress);
       if (operation !== scanOperationRef.current) return;
-      const preferred = preferredTripRange(scan.startDate, scan.endDate);
+      const preferred = preferredTripRange(scan);
       setStartDate(preferred.startDate);
       setEndDate(preferred.endDate);
       durationCustomizedRef.current = false;
@@ -794,7 +794,7 @@ export function App({ workerClient }: AppProps) {
       >
         <summary onClick={event => { event.preventDefault(); if (!settingsOpen) pausePlayback(); setSettingsOpen(!settingsOpen); }}><span><Layers3 size={16} /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" /></summary>
         <div className="settings-content">
-          <p className="setting-help">설정에 마우스를 올리거나 ? 버튼을 눌러 설명을 확인하세요.</p>
+          <p className="setting-help">? 버튼에 마우스를 올리거나 눌러 설명을 확인하세요.</p>
           <div className="source-summary">
             <FileJson size={18} />
             <div><span>현재 Timeline</span><strong>{state.source?.name ?? '준비 중'}</strong></div>
@@ -887,16 +887,24 @@ export function App({ workerClient }: AppProps) {
               <div><span id="trip-range-title">여행 기간</span><strong>{formatTripRange(startDate, endDate)}</strong></div>
               <div className="trip-range-presets">
                 <button type="button" onClick={() => {
-                  const recommended = preferredTripRange(state.scan!.startDate, state.scan!.endDate);
-                  setStartDate(recommended.startDate);
-                  setEndDate(recommended.endDate);
-                }}>추천 기간</button>
-                <button type="button" onClick={() => {
                   setStartDate(state.scan!.startDate);
                   setEndDate(state.scan!.endDate);
                 }}>전체 기간</button>
               </div>
             </div>
+            {!!state.scan.tripCandidates?.length && <div className="trip-candidate-list" aria-label="추천 여행 후보">
+              <span className="trip-candidate-label">추천 여행</span>
+              {state.scan.tripCandidates.map((candidate, index) => {
+                const selected = startDate === candidate.startDate && endDate === candidate.endDate;
+                return <button key={candidate.id} type="button" className={selected ? 'trip-candidate is-selected' : 'trip-candidate'} aria-pressed={selected} onClick={() => {
+                  setStartDate(candidate.startDate);
+                  setEndDate(candidate.endDate);
+                }}>
+                  <span><strong>{candidate.destinationHint ?? ('추천 여행 ' + (index + 1))}</strong><small>{formatTripRange(candidate.startDate, candidate.endDate)}</small></span>
+                  <span className="trip-candidate-meta">{formatTripCandidateSummary(candidate)}</span>
+                </button>;
+              })}
+            </div>}
             <div className="trip-range-fields">
               <label><span>시작</span><input aria-label="여행 시작" type="date" value={startDate} min={state.scan.startDate} max={endDate || state.scan.endDate} onChange={event => setStartDate(event.target.value)} /></label>
               <span className="trip-range-arrow" aria-hidden="true">→</span>
@@ -1022,8 +1030,24 @@ function midpointDurationControlValue(minSeconds: number, maxSeconds: number): n
   return Math.min(max, Math.max(min, roundDurationStep((min + max) / 2)));
 }
 
-function preferredTripRange(availableStart: string, availableEnd: string): { startDate: string; endDate: string } {
-  return { startDate: availableStart, endDate: availableEnd };
+function preferredTripRange(scan: import('./types').TimelineScanResult): { startDate: string; endDate: string } {
+  const candidate = scan.tripCandidates?.[0] ?? scan.recommendedRange;
+  if (
+    candidate &&
+    candidate.startDate >= scan.startDate &&
+    candidate.endDate <= scan.endDate &&
+    candidate.startDate <= candidate.endDate
+  ) return { startDate: candidate.startDate, endDate: candidate.endDate };
+  return { startDate: scan.startDate, endDate: scan.endDate };
+}
+
+function formatTripCandidateSummary(candidate: import('./types').TimelineTripCandidate): string {
+  const start = Date.parse(candidate.startDate + 'T00:00:00Z');
+  const end = Date.parse(candidate.endDate + 'T00:00:00Z');
+  const days = Number.isFinite(start) && Number.isFinite(end) ? Math.max(1, Math.round((end - start) / 86_400_000) + 1) : Math.max(1, candidate.activeDays);
+  const distanceKm = candidate.distanceMeters / 1_000;
+  const distance = distanceKm >= 10 ? Math.round(distanceKm) + 'km' : distanceKm.toFixed(1) + 'km';
+  return days + '일 · 이동 약 ' + distance;
 }
 
 function progressValue(progress: MediaImportProgress | null): number {

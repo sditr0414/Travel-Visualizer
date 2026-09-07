@@ -38,8 +38,18 @@ export interface TimelineDateRange {
   endDate: string;
 }
 
+export interface TimelineTripCandidate extends TimelineDateRange {
+  id: string;
+  activeDays: number;
+  distanceMeters: number;
+  representativeCoordinate?: Coordinate;
+  destinationHint?: string;
+}
+
 export interface TimelineScanResult extends TimelineDateRange {
   semanticSegments: number;
+  recommendedRange?: TimelineDateRange;
+  tripCandidates?: TimelineTripCandidate[];
 }
 
 export interface Movement {
