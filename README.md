@@ -47,13 +47,15 @@ PC의 `127.0.0.1` 주소는 휴대폰에서 열 수 없습니다. 모바일 제�
 
 | 데이터 | 기본 위치 |
 | --- | --- |
-| Timeline | 저장소 상위 폴더의 `타임라인.json` |
-| 사진·영상 | 저장소 상위 폴더의 `여행 사진` |
+| Timeline | 앱/저장소 폴더의 `타임라인.json` 우선, 없으면 상위 폴더 |
+| 사진·영상 | 앱/저장소 폴더의 `여행 사진` 우선, 없으면 상위 폴더 |
 | 메타데이터 캐시 | `.cache/media-metadata.json` |
 | 확인한 장소 캐시 | `.cache/photo-places.json` |
 | 설치형 지도 글꼴 캐시 | `.cache/map-glyphs/` |
 
 기본 파일이 없어도 파일 선택기로 사용할 수 있습니다. 경로는 `TRAVEL_TIMELINE_PATH`, `TRAVEL_MEDIA_DIR`, `TRAVEL_METADATA_CACHE`, `TRAVEL_PLACE_CACHE`, `TRAVEL_GLYPH_CACHE_DIR` 환경변수로 변경할 수 있습니다.
+
+개발·테스트할 때는 v2처럼 저장소 루트에 `타임라인.json`과 `여행 사진/`을 두고 실행하면 별도 선택 없이 자동으로 불러옵니다. 두 경로는 Git에서 제외되며, 루트에 없을 때만 기존 상위 폴더 위치를 확인합니다.
 
 ```powershell
 $env:TRAVEL_TIMELINE_PATH = 'D:\My Travel\timeline.json'

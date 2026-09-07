@@ -186,7 +186,7 @@
 
 .trip-range-heading strong {
   min-width: 0;
-  color: #e8e3dc;
+  color: #d2ccc5;
   font-size: 15px;
   font-weight: 780;
   text-align: right;
@@ -241,7 +241,7 @@
   border: 0;
   border-radius: 7px;
   color: var(--paper);
-  background: #202428;
+  background: #23272b;
   font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
