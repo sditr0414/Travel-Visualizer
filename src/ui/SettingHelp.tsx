@@ -1,13 +1,14 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 const CLOSE_DELAY_MS = 80;
 
-/** Desktop hover belongs only to the explicit ? button; click/focus keep touch and keyboard access. */
+/** Show setting help from the setting name itself; controls keep aria-description for keyboard users. */
 export function SettingHelp({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const id = useId();
   const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
   const bubble = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelClose = () => {
@@ -27,7 +28,7 @@ export function SettingHelp({ title, description, children }: { title: string; d
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
-      if (!button.current?.contains(event.target as Node) && !bubble.current?.contains(event.target as Node)) setOpen(false);
+      if (!root.current?.contains(event.target as Node) && !bubble.current?.contains(event.target as Node)) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -45,14 +46,14 @@ export function SettingHelp({ title, description, children }: { title: string; d
   useLayoutEffect(() => {
     if (!open) return;
     const position = () => {
-      const anchor = button.current;
+      const label = anchor.current;
       const tip = bubble.current;
-      if (!anchor || !tip) return;
-      const rect = anchor.getBoundingClientRect();
+      if (!label || !tip) return;
+      const rect = label.getBoundingClientRect();
       const width = tip.offsetWidth;
       const height = tip.offsetHeight;
       const below = rect.bottom + 8;
-      tip.style.left = `${Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12))}px`;
+      tip.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`;
       tip.style.top = `${Math.max(12, Math.min(below + height < window.innerHeight - 12 ? below : rect.top - height - 8, window.innerHeight - height - 12))}px`;
     };
     position();
@@ -64,28 +65,28 @@ export function SettingHelp({ title, description, children }: { title: string; d
     };
   }, [open, description]);
 
-  return <div className="setting-with-help">
-    {children}
-    <button
-      ref={button}
-      type="button"
-      className="setting-help-button"
-      aria-label={`${title} 설명`}
-      aria-expanded={open}
-      aria-describedby={id}
-      onMouseEnter={() => { cancelClose(); setOpen(true); }}
-      onMouseLeave={closeSoon}
-      onFocus={event => {
-        if (event.currentTarget.matches(':focus-visible')) {
-          cancelClose();
-          setOpen(true);
-        }
-      }}
-      onBlur={event => {
-        if (!bubble.current?.contains(event.relatedTarget as Node | null)) closeSoon();
-      }}
-      onClick={() => { cancelClose(); setOpen(value => !value); }}
-    >?</button>
+  const decoratedChildren = decorateSettingTitle(children, title, () => <span
+    ref={anchor}
+    className="setting-help-anchor"
+    onMouseEnter={() => { cancelClose(); setOpen(true); }}
+    onMouseLeave={closeSoon}
+    onClick={event => {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelClose();
+      setOpen(value => !value);
+    }}
+  >{title}</span>);
+
+  return <div
+    ref={root}
+    className="setting-with-help"
+    onFocusCapture={() => { cancelClose(); setOpen(true); }}
+    onBlurCapture={event => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !bubble.current?.contains(event.relatedTarget as Node | null)) closeSoon();
+    }}
+  >
+    {decoratedChildren}
     {createPortal(<div
       ref={bubble}
       id={id}
@@ -98,4 +99,24 @@ export function SettingHelp({ title, description, children }: { title: string; d
       <strong>{title}</strong><p>{description}</p>
     </div>, document.body)}
   </div>;
+}
+
+function decorateSettingTitle(children: ReactNode, title: string, renderAnchor: () => ReactNode): ReactNode {
+  let decorated = false;
+  const visit = (node: ReactNode): ReactNode => {
+    if (decorated) return node;
+    if (typeof node === 'string') {
+      const index = node.indexOf(title);
+      if (index < 0) return node;
+      decorated = true;
+      const before = node.slice(0, index);
+      const after = node.slice(index + title.length);
+      return <>{before}{renderAnchor()}{after}</>;
+    }
+    if (!isValidElement(node)) return node;
+    const element = node as ReactElement<{ children?: ReactNode }>;
+    if (element.props.children === undefined) return node;
+    return cloneElement(element, undefined, Children.map(element.props.children, visit));
+  };
+  return Children.map(children, visit);
 }
