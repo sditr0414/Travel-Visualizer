@@ -116,7 +116,7 @@ function decorateSettingTitle(children: ReactNode, title: string, renderAnchor: 
     if (!isValidElement(node)) return node;
     const element = node as ReactElement<{ children?: ReactNode }>;
     if (element.props.children === undefined) return node;
-    return cloneElement(element, undefined, Children.map(element.props.children, visit));
+    return cloneElement(element, {}, Children.map(element.props.children, visit));
   };
   return Children.map(children, visit);
 }
