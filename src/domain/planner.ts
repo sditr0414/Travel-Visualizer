@@ -81,8 +81,6 @@ export function connectVisualGaps(movements: Movement[]): Movement[] {
     const startMs = current.endMs;
     const endMs = next.startMs >= startMs ? next.startMs : startMs;
     const points = inferredBridgePath(current.end, next.start, {
-      startMs,
-      endMs,
       distanceMeters: gapMeters,
       mode: googleType
     });
