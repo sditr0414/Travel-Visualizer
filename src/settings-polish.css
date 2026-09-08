@@ -207,9 +207,11 @@
   font-size: 12px;
 }
 
+/* Keep recommendations compact until the current recommendation button is clicked/focused. */
 .trip-candidate-list {
   display: grid;
   gap: 7px;
+  position: relative;
 }
 
 .trip-candidate-label {
@@ -219,7 +221,7 @@
 }
 
 .trip-candidate {
-  display: grid;
+  display: none;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -234,10 +236,32 @@
   cursor: pointer;
 }
 
+.trip-candidate-list:not(:focus-within) .trip-candidate.is-selected,
+.trip-candidate-list:not(:has(.trip-candidate.is-selected)):not(:focus-within) .trip-candidate:first-of-type {
+  display: grid;
+}
+
+.trip-candidate-list:focus-within {
+  max-height: 290px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.trip-candidate-list:focus-within .trip-candidate {
+  display: grid;
+}
+
 .trip-candidate:hover,
 .trip-candidate.is-selected {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.trip-candidate:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .trip-candidate > span:first-child {
