@@ -1,5 +1,5 @@
 /* v2 is the visual baseline. Only targeted usability and recovery additions. */
-.setting-help { margin: -3px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.setting-help { display: none; }
 .settings-help-link { padding: 8px 0; border: 0; background: transparent; color: var(--paper); font: inherit; font-size: 12px; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: 40px; }
 .overview-button { color: var(--paper); cursor: pointer; }
 .import-button:focus-within, .local-import-actions label:focus-within, .media-import-row label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -49,15 +49,14 @@
 @media (prefers-reduced-motion: reduce) {
   .app-dialog, .map-recovery { animation: none; transition: none; }
 }
-.setting-with-help { position: relative; min-width: 0; padding-right: 26px; }
-.setting-help-button { position: absolute; right: 0; top: -2px; width: 24px; height: 24px; border: 0; padding: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: help; }
-.setting-help-button:hover, .setting-help-button[aria-expanded=true] { color: var(--accent); }
-.setting-help-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; border-radius: 6px; }
+.setting-with-help { position: relative; min-width: 0; }
+.setting-help-anchor { cursor: help; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: color 120ms ease, text-decoration-color 120ms ease; }
+.setting-help-anchor:hover { color: var(--accent); text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.setting-with-help:focus-within .setting-help-anchor { text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .setting-tooltip { position: fixed; z-index: 100; width: min(300px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 13px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); color: var(--paper); box-shadow: 0 6px 20px #0004; font-size: 12px; line-height: 1.7; }
 .setting-tooltip strong { font-size: 13px; }
 .setting-tooltip p { margin: 5px 0 0; color: var(--muted); }
 .toggle-list > .setting-with-help { width: 100%; }
 .toggle-list label:has(input:disabled) { opacity: .58; cursor: not-allowed; }
-@media (pointer: coarse) { .setting-help-button { width: 44px; height: 44px; right: -8px; top: -10px; } }
 .map-loading { position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 2; padding: 8px 14px; border-radius: 8px; background: var(--surface-raised); color: var(--paper); font-size: 12px; pointer-events: none; }
 .camera-transition { position: absolute; top: 115px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 8px 14px; background: var(--surface-raised); color: var(--paper); border-radius: 8px; font-size: 12px; white-space: nowrap; pointer-events: none; }
