@@ -2,19 +2,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SettingHelp } from './SettingHelp';
 
 describe('SettingHelp', () => {
-  it('opens only from the question-mark control and closes after leaving it', async () => {
+  it('opens from the setting name without rendering a question-mark button', async () => {
     render(<SettingHelp title="지도 확대" description="설명"><label>지도 확대<input aria-label="지도 확대 값" /></label></SettingHelp>);
-    const help = screen.getByRole('button', { name: '지도 확대 설명' });
+    const title = screen.getByText('지도 확대');
     const field = screen.getByLabelText('지도 확대 값');
+    const tooltip = screen.getByRole('tooltip', { hidden: true });
+
+    expect(screen.queryByRole('button', { name: '지도 확대 설명' })).not.toBeInTheDocument();
+    expect(tooltip).toHaveAttribute('hidden');
 
     fireEvent.mouseEnter(field);
-    expect(help).toHaveAttribute('aria-expanded', 'false');
+    expect(tooltip).toHaveAttribute('hidden');
 
-    fireEvent.mouseEnter(help);
-    expect(help).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('설명');
+    fireEvent.mouseEnter(title);
+    expect(tooltip).not.toHaveAttribute('hidden');
+    expect(tooltip).toHaveTextContent('설명');
 
-    fireEvent.mouseLeave(help);
-    await waitFor(() => expect(help).toHaveAttribute('aria-expanded', 'false'));
+    fireEvent.mouseLeave(title);
+    await waitFor(() => expect(tooltip).toHaveAttribute('hidden'));
   });
 });
