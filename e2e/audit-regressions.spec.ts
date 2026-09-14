@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
+test.use({ timezoneId: 'Asia/Seoul' });
+
 async function setRange(page: Page, selector: string, value: number): Promise<void> {
   await page.locator(selector).evaluate((node, next) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
@@ -118,7 +120,8 @@ test('a real decoded short video pauses, seeks backward and holds its final fram
   await page.getByRole('combobox', { name: '영상 재생', exact: true }).selectOption('PLAY');
   await setRange(page, '.settings-content input[type="range"][max="15"]', 5);
   await page.locator('.media-import-row input[type="file"]').first().setInputFiles({ name: '20260410_090000.webm', mimeType: 'video/webm', buffer: Buffer.from(bytes) });
-  await page.locator('.settings-panel summary').click();
+  // File selection closes settings by design; do not click the summary again.
+  await expect(page.locator('.settings-panel')).not.toHaveAttribute('open', '');
   const play = page.getByRole('button', { name: '재생', exact: true });
   await expect(play).toBeEnabled({ timeout: 30000 });
   await page.getByLabel('처음부터 보기', { exact: true }).click();
@@ -133,7 +136,11 @@ test('a real decoded short video pauses, seeks backward and holds its final fram
   await setRange(page, 'input[aria-label="재생 위치"]', 0.1);
   await expect.poll(() => video.evaluate(node => (node as HTMLVideoElement).currentTime)).toBeLessThan(0.2);
   await play.click();
-  await page.waitForTimeout(1800);
+  await expect.poll(async () => Number(await page.getByLabel('재생 위치', { exact: true }).inputValue()), { timeout: 10000 }).toBeGreaterThan(2);
+  await expect.poll(() => video.evaluate(node => {
+    const element = node as HTMLVideoElement;
+    return element.paused || element.ended;
+  })).toBe(true);
   const state = await video.evaluate(node => {
     const element = node as HTMLVideoElement;
     return { currentTime: element.currentTime, duration: element.duration, paused: element.paused, ended: element.ended };

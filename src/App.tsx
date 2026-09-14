@@ -830,8 +830,8 @@ export function App({ workerClient }: AppProps) {
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}
-            <SettingHelp title="표시할 사진" description="대표 사진만은 비슷한 시간·장소에서 고른 사진을, 모든 사진은 연결된 사진을 모두 보여줍니다."><label className="select-field">표시할 사진
-              <select aria-description="대표 사진만은 비슷한 시간·장소에서 고른 사진을, 모든 사진은 연결된 사진을 모두 보여줍니다." aria-label="표시할 사진" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
+            <SettingHelp title="표시할 사진" description="대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다. 모든 사진: 연결된 사진을 모두 보여줍니다."><label className="select-field">표시할 사진
+              <select aria-description="대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다. 모든 사진: 연결된 사진을 모두 보여줍니다." aria-label="표시할 사진" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
                 <option value="PREVIEW">대표 사진만 · {mediaLibrary.preview.length}개</option>
                 <option value="ALL">모든 사진 · {mediaLibrary.all.length}개</option>
               </select>
@@ -866,8 +866,8 @@ export function App({ workerClient }: AppProps) {
             {showDayMarkers && <><SettingHelp title="날짜 표시 시간" description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다."><label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
               <input aria-description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다." aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => updatePreference('dayMarkerSec', Number(event.target.value))} />
             </label></SettingHelp></>}
-            <SettingHelp title="영상 재생" description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시은 영상의 첫 화면을 보여줍니다."><label className="select-field">영상 재생
-              <select aria-description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시은 영상의 첫 화면을 보여줍니다." aria-label="영상 재생" value={videoMode} onChange={event => updatePreference('videoMode', event.target.value as 'THUMBNAIL' | 'PLAY')}>
+            <SettingHelp title="영상 재생" description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시를 선택하면 영상의 첫 화면만 보여줍니다."><label className="select-field">영상 재생
+              <select aria-description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시를 선택하면 영상의 첫 화면만 보여줍니다." aria-label="영상 재생" value={videoMode} onChange={event => updatePreference('videoMode', event.target.value as 'THUMBNAIL' | 'PLAY')}>
                 <option value="PLAY">자동 재생</option><option value="THUMBNAIL">첫 화면만 표시</option>
               </select>
             </label></SettingHelp>
