@@ -1,4 +1,6 @@
 import { buildPlaybackPlan } from './planner';
+import { planPlayback } from '../camera-planner.js';
+import { applyCameraMode } from '../camera-modes.js';
 import type { AnalysisOptions, Movement } from '../types';
 
 const startMs = Date.parse('2026-03-20T08:00:00+09:00');
@@ -33,10 +35,14 @@ describe('restored camera modes', () => {
       movement(startMs, 12, { lat: 34.69, lng: 135.50 }, { lat: 34.70, lng: 135.51 }, 1.4, 'WALKING'),
       movement(startMs + 20 * 60_000, 50, { lat: 35.68, lng: 139.76 }, { lat: 36.10, lng: 140.10 }, 80, 'IN_TRAIN')
     ];
-    const result = buildPlaybackPlan(disconnected, {
-      startDate: '2026-03-20', endDate: '2026-03-20', includeFlights: true,
-      targetDurationSec: 60, viewportWidth: 1100, viewportHeight: 700,
-      cameraMode: 'SEGMENT', zoomOffset: 0, pacingMode: 'LOCAL_DAYS'
+    // The application now connects recording gaps. Exercise explicit engine
+    // scene cuts directly so their camera-isolation contract remains covered.
+    const raw = planPlayback(disconnected, {
+      fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700,
+      pacingMode: 'LOCAL_DAYS'
+    });
+    const result = applyCameraMode(raw, {
+      mode: 'SEGMENT', zoomOffset: 0, viewportWidth: 1100, viewportHeight: 700
     });
     const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');
     const boundary = frames.findIndex((frame, index) => index > 0 && frame.sceneId !== frames[index - 1].sceneId);
