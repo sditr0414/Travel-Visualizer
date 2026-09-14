@@ -7,7 +7,7 @@ const AUTO_ZOOM_BIAS = 0.28;
 const DAY_MS = 86_400_000;
 const DURATION_STEP_SEC = 5;
 const VISUAL_GAP_MIN_METERS = 30;
-const VISUAL_GAP_MAX_METERS = 50_000;
+const BIAS_FADE_SECONDS = 0.85;
 
 export function buildPlaybackPlan(movements: Movement[], options: AnalysisOptions): PlaybackPlan {
   const connectedMovements = connectVisualGaps(movements);
@@ -25,66 +25,42 @@ export function buildPlaybackPlan(movements: Movement[], options: AnalysisOption
     selectedDays
   }) as PlaybackPlan;
 
-  // User map zoom is a presentation-level camera preference. Keep the planned
-  // trajectory neutral so the same offset can be applied consistently to
-  // TRAVEL, FLIGHT, and OUTRO frames by PlayerController without double-counting
-  // after a re-plan.
-  const resolvedZoomOffset = clampZoomOffset(options.zoomOffset);
+  // The user's zoom preference is applied exactly once by the active controller.
   const plan = applyCameraMode(basePlan, {
     mode: options.cameraMode,
     zoomOffset: 0,
     viewportWidth: options.viewportWidth,
     viewportHeight: options.viewportHeight
   });
-  plan.zoomOffset = resolvedZoomOffset;
+  plan.zoomOffset = clampZoomOffset(options.zoomOffset);
   plan.selectedRange = { startDate: options.startDate, endDate: options.endDate };
   plan.viewportWidth = options.viewportWidth;
   plan.viewportHeight = options.viewportHeight;
 
   if (plan.cameraMode !== 'AUTO') return plan;
-  for (const frame of plan.frames) {
-    if (frame.kind !== 'TRAVEL' || frame.mobilityClass === 'FLIGHT') continue;
-    const travel = frame as TravelFrame;
-    travel.zoom = clampZoom(travel.zoom + AUTO_ZOOM_BIAS);
-    if (Number.isFinite(travel.lockedZoom)) {
-      travel.lockedZoom = clampZoom((travel.lockedZoom ?? travel.zoom) + AUTO_ZOOM_BIAS + 0.18);
-    }
-  }
-
+  applyContinuousAutoBias(plan);
   reconnectOverview(plan);
   return { ...plan, autoCloserBias: AUTO_ZOOM_BIAS, autoLockedCloserBias: AUTO_ZOOM_BIAS + 0.18 };
 }
 
 /**
- * Google can end one semantic activity and start the next at the same timestamp
- * while their coordinates disagree by tens of metres to a few kilometres.
- * Treat nearby disagreement as missing route evidence, not a camera cut: add a
- * short inferred movement so planner pacing, route geometry and camera zoom all
- * traverse the gap continuously without pausing playback.
+ * A connection is presentation, not evidence of a train, flight or recorded speed.
+ * Put it in the planned timeline so the head and camera traverse it together;
+ * never stop the player clock or insert an uncounted camera transfer.
  */
 export function connectVisualGaps(movements: Movement[]): Movement[] {
   if (movements.length < 2) return movements;
   const connected: Movement[] = [];
-
   for (let index = 0; index < movements.length; index += 1) {
     const current = movements[index];
     connected.push(current);
     const next = movements[index + 1];
     if (!next) continue;
-
     const gapMeters = haversineMeters(current.end, next.start);
-    if (gapMeters < VISUAL_GAP_MIN_METERS || gapMeters > VISUAL_GAP_MAX_METERS) continue;
-
-    const gapSec = Math.max(0, (next.startMs - current.endMs) / 1000);
-    const googleType = visualGapType(gapMeters, gapSec);
-    const durationSec = visualGapDurationSec(gapMeters, googleType);
+    if (!Number.isFinite(gapMeters) || gapMeters < VISUAL_GAP_MIN_METERS) continue;
     const startMs = current.endMs;
-    const endMs = next.startMs >= startMs ? next.startMs : startMs;
-    const points = inferredBridgePath(current.end, next.start, {
-      distanceMeters: gapMeters,
-      mode: googleType
-    });
-
+    const endMs = Math.max(startMs, next.startMs);
+    const points = inferredBridgePath(current.end, next.start, { distanceMeters: gapMeters, mode: 'UNKNOWN' });
     connected.push({
       startMs,
       endMs,
@@ -93,24 +69,46 @@ export function connectVisualGaps(movements: Movement[]): Movement[] {
       points,
       distanceMeters: gapMeters,
       pathDistanceMeters: gapMeters,
-      durationSec,
-      avgSpeedKmh: gapMeters / Math.max(1, durationSec) * 3.6,
-      googleType,
+      durationSec: Math.max(0, (endMs - startMs) / 1000),
+      avgSpeedKmh: 0,
+      googleType: 'UNKNOWN',
       googleProbability: 0,
       activityProbability: 0,
       inferred: true,
-      inferenceSource: 'visual-gap'
+      inferenceSource: 'visual-gap',
+      hideRoute: next.connectionBefore === 'excluded-flight'
     });
   }
-
   return connected;
+}
+
+/** Apply only the visual bias envelope; do not add another filter to planner center/zoom. */
+export function applyContinuousAutoBias(plan: PlaybackPlan): void {
+  const travel = plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL');
+  const radius = Math.max(1, Math.round(plan.fps * BIAS_FADE_SECONDS));
+  const distance = new Array<number>(travel.length).fill(radius);
+  let lastFlight = -Infinity;
+  for (let i = 0; i < travel.length; i += 1) {
+    if (travel[i].mobilityClass === 'FLIGHT') lastFlight = i;
+    distance[i] = Math.min(radius, i - lastFlight);
+  }
+  lastFlight = Infinity;
+  for (let i = travel.length - 1; i >= 0; i -= 1) {
+    if (travel[i].mobilityClass === 'FLIGHT') lastFlight = i;
+    const linear = Math.min(distance[i], lastFlight - i, radius) / radius;
+    const envelope = linear * linear * (3 - 2 * linear);
+    const frame = travel[i];
+    frame.zoom = clampZoom(frame.zoom + AUTO_ZOOM_BIAS * envelope);
+    if (Number.isFinite(frame.lockedZoom)) {
+      frame.lockedZoom = clampZoom(frame.lockedZoom! + (AUTO_ZOOM_BIAS + 0.18) * envelope);
+    }
+  }
 }
 
 export function midpointDurationSeconds(limits: Pick<DurationLimits, 'minSeconds' | 'maxSeconds'>): number {
   const min = Math.max(1, Number(limits.minSeconds) || 1);
   const max = Math.max(min, Number(limits.maxSeconds) || min);
-  const midpoint = (min + max) / 2;
-  const stepped = Math.round(midpoint / DURATION_STEP_SEC) * DURATION_STEP_SEC;
+  const stepped = Math.round((min + max) / 2 / DURATION_STEP_SEC) * DURATION_STEP_SEC;
   return Math.min(max, Math.max(min, stepped));
 }
 
@@ -121,29 +119,12 @@ function inclusiveDays(startDate: string, endDate: string): number {
   return Math.max(1, Math.floor((endMs - startMs) / DAY_MS) + 1);
 }
 
-function visualGapType(distanceMeters: number, gapSec: number): string {
-  const speedKmh = gapSec > 0 ? distanceMeters / gapSec * 3.6 : 0;
-  if (distanceMeters >= 20_000 || speedKmh >= 80) return 'IN_TRAIN';
-  if (distanceMeters >= 2_000 || speedKmh >= 22) return 'IN_BUS';
-  if (distanceMeters >= 650 || speedKmh >= 8) return 'CYCLING';
-  return 'WALKING';
-}
-
-function visualGapDurationSec(distanceMeters: number, googleType: string): number {
-  const targetSpeedKmh = googleType === 'IN_TRAIN' ? 110
-    : googleType === 'IN_BUS' ? 35
-      : googleType === 'CYCLING' ? 16
-        : 5;
-  return Math.max(8, Math.min(180, distanceMeters / (targetSpeedKmh / 3.6)));
-}
-
 function clampZoom(value: number): number {
   return Math.min(17.3, Math.max(4, value));
 }
 
 function clampZoomOffset(value: number): number {
-  const numeric = Number(value) || 0;
-  return Math.min(ZOOM_OFFSET_MAX, Math.max(ZOOM_OFFSET_MIN, numeric));
+  return Math.min(ZOOM_OFFSET_MAX, Math.max(ZOOM_OFFSET_MIN, Number(value) || 0));
 }
 
 function reconnectOverview(plan: PlaybackPlan): void {
@@ -154,7 +135,7 @@ function reconnectOverview(plan: PlaybackPlan): void {
   if (!Number.isFinite(startZoom) || !Number.isFinite(finalZoom) || !outro.length) return;
   const transitionFrames = Math.max(1, Math.min(outro.length, Math.round(Math.min(3.2, outro.length / plan.fps * 0.68) * plan.fps)));
   for (let index = 0; index < outro.length; index += 1) {
-    const linear = Math.min(1, Math.max(0, (index + 1) / transitionFrames));
+    const linear = Math.min(1, Math.max(0, index / transitionFrames));
     const t = linear * linear * linear * (linear * (linear * 6 - 15) + 10);
     outro[index].zoom = startZoom! + (finalZoom! - startZoom!) * t;
   }
