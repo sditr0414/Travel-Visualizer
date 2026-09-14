@@ -18,7 +18,7 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 
 - 사용자가 v2 디자인 계승을 명시했습니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널, 기존 색상·간격을 유지합니다. 색상 기준도 v2 토큰(`--ink #171a1d`, `--surface rgba(24,27,30,.92)`, `--paper #f7f3ed`, `--muted #aaa7a2`, `--accent #ff725d`)을 따르며 새 UI가 별도 청회색 팔레트를 만들지 않습니다. 전면 재설계하지 않습니다.
 - `styles.css`, `ux-polish.css`, `settings-polish.css`는 v2 기준을 복원했습니다. 설명·복구·도움말 등 제한된 추가 스타일은 `usability-fixes.css`에 둡니다.
-- 설정 각 항목 아래 짧은 설명을 표시하고 aria-describedby로 연결합니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
+- 설정 이름의 hover·키보드 포커스·탭으로 설명을 표시하고 입력과 aria-describedby로 연결합니다. 추천 여행은 native select로 고릅니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
 - 도움말·사진 목록은 공통 native Dialog를 사용합니다. 개인 파일·날짜는 저장하지 않고 검증한 감상 설정만 저장합니다.
 - 사진 목록은 촬영 정보 출처·GPS/Timeline 위치 추정·가능한 경우 GPS 수평 오차·감상 제외 기능을 유지합니다. 사진 여정 설정에서 엽니다.
 - PC 좌우/모바일 상하 분할과 모드별 커서는 유지합니다. 전체 경로 버튼은 커서 변경 없이 bounds를 맞춥니다.
@@ -65,3 +65,12 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 ## Validation
 
 사용자가 지정한 범위가 우선입니다. 수정 후 App 핵심 검사와 lint/build를 확인하고, 배포 화면에서 초기 지도의 실제 렌더링을 확인했습니다. 390px 모바일 viewport의 가로 넘침도 확인했으며 실기기 검증과는 구별합니다. 변경별 검증과 남은 배포 확인은 V3_RELEASE_NOTES.md를 갱신합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.
+
+## 사진 여정 검토 후 유지할 계약
+
+- 출처가 없는 좌표 공백은 `visual-gap`이며 UNKNOWN/속도 0으로 취급합니다. 1초짜리 위치 차이를 항공 증거로 사용하지 않습니다.
+- 공백 연결은 PlaybackPlan 안에서 재생 시간을 배분합니다. controller의 호환용 카메라 보간도 content clock을 멈추거나 경로 source를 비우지 않습니다. 마지막 전체 경로 전환에 별도 2초를 추가하지 않습니다.
+- 명시적으로 제외한 항공 사이의 연결은 `hideRoute`로 표시해 비행 선을 재생성하지 않습니다.
+- AUTO의 확대 bias는 비행 전후에 0.85초 envelope로 연결합니다. 기존 center/zoom 경로에 두 번째 추적 필터를 추가하지 않습니다.
+- UI 분할 기준은 820px, canvas는 100dvh/min-height 0입니다. 열린 설정은 재생바보다 위에 표시합니다.
+- 폰트는 @fontsource-variable/noto-sans-kr의 번들 파일, 픽토그램은 Lucide SVG를 사용합니다. 개인 데이터·폰트 다운로드를 외부 API로 보내지 않습니다.

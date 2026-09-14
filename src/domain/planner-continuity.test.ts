@@ -55,7 +55,9 @@ describe('planner recording-gap continuity', () => {
       end: second.start
     });
     expect(connected[1].points.length).toBeGreaterThan(2);
-    expect(connected[1].durationSec).toBeGreaterThan(0);
+    expect(connected[1].durationSec).toBe(0);
+    expect(connected[1].googleType).toBe('UNKNOWN');
+    expect(connected[1].avgSpeedKmh).toBe(0);
   });
 
   it('plans a continuous travel scene through a bridged recording gap', () => {
@@ -84,9 +86,11 @@ describe('planner recording-gap continuity', () => {
     expect(travel.some(frame => frame.segmentIndex === 1)).toBe(true);
   });
 
-  it('does not fabricate a nearby bridge for a very large discontinuity', () => {
+  it('visually connects large gaps without pretending the transport is known', () => {
     const first = movement(0, 60_000, { lat: 35, lng: 135 }, { lat: 35.01, lng: 135.01 });
     const second = movement(60_000, 120_000, { lat: 36, lng: 136 }, { lat: 36.01, lng: 136.01 });
-    expect(connectVisualGaps([first, second])).toHaveLength(2);
+    const connected = connectVisualGaps([first, second]);
+    expect(connected).toHaveLength(3);
+    expect(connected[1].googleType).toBe('UNKNOWN');
   });
 });

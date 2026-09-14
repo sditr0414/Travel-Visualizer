@@ -36,6 +36,15 @@ const IDENTITY_RULES = Object.freeze({
 });
 
 export function inferMobility(segment) {
+  if (segment.inferenceSource === 'visual-gap') {
+    return {
+      mobilityClass: MobilityClass.UNKNOWN, confidence: 0,
+      scores: { UNKNOWN: 1 }, speedKmh: 0,
+      distanceKm: Math.max(0, Number(segment.distanceMeters) || 0) / 1000,
+      straightness: 1, googleClass: MobilityClass.UNKNOWN,
+      googleConfidence: 0, activityConfidence: 0, priorCompatibility: 0, identityAnchor: null
+    };
+  }
   const speed = Math.max(0, segment.avgSpeedKmh || 0);
   const distanceKm = Math.max(0, segment.distanceMeters || 0) / 1000;
   const directKm = haversineMeters(segment.start, segment.end) / 1000;
@@ -76,6 +85,8 @@ export function inferMobility(segment) {
   if (speed > 350 || distanceKm > 400 && speed > 180) add(scores, MobilityClass.FLIGHT, 1.2);
   if (speed > 90 && distanceKm > 15) add(scores, MobilityClass.FAST_GROUND, 0.55);
 
+  // High speed over a very short inferred gap is bad timing evidence, not aviation.
+  if (segment.inferred && directKm < 20) scores.set(MobilityClass.FLIGHT, 0);
   const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
   const best = sorted[0];
   const second = sorted[1];

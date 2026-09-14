@@ -1,25 +1,46 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SettingHelp } from './SettingHelp';
 
-describe('SettingHelp', () => {
-  it('opens from the setting name without rendering a question-mark button', async () => {
-    render(<SettingHelp title="지도 확대" description="설명"><label>지도 확대<input aria-label="지도 확대 값" /></label></SettingHelp>);
-    const title = document.querySelector('.setting-help-anchor') as HTMLElement | null;
-    const field = screen.getByLabelText('지도 확대 값');
-    const tooltip = screen.getByRole('tooltip', { hidden: true });
+function setup() {
+  render(<SettingHelp title="지도 확대" description="확대 설명"><label>지도 확대<input aria-label="지도 확대 값" /></label></SettingHelp>);
+  return { title: screen.getByRole('button', { name: '지도 확대 설명' }), field: screen.getByLabelText('지도 확대 값'), tip: screen.getByRole('tooltip', { hidden: true }) };
+}
 
-    expect(title).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '지도 확대 설명' })).not.toBeInTheDocument();
-    expect(tooltip).toHaveAttribute('hidden');
-
+describe('setting-name help', () => {
+  it('shows help from the name, not from hovering its input', async () => {
+    const { title, field, tip } = setup();
+    expect(screen.queryByText('?')).not.toBeInTheDocument();
     fireEvent.mouseEnter(field);
-    expect(tooltip).toHaveAttribute('hidden');
-
-    fireEvent.mouseEnter(title!);
-    expect(tooltip).not.toHaveAttribute('hidden');
-    expect(tooltip).toHaveTextContent('설명');
-
-    fireEvent.mouseLeave(title!);
-    await waitFor(() => expect(tooltip).toHaveAttribute('hidden'));
+    expect(tip).toHaveAttribute('hidden');
+    fireEvent.mouseEnter(title);
+    expect(tip).not.toHaveAttribute('hidden');
+    fireEvent.mouseLeave(title);
+    await waitFor(() => expect(tip).toHaveAttribute('hidden'));
+  });
+  it('keeps the first tap open even when hover and focus precede click', () => {
+    const { title, tip } = setup();
+    fireEvent.mouseEnter(title);
+    fireEvent.focus(title);
+    fireEvent.click(title);
+    expect(tip).not.toHaveAttribute('hidden');
+    fireEvent.mouseLeave(title);
+    expect(tip).not.toHaveAttribute('hidden');
+    fireEvent.click(title);
+    expect(tip).toHaveAttribute('hidden');
+  });
+  it('supports keyboard activation and Escape without closing the settings parent', () => {
+    const { title, field, tip } = setup();
+    expect(field).toHaveAttribute('aria-describedby', tip.id);
+    fireEvent.focus(title);
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(tip).not.toHaveAttribute('hidden');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(tip).toHaveAttribute('hidden');
+  });
+  it('closes pinned help on an outside pointer action', () => {
+    const { title, tip } = setup();
+    fireEvent.click(title);
+    fireEvent.pointerDown(document.body);
+    expect(tip).toHaveAttribute('hidden');
   });
 });

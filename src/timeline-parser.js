@@ -20,6 +20,7 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
 
   const timelinePaths = [];
   const activities = [];
+  const excludedFlights = [];
   const visits = [];
 
   for (const segment of semanticSegments) {
@@ -46,7 +47,10 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
       const start = parseLatLng(activity.start?.latLng);
       const end = parseLatLng(activity.end?.latLng);
       const googleType = activity.topCandidate?.type || 'UNKNOWN';
-      if (!includeFlights && googleType === 'FLYING') continue;
+      if (!includeFlights && googleType === 'FLYING') {
+        excludedFlights.push({ startMs: segmentStart, endMs: segmentEnd });
+        continue;
+      }
       if (!start || !end || !Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd)) continue;
       const durationSec = Math.max(1, (segmentEnd - segmentStart) / 1000);
       const statedDistance = Number(activity.distanceMeters);
@@ -93,6 +97,11 @@ export function parseTimeline(json, { startDate, endDate, includeFlights = true 
     .sort((a, b) => a.timeMs - b.timeMs);
 
   const enriched = activities.map(activity => clipMovement(enrichActivityWithPath(activity, allTimelinePoints), startMs, endMs)).filter(Boolean);
+  for (let i = 1; i < enriched.length; i += 1) {
+    if (excludedFlights.some(flight => flight.endMs > enriched[i - 1].endMs && flight.startMs < enriched[i].startMs)) {
+      enriched[i].connectionBefore = 'excluded-flight';
+    }
+  }
   const movements = bridgeMovementGaps(enriched, allTimelinePoints, includeFlights);
   let previousLongitude = null;
   for (const movement of movements) {
@@ -149,7 +158,7 @@ function bridgeMovementGaps(movements, allTimelinePoints, includeFlights) {
 
     const gapSec = (next.startMs - current.endMs) / 1000;
     const gapMeters = haversineMeters(current.end, next.start);
-    if (gapSec < 0 || gapMeters < 140) continue;
+    if (gapSec < 30 || gapMeters < 140 || next.connectionBefore === 'excluded-flight') continue;
 
     const between = timelinePointsInRange(allTimelinePoints, current.endMs, next.startMs, true);
     const candidate = dedupeChronological([
@@ -157,6 +166,8 @@ function bridgeMovementGaps(movements, allTimelinePoints, includeFlights) {
       ...between,
       { ...next.start, timeMs: next.startMs }
     ]);
+    // Without temporally distinct samples this is a visual connection, not speed evidence.
+    if (new Set(between.map(point => point.timeMs)).size < 2) continue;
     const candidateDistance = pathDistanceMeters(candidate);
     const durationSec = Math.max(1, gapSec);
     const evidenceDistance = Math.max(gapMeters, candidateDistance);
@@ -164,7 +175,7 @@ function bridgeMovementGaps(movements, allTimelinePoints, includeFlights) {
     const googleType = inferGapType(evidenceDistance / 1000, speedKmh);
 
     if (!includeFlights && googleType === 'FLYING') continue;
-    if (speedKmh > 1400) continue;
+    if (speedKmh > 1400 || speedKmh > 360 && evidenceDistance < 20_000) continue;
 
     const hasTimelineEvidence = between.length > 0;
     const rawBridge = hasTimelineEvidence
@@ -257,7 +268,7 @@ function lowerBoundTime(points, targetMs, strictGreater) {
 }
 
 function inferGapType(distanceKm, speedKmh) {
-  if (speedKmh > 330 || distanceKm > 300 && speedKmh > 150) return 'FLYING';
+  if (distanceKm >= 20 && speedKmh > 330 || distanceKm > 300 && speedKmh > 150) return 'FLYING';
   if (speedKmh > 65 || distanceKm > 35 && speedKmh > 35) return 'IN_TRAIN';
   if (speedKmh > 18) return 'IN_BUS';
   if (speedKmh > 8) return 'CYCLING';

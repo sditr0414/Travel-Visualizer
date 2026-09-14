@@ -70,7 +70,7 @@ describe('App integration', () => {
     expect(screen.getByTestId('map-stage')).toBeInTheDocument();
     expect(screen.getByText('내 여행 파일로 시작')).toBeInTheDocument();
     expect(worker.scan).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
@@ -125,17 +125,18 @@ describe('App integration', () => {
       dispose: vi.fn()
     };
     render(<App workerClient={worker} />);
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), { target: { files: [timelineFile()] } });
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     expect(worker.plan).toHaveBeenCalledWith(expect.objectContaining({ startDate: '2026-07-01', endDate: '2026-07-03' }), expect.any(Function));
 
     fireEvent.click(screen.getByText('여행 설정'));
-    expect(screen.getByRole('button', { name: /일본/ })).toHaveAttribute('aria-pressed', 'true');
-    const gangneung = screen.getByRole('button', { name: /강릉/ });
-    fireEvent.click(gangneung);
+    const picker = screen.getByRole('combobox', { name: '추천 여행' });
+    expect(picker).toHaveValue('japan');
+    fireEvent.change(picker, { target: { value: 'gangneung' } });
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-05-02');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-05-04');
-    expect(gangneung).toHaveAttribute('aria-pressed', 'true');
+    expect(picker).toHaveValue('gangneung');
+    expect(screen.queryByRole('button', { name: /강릉/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '경로 다시 만들기' })).toBeEnabled();
   });
 
@@ -148,7 +149,7 @@ describe('App integration', () => {
     };
     fakeMap.jumpTo.mockClear();
     render(<App workerClient={worker} />);
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
@@ -163,7 +164,7 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
     expect(worker.plan).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByLabelText('화면 구성'), { target: { value: 'DAY' } });
+    fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'DAY' } });
     expect(rebuildButton).toBeEnabled();
     fireEvent.click(rebuildButton);
     await waitFor(() => expect(worker.plan).toHaveBeenCalledTimes(2));
@@ -188,7 +189,7 @@ describe('App integration', () => {
       dispose: vi.fn()
     };
     render(<App workerClient={worker} />);
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), { target: { files: [timelineFile()] } });
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
     fireEvent.click(screen.getByText('여행 설정'));
@@ -210,7 +211,7 @@ describe('App integration', () => {
       dispose: vi.fn()
     };
     render(<App workerClient={worker} />);
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
@@ -218,7 +219,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
     fireEvent.click(screen.getByRole('button', { name: '재생' }));
     expect(screen.getByRole('button', { name: '일시정지' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '발자취' }));
+    fireEvent.click(screen.getByRole('button', { name: '경로 보기' }));
     expect(screen.getByRole('button', { name: '재생' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '재생' }));
@@ -235,7 +236,7 @@ describe('App integration', () => {
       dispose: vi.fn()
     };
     render(<App workerClient={worker} />);
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
@@ -249,7 +250,7 @@ describe('App integration', () => {
     fireEvent.change(position, { target: { value: '1' } });
     expect(position).toHaveValue('1');
 
-    fireEvent.click(screen.getByRole('button', { name: '발자취' }));
+    fireEvent.click(screen.getByRole('button', { name: '경로 보기' }));
     await waitFor(() => expect(position).toHaveValue('0.5'));
     fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
     await waitFor(() => expect(position).toHaveValue('1'));
@@ -265,7 +266,7 @@ describe('App integration', () => {
       target: { files: [new File(['image'], 'IMG_trip.png', { type: 'image/png', lastModified: Date.parse('2026-04-10T00:00:00Z') })] }
     });
     expect(screen.getByText('선택한 파일 · 1개')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('시작할 Timeline JSON 선택'), {
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
     });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
@@ -285,16 +286,16 @@ describe('App integration', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '40');
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
-    expect(screen.getByLabelText('화면 구성')).toHaveValue('AUTO');
+    expect(screen.getByLabelText('지도 보기 방식')).toHaveValue('AUTO');
     expect(screen.getByText(/사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다/)).toBeInTheDocument();
     expect(screen.getByLabelText('정확한 장소 온라인 확인')).toBeDisabled();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('PREVIEW');
-    expect(screen.getByLabelText('사진 경로 확대')).toHaveValue('AUTO');
+    expect(screen.getByLabelText('표시할 사진')).toHaveValue('PREVIEW');
+    expect(screen.getByLabelText('사진을 볼 때 지도 확대')).toHaveValue('AUTO');
     expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1');
-    fireEvent.change(screen.getByLabelText('사진 경로 확대'), { target: { value: 'OFF' } });
+    fireEvent.change(screen.getByLabelText('사진을 볼 때 지도 확대'), { target: { value: 'OFF' } });
     expect(screen.queryByRole('slider', { name: '상세 확대 강도' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('사진 경로 확대'), { target: { value: 'AUTO' } });
+    fireEvent.change(screen.getByLabelText('사진을 볼 때 지도 확대'), { target: { value: 'AUTO' } });
     fireEvent.change(screen.getByRole('slider', { name: '상세 확대 강도' }), { target: { value: '1.4' } });
     expect(screen.getByRole('slider', { name: '상세 확대 강도' })).toHaveValue('1.4');
     expect(screen.getByLabelText('날짜 변경 표시')).toBeChecked();
@@ -304,19 +305,19 @@ describe('App integration', () => {
     expect(screen.getByRole('slider', { name: '날짜 표시 시간' })).toHaveAttribute('step', '0.5');
     expect(screen.getByLabelText('영상 재생')).toHaveValue('PLAY');
     expect(screen.getByLabelText('영상 소리 재생')).not.toBeChecked();
-    fireEvent.change(screen.getByLabelText('사진 표시 범위'), { target: { value: 'ALL' } });
-    expect(screen.getByLabelText('사진 표시 범위')).toHaveValue('ALL');
+    fireEvent.change(screen.getByLabelText('표시할 사진'), { target: { value: 'ALL' } });
+    expect(screen.getByLabelText('표시할 사진')).toHaveValue('ALL');
 
     const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
     expect(rebuildButton).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '발자취' }));
-    expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
-    fireEvent.change(screen.getByLabelText('화면 구성'), { target: { value: 'SEGMENT' } });
+    fireEvent.click(screen.getByRole('button', { name: '경로 보기' }));
+    expect(screen.getByRole('button', { name: '경로 보기' })).toHaveClass('active');
+    fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'SEGMENT' } });
     expect(rebuildButton).toBeEnabled();
     fireEvent.click(rebuildButton);
     await waitFor(() => expect(worker.plan).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: '발자취' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: '경로 보기' })).toHaveClass('active');
   });
 });
 

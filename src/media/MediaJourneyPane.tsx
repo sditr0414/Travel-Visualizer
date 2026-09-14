@@ -1,4 +1,5 @@
-import { Film, ImageOff, ImagePlus, Play } from 'lucide-react';
+import { Accessibility, Bike, Car, CircleHelp, Film, ImageOff, ImagePlus, Plane, Play, Ship, TrainFront, TramFront, type LucideIcon } from 'lucide-react';
+import { videoTargetTime } from './video-sync';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { dayMarkerCueFromId } from './day-markers';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
@@ -130,7 +131,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
     const movement = MOVEMENT_VISUALS[scene.mobilityClass];
     return (
       <div className="media-transit">
-        <span className="movement-pictogram" aria-hidden="true">{movement.icon}</span>
+        <span className="movement-pictogram" data-mobility={scene.mobilityClass} aria-hidden="true"><movement.icon strokeWidth={1.6} /></span>
         <div className="movement-primary">
           <time className="movement-date">{scene.movementDate}</time>
           <span className="movement-speed">{scene.movementSpeed}</span>
@@ -168,8 +169,8 @@ function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted, playing,
   return (
     <article className="media-card">
       <div className="media-frame">
-        {url && <MediaAsset playing={playing} elapsedSec={elapsedSec} item={item} url={url} videoMode={videoMode} videoMuted={videoMuted} />}
-        {item.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 대표 장면</span>}
+        {url && <MediaAsset key={url} playing={playing} elapsedSec={elapsedSec} item={item} url={url} videoMode={videoMode} videoMuted={videoMuted} />}
+        {item.kind === 'video' && videoMode === 'THUMBNAIL' && <span className="video-badge"><Film size={15} /> 첫 화면</span>}
       </div>
       <footer className="media-caption">
         <span className="media-caption-place">{place}</span>
@@ -179,15 +180,15 @@ function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted, playing,
   );
 }
 
-const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> = {
-  WALK: { icon: '🚶', label: '도보' },
-  BIKE: { icon: '🚲', label: '자전거' },
-  URBAN_TRANSIT: { icon: '🚇', label: '대중교통' },
-  FAST_GROUND: { icon: '🚆', label: '기차' },
-  FERRY: { icon: '⛴', label: '페리' },
-  FLIGHT: { icon: '✈', label: '비행기' },
-  ROAD: { icon: '🚗', label: '차량' },
-  UNKNOWN: { icon: '●', label: '기타' }
+const MOVEMENT_VISUALS: Record<MobilityClass, { icon: LucideIcon; label: string }> = {
+  WALK: { icon: Accessibility, label: '도보' },
+  BIKE: { icon: Bike, label: '자전거' },
+  URBAN_TRANSIT: { icon: TramFront, label: '대중교통' },
+  FAST_GROUND: { icon: TrainFront, label: '기차' },
+  FERRY: { icon: Ship, label: '페리' },
+  FLIGHT: { icon: Plane, label: '비행기' },
+  ROAD: { icon: Car, label: '차량' },
+  UNKNOWN: { icon: CircleHelp, label: '기타' }
 };
 
 function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean; playing: boolean; elapsedSec: number }) {
@@ -195,19 +196,38 @@ function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: {
   const [blocked, setBlocked] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playRequested = playing && videoMode === 'PLAY';
+  const playIntent = useRef(false);
   useEffect(() => {
     const video = videoRef.current;
     if (!video || item.kind !== 'video') return;
+    let cancelled = false;
+    let requesting = false;
+    playIntent.current = playRequested;
     const synchronize = () => {
       const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
-      const target = !Number.isFinite(elapsedSec) ? video.currentTime : videoMode === 'PLAY' ? Math.min(Math.max(0, elapsedSec), Math.max(0, duration - 0.01)) : 0;
-      if (video.readyState >= 1 && Math.abs(video.currentTime - target) > 0.45) video.currentTime = target;
+      const target = videoTargetTime(elapsedSec, duration, videoMode, video.currentTime);
+      const tolerance = playRequested ? 0.45 : 0.04;
+      if (video.readyState >= 1 && Math.abs(video.currentTime - target) > tolerance) video.currentTime = target;
       if (!playRequested || elapsedSec >= duration) video.pause();
-      else if (video.paused && !blocked) void video.play().catch(() => setBlocked(true));
+      else if (video.paused && !blocked && !requesting) {
+        requesting = true;
+        void video.play().then(() => {
+          // A new effect/scene may have paused this element while play was pending.
+          if (cancelled && !playIntent.current) video.pause();
+        }).catch((error: unknown) => {
+          if (!cancelled && error instanceof DOMException && error.name === 'NotAllowedError') setBlocked(true);
+        }).finally(() => { requesting = false; });
+      }
     };
     synchronize();
     video.addEventListener('loadedmetadata', synchronize);
-    return () => video.removeEventListener('loadedmetadata', synchronize);
+    video.addEventListener('loadeddata', synchronize);
+    return () => {
+      cancelled = true;
+      playIntent.current = false;
+      video.removeEventListener('loadedmetadata', synchronize);
+      video.removeEventListener('loadeddata', synchronize);
+    };
   }, [item.kind, url, videoMode, videoMuted, playRequested, elapsedSec, blocked]);
 
   if (failed) return <div className="media-load-error" role="status"><ImageOff size={24} /><strong>이 파일을 표시할 수 없어요</strong><span>지원되지 않는 형식이거나 파일을 읽을 수 없습니다. JPEG·PNG 또는 브라우저에서 재생되는 영상으로 바꿔 주세요.</span></div>;
@@ -269,7 +289,7 @@ function useMediaPreload(
       queueMicrotask(() => {
         setAssets(current => ({ ...current, [item.id]: { status: 'loading', url: resolved.url } }));
       });
-      const preloadCleanup = preloadMediaAsset(item, resolved.url, videoMode, status => {
+      const preloadCleanup = preloadMediaAsset(item, resolved.url, status => {
         setAssets(current => ({ ...current, [item.id]: { status, url: resolved.url } }));
       });
       handlesRef.current.set(item.id, {
@@ -305,7 +325,6 @@ function mediaAssetUrl(item: JourneyMedia): { url: string; owned: boolean } | nu
 function preloadMediaAsset(
   item: JourneyMedia,
   url: string,
-  videoMode: Props['videoMode'],
   onStatus: (status: AssetPreloadStatus) => void
 ): () => void {
   let cancelled = false;
@@ -340,13 +359,13 @@ function preloadMediaAsset(
   }
 
   const video = document.createElement('video');
-  const readyState = videoMode === 'PLAY' ? 2 : 1;
-  const readyEvent = videoMode === 'PLAY' ? 'loadeddata' : 'loadedmetadata';
+  const readyState = 2;
+  const readyEvent = 'loadeddata';
   const ready = () => settle('ready');
   const failed = () => settle('error');
   video.muted = true;
   video.playsInline = true;
-  video.preload = videoMode === 'PLAY' ? 'auto' : 'metadata';
+  video.preload = 'auto';
   video.addEventListener(readyEvent, ready, { once: true });
   video.addEventListener('error', failed, { once: true });
   video.src = url;
@@ -376,8 +395,8 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
     if (!canEnterScene) return;
     const prior = latestSceneRef.current;
     if (prior.key === desiredScene.key) {
-      latestSceneRef.current = desiredScene;
       const updateFrame = window.requestAnimationFrame(() => {
+        latestSceneRef.current = desiredScene;
         setTransition(current => current.currentScene === desiredScene
           ? current
           : { ...current, currentScene: desiredScene });
@@ -391,10 +410,9 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
     const transitionMs = prior.kind === 'transit'
       ? transitSceneTransitionDurationMs(measuredDwellSec)
       : sceneTransitionDurationMs(measuredDwellSec > 0.05 ? measuredDwellSec : photoDisplaySec);
-    enteredAtRef.current = now;
-    latestSceneRef.current = desiredScene;
-
     const showFrame = window.requestAnimationFrame(() => {
+      enteredAtRef.current = now;
+      latestSceneRef.current = desiredScene;
       setTransition({ currentScene: desiredScene, previousScene: prior, transitionMs });
     });
     return () => {
@@ -440,9 +458,9 @@ function formatPhotoPlace(placeName: string | null, originCity: string | null, d
     ? originCity === destinationCity ? originCity : null
     : originCity ?? destinationCity;
   const place = placeName?.trim() ?? '';
-  const unknown = '알 수 없음';
+  const unknown = '장소 정보 없음';
 
-  if (!place || place === '촬영 위치' || place === 'Timeline 위치' || place === unknown || looksLikeCoordinates(place)) return unknown;
+  if (!place || place === '촬영 위치' || place === 'Timeline 위치' || place === unknown || place === '알 수 없음' || looksLikeCoordinates(place)) return unknown;
 
   if (/(구|区)$/u.test(place)) {
     if (/\s/u.test(place)) return place;
