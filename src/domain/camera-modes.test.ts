@@ -1,7 +1,7 @@
 import { buildPlaybackPlan } from './planner';
 import { planPlayback } from '../camera-planner.js';
 import { applyCameraMode } from '../camera-modes.js';
-import type { AnalysisOptions, Movement, PlaybackPlan } from '../types';
+import type { AnalysisOptions, Movement } from '../types';
 
 const startMs = Date.parse('2026-03-20T08:00:00+09:00');
 const movements: Movement[] = [
@@ -41,9 +41,9 @@ describe('restored camera modes', () => {
       fps: 60, targetTotalSeconds: 60, viewportWidth: 1100, viewportHeight: 700,
       pacingMode: 'LOCAL_DAYS'
     });
-    const result = applyCameraMode(raw, {
+    const result = applyCameraMode({ ...raw, cameraMode: 'SEGMENT' }, {
       mode: 'SEGMENT', zoomOffset: 0, viewportWidth: 1100, viewportHeight: 700
-    }) as PlaybackPlan;
+    });
     const frames = result.frames.filter(frame => frame.kind === 'TRAVEL');
     const boundary = frames.findIndex((frame, index) => index > 0 && frame.sceneId !== frames[index - 1].sceneId);
     expect(boundary).toBeGreaterThan(0);
