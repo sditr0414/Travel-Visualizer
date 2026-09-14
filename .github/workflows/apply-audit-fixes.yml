@@ -46,7 +46,7 @@ jobs:
           git diff --check
           git config user.name "$(git log -1 --format=%an)"
           git config user.email "$(git log -1 --format=%ae)"
-          git rm -r .qa .github/workflows/apply-audit-fixes.yml
+          git rm -rf .qa .github/workflows/apply-audit-fixes.yml
           git add src e2e package.json package-lock.json README.md AI_PROJECT_CONTEXT.md V3_RELEASE_NOTES.md
           git commit -m "Apply photo journey audit fixes and regression tests"
           git push origin HEAD:fix/photo-journey-audit
