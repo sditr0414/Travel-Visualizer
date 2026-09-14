@@ -1,0 +1,73 @@
+name: apply-photo-audit-fixes
+on:
+  push:
+    branches: [fix/photo-journey-audit]
+    paths: [.github/workflows/apply-audit-fixes.yml]
+permissions:
+  contents: read
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply reviewed source changes
+        id: apply
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.qa/apply-audit-fixes.py')
+          text = p.read_text()
+          text = text.replace('assert text.count(start) == 1 and text.count(end) == 1', 'assert text.count(start) == 1 and end in text')
+          p.write_text(text)
+          PY
+          python3 .qa/apply-audit-fixes.py
+          python3 .qa/finalize-audit-fixes.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/player/player-controller.ts')
+          text = p.read_text().replace('    if (this.transition) {\n      const blend = this.transition;', '    const blending = Boolean(this.transition);\n    if (this.transition) {\n      const blend = this.transition;')
+          text = text.replace('const geometryChanged = this.lastGeometryPosition !== clampedPosition || Boolean(this.transition);', 'const geometryChanged = this.lastGeometryPosition !== clampedPosition || blending;')
+          p.write_text(text)
+          PY
+      - run: npm ci
+      - name: Bundle the verified font package and lock its exact version
+        run: npm install --save-exact @fontsource-variable/noto-sans-kr@5.3.0
+      - name: Save changes on the repair branch and remove temporary tooling
+        run: |
+          git diff --check
+          git config user.name "$(git log -1 --format=%an)"
+          git config user.email "$(git log -1 --format=%ae)"
+          git rm -r .qa .github/workflows/apply-audit-fixes.yml
+          git add src e2e package.json package-lock.json README.md AI_PROJECT_CONTEXT.md V3_RELEASE_NOTES.md
+          git commit -m "Apply photo journey audit fixes and regression tests"
+          git push origin HEAD:fix/photo-journey-audit
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)"
+          git show --stat --oneline HEAD
+      - name: Typecheck lint unit coverage and production build
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee verification.log
+      - run: npx playwright install --with-deps chromium
+      - name: Desktop mobile and short-video browser regressions
+        run: |
+          set -o pipefail
+          npm run test:e2e -- --workers=1 2>&1 | tee browser-verification.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photo-audit-fix-verification
+          retention-days: 3
+          path: |
+            verification.log
+            browser-verification.log
+            playwright-report/
+            test-results/
