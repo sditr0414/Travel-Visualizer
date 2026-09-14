@@ -35,7 +35,7 @@ const PHOTO_BODY = Buffer.from(
 );
 
 export async function loadLocalTimeline(page: Page, options: { real?: boolean } = {}): Promise<void> {
-  const input = page.getByLabel('Timeline JSON 선택', { exact: true });
+  const input = page.getByLabel('타임라인 파일 열기', { exact: true });
   if (options.real) {
     const path = process.env.REAL_TIMELINE_JSON;
     if (!path) throw new Error('REAL_TIMELINE_JSON is required for the real Timeline E2E case.');

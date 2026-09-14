@@ -57,7 +57,7 @@ export class PlayerController {
   private lastTickAt = 0;
   private lastCamera: { center: Coordinate; zoom: number } | null = null;
   private lastFrame: PlaybackFrame | null = null;
-  private transition: { from: { center: Coordinate; zoom: number }; to: { center: Coordinate; zoom: number }; elapsed: number; duration: number; wideZoom: number } | null = null;
+  private transition: { from: { center: Coordinate; zoom: number }; position: Coordinate | null; startSec: number; duration: number } | null = null;
   private lastGeometryAt = -Infinity;
   private lastGeometryPosition = -1;
   private frameIndex = -1;
@@ -165,7 +165,7 @@ export class PlayerController {
       (haversineMeters(actualCenter, this.lastCamera.center) > 5 || Math.abs(actualZoom - this.lastCamera.zoom) > 0.05)) {
       const destination = this.lastCamera;
       this.lastCamera = { center: { lng: actualCenter.lng, lat: actualCenter.lat }, zoom: actualZoom };
-      this.beginTransition(destination, '현재 재생 위치로 이동 중');
+      this.beginTransition(destination, false);
     }
     this.lastTickAt = performance.now();
     this.tick(performance.now());
@@ -242,14 +242,9 @@ export class PlayerController {
     // Content time is preserved instead of skipping unseen route sections.
     const dt = clamp((now - this.lastTickAt) / 1000, 0, 0.05);
     this.lastTickAt = now;
-    if (this.transition) {
-      this.renderTransition(dt);
-      this.raf = requestAnimationFrame(this.tick);
-      return;
-    }
     this.timeSec = Math.min(this.timeSec + dt, this.getDuration());
     this.renderForTime();
-    if (!this.transition && this.timeSec >= this.getDuration()) {
+    if (this.timeSec >= this.getDuration()) {
       this.pause();
       this.callbacks.onComplete?.();
       return;
@@ -286,12 +281,12 @@ export class PlayerController {
   ): void {
     if (!this.plan?.frames.length) return;
     const clampedPosition = clamp(framePosition, 0, this.plan.frames.length - 1);
-    if (!force && Math.abs(clampedPosition - this.framePosition) < 0.001) return;
+    if (!force && !this.transition && Math.abs(clampedPosition - this.framePosition) < 0.001) return;
     const baseIndex = Math.floor(clampedPosition);
     const nextIndex = Math.min(baseIndex + 1, this.plan.frames.length - 1);
     const mix = clampedPosition - baseIndex;
     const baseFrame = this.plan.frames[baseIndex];
-    const frame = interpolatePlaybackFrame(baseFrame, this.plan.frames[nextIndex], mix, this.plan);
+    let frame = interpolatePlaybackFrame(baseFrame, this.plan.frames[nextIndex], mix, this.plan);
     let center: Coordinate;
     let zoom = frame.zoom;
     if (frame.kind !== 'TRAVEL') {
@@ -345,10 +340,21 @@ export class PlayerController {
       ? haversineMeters(this.plan.segments[previous.segmentIndex].end, this.plan.segments[frame.segmentIndex].start) : 0;
     const changesScene = previous?.kind === 'TRAVEL' && frame.kind === 'TRAVEL' && previous.sceneId !== frame.sceneId;
     const beginsOverview = previous?.kind === 'TRAVEL' && frame.kind === 'OUTRO';
-    this.lastFrame = frame;
     if (this.playing && this.lastCamera && (gap > 30 || changesScene || beginsOverview)) {
-      this.beginTransition({ center, zoom }, beginsOverview ? '여행 전체 경로로 이동 중' : '기록이 끊긴 구간 · 다음 위치로 이동 중');
-      return;
+      this.beginTransition({ center, zoom }, !beginsOverview);
+    }
+    this.lastFrame = frame;
+    const blending = Boolean(this.transition);
+    if (this.transition) {
+      const blend = this.transition;
+      const ratio = clamp((this.timeSec - blend.startSec) / blend.duration, 0, 1);
+      const t = ratio * ratio * (3 - 2 * ratio);
+      center = interpolateCoordinate(blend.from.center, center, t);
+      zoom = lerp(blend.from.zoom, zoom, t);
+      if (frame.kind === 'TRAVEL' && blend.position) {
+        frame = { ...frame, position: interpolateCoordinate(blend.position, frame.position, t) };
+      }
+      if (ratio >= 1) this.transition = null;
     }
     this.lastCamera = { center, zoom };
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
@@ -357,13 +363,13 @@ export class PlayerController {
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
 
-    const geometryChanged = this.lastGeometryPosition !== clampedPosition;
+    const geometryChanged = this.lastGeometryPosition !== clampedPosition || blending;
     if (!this.playing || (geometryChanged && this.timeSec - this.lastGeometryAt >= 1 / 30)) {
       this.lastGeometryAt = this.timeSec;
       this.lastGeometryPosition = clampedPosition;
       if (frame.kind === 'TRAVEL') {
-        this.setSource('route-progress', trailForFrame(this.plan, baseIndex));
-        this.setSource('route-head', headForFrame(frame));
+        this.setSource('route-progress', trailForFrame(this.plan, baseIndex, frame));
+        this.setSource('route-head', this.plan.segments[frame.segmentIndex]?.hideRoute ? emptyCollection() : headForFrame(frame));
       } else {
         this.setSource('route-progress', this.fullRouteData);
         this.setSource('route-head', emptyCollection());
@@ -375,48 +381,20 @@ export class PlayerController {
   }
 
   private cancelTransition(): void {
-    if (this.transition) this.callbacks.onTransitionChange?.(null);
     this.transition = null;
     this.lastGeometryAt = -Infinity;
     this.lastGeometryPosition = -1;
   }
 
-  private beginTransition(to: { center: Coordinate; zoom: number }, message: string): void {
-    const from = this.lastCamera!;
-    const a = mercatorProject(from.center);
-    const b = mercatorProject({ ...to.center, lng: from.center.lng + shortestLongitudeDelta(from.center.lng, to.center.lng) });
-    const canvas = this.map.getCanvas?.();
-    const fitZoom = Math.log2(Math.min(
-      (canvas?.clientWidth || 1024) / (512 * Math.max(Math.abs(b.x - a.x), 1e-9)),
-      (canvas?.clientHeight || 768) / (512 * Math.max(Math.abs(b.y - a.y), 1e-9))
-    ) * 0.6);
-    this.transition = { from, to, elapsed: 0, duration: 2, wideZoom: Math.max(2, Math.min(from.zoom, to.zoom, fitZoom)) };
-    // A missing recording is a camera transfer, never a fabricated travel line.
-    this.setSource('route-head', emptyCollection());
-    this.setSource('route-progress', emptyCollection());
+  private beginTransition(to: { center: Coordinate; zoom: number }, moveHead: boolean): void {
+    if (!this.lastCamera) return;
+    this.transition = {
+      from: this.lastCamera,
+      position: moveHead && this.lastFrame?.kind === 'TRAVEL' ? this.lastFrame.position : null,
+      startSec: this.timeSec,
+      duration: Math.max(1 / (this.plan?.fps || 60), Math.min(2, this.getDuration() - this.timeSec))
+    };
     warmMapTilesAhead(this.map, to.center, to.zoom);
-    this.callbacks.onTransitionChange?.(message);
-  }
-
-  private renderTransition(dt: number): void {
-    const transition = this.transition!;
-    transition.elapsed += dt;
-    const progress = Math.min(1, transition.elapsed / transition.duration);
-    const smooth = (value: number) => value * value * (3 - 2 * value);
-    // Zoom out first, pan with context, then settle into the next recording.
-    const pan = smooth(clamp((progress - 0.18) / 0.64, 0, 1));
-    const center = interpolateCoordinate(transition.from.center, transition.to.center, pan);
-    const zoom = progress < 0.5
-      ? lerp(transition.from.zoom, transition.wideZoom, smooth(progress * 2))
-      : lerp(transition.wideZoom, transition.to.zoom, smooth((progress - 0.5) * 2));
-    this.lastCamera = { center, zoom };
-    this.map.jumpTo({ center: [center.lng, center.lat], zoom });
-    cameraOwners.set(this.map, this);
-    if (progress >= 1) {
-      this.cancelTransition();
-      this.displayedZoom = transition.to.zoom;
-      this.renderForTime(true);
-    }
   }
 
   private photoJourneyBoost(distanceMeters: number, mobilityClass: MobilityClass): number {
@@ -800,7 +778,7 @@ function fullRoute(plan: PlaybackPlan): object {
   return lineFeatures(travel, plan);
 }
 
-function trailForFrame(plan: PlaybackPlan, index: number): object {
+function trailForFrame(plan: PlaybackPlan, index: number, current?: TravelFrame): object {
   const maxFrames = Math.max(2, Math.round(plan.fps * 4));
   const frames: TravelFrame[] = [];
   for (let cursor = index; cursor >= 0 && frames.length < maxFrames; cursor -= 1) {
@@ -808,7 +786,9 @@ function trailForFrame(plan: PlaybackPlan, index: number): object {
     if (frame.kind !== 'TRAVEL') break;
     frames.push(frame);
   }
-  return lineFeatures(frames.reverse(), plan);
+  frames.reverse();
+  if (current && frames.length) frames[frames.length - 1] = current;
+  return lineFeatures(frames, plan);
 }
 
 function framesDisconnected(plan: PlaybackPlan, a: TravelFrame, b: TravelFrame): boolean {
@@ -818,6 +798,19 @@ function framesDisconnected(plan: PlaybackPlan, a: TravelFrame, b: TravelFrame):
 
 function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan): object {
   if (!frames.length) return emptyCollection();
+  if (frames.some(frame => plan.segments[frame.segmentIndex]?.hideRoute)) {
+    const groups: TravelFrame[][] = [];
+    let group: TravelFrame[] = [];
+    for (const frame of frames) {
+      if (plan.segments[frame.segmentIndex]?.hideRoute) {
+        if (group.length) groups.push(group);
+        group = [];
+      } else group.push(frame);
+    }
+    if (group.length) groups.push(group);
+    return { type: 'FeatureCollection', features: groups.flatMap(items =>
+      (lineFeatures(items, plan) as { features: object[] }).features) };
+  }
   const features: object[] = [];
   let mode = frames[0].mobilityClass;
   let scene = frames[0].sceneId;
