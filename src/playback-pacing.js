@@ -152,6 +152,9 @@ function allocateWithinDay(items, budget, fps) {
 }
 
 function protectedLocalFloor(segment) {
+  if (segment.inferenceSource === 'visual-gap') {
+    return clamp(0.4 + Math.log2(1 + segmentDistanceKm(segment)) * 0.22, 0.4, 2.5);
+  }
   const km = segmentDistanceKm(segment);
   switch (segment.inference?.mobilityClass) {
     case 'FAST_GROUND':

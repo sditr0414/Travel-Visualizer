@@ -23,6 +23,22 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run verify
+      - name: Verify source and build
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee verification.log
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Browser regressions
+        run: |
+          set -o pipefail
+          npm run test:e2e -- --workers=1 2>&1 | tee browser-verification.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-regression-evidence
+          retention-days: 3
+          path: |
+            verification.log
+            browser-verification.log
+            playwright-report/
+            test-results/

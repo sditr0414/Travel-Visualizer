@@ -53,6 +53,8 @@ export interface TimelineScanResult extends TimelineDateRange {
 }
 
 export interface Movement {
+  connectionBefore?: 'excluded-flight';
+  hideRoute?: boolean;
   startMs: number;
   endMs: number;
   start: Coordinate;

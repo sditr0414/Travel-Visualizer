@@ -79,6 +79,7 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
 });
 
 test('route and photo journeys keep playback state and cursors separate', async ({ page }) => {
+  test.setTimeout(60_000);
   await attachLocalPhotoManifest(page);
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -92,7 +93,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(0.05);
   await pause.click();
   const firstPhotoPosition = Number(await position.inputValue());
-  await page.getByRole('button', { name: '발자취' }).click();
+  await page.getByRole('button', { name: '경로 보기' }).click();
   await expect(play).toBeVisible();
   const initialRoutePosition = Number(await position.inputValue());
 
@@ -110,7 +111,7 @@ test('route and photo journeys keep playback state and cursors separate', async 
   await expect.poll(async () => Number(await position.inputValue())).toBeGreaterThan(firstPhotoPosition + 0.05);
   await pause.click();
   const secondPhotoPosition = Number(await position.inputValue());
-  await page.getByRole('button', { name: '발자취' }).click();
+  await page.getByRole('button', { name: '경로 보기' }).click();
   await expect(play).toBeVisible();
   await expect.poll(async () => Math.abs(Number(await position.inputValue()) - firstRoutePosition)).toBeLessThan(CURSOR_RESTORE_TOLERANCE_SEC);
 

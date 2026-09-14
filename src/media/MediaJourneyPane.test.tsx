@@ -79,7 +79,7 @@ describe('MediaJourneyPane', () => {
     />);
 
     const place = container.querySelector('.media-caption-place');
-    expect(place).toHaveTextContent('알 수 없음');
+    expect(place).toHaveTextContent('장소 정보 없음');
     expect(place).not.toHaveTextContent('인천');
     expect(place).not.toHaveTextContent('북도면');
   });
@@ -95,7 +95,7 @@ describe('MediaJourneyPane', () => {
     />);
 
     const place = container.querySelector('.media-caption-place');
-    expect(place).toHaveTextContent('알 수 없음');
+    expect(place).toHaveTextContent('장소 정보 없음');
     expect(place).not.toHaveTextContent('인천');
     expect(place).not.toHaveTextContent('37.456');
     expect(place).not.toHaveTextContent('126.440');
@@ -140,7 +140,7 @@ describe('MediaJourneyPane', () => {
       placeName={null}
     />);
 
-    expect(container.querySelector('.movement-pictogram')).toHaveTextContent('🚗');
+    expect(container.querySelector('.movement-pictogram')).toHaveAttribute('data-mobility', 'ROAD');
     expect(container.querySelector('.movement-mode')).toHaveTextContent('차량');
     expect(container.querySelector('.movement-primary')).toHaveTextContent('3월 18일 (수) 11시');
     expect(container.querySelector('.movement-primary')).toHaveTextContent('82 km/h');
@@ -223,8 +223,8 @@ describe('MediaJourneyPane', () => {
     view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="ROAD" />);
     act(() => vi.advanceTimersByTime(20));
 
-    expect(view.container.querySelector('.media-scene-layer.is-previous .movement-pictogram')).toHaveTextContent('🚶');
-    expect(view.container.querySelector('.media-scene-layer.is-current .movement-pictogram')).toHaveTextContent('🚗');
+    expect(view.container.querySelector('.media-scene-layer.is-previous .movement-pictogram')).toHaveAttribute('data-mobility', 'WALK');
+    expect(view.container.querySelector('.media-scene-layer.is-current .movement-pictogram')).toHaveAttribute('data-mobility', 'ROAD');
     expect(view.container.querySelector('.media-scene-stack')).toHaveAttribute('data-transition-ms', '180');
     vi.useRealTimers();
   });

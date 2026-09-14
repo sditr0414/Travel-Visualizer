@@ -444,7 +444,7 @@ describe('playback continuity', () => {
     p.player.dispose();
   });
 
-  it.each([0, 1])('moves across recording gaps in scene %s without advancing content time and resumes after pause', sceneId => {
+  it.each([0, 1])('keeps the content clock and route visible across old-plan gaps in scene %s', sceneId => {
     const p = playback();
     const plan = simplePlan();
     const first = plan.frames[0];
@@ -456,16 +456,17 @@ describe('playback continuity', () => {
     p.player.loadPlan(plan);
     p.player.play();
     p.tick(50); p.tick(100);
-    expect(p.onTransitionChange).toHaveBeenLastCalledWith('기록이 끊긴 구간 · 다음 위치로 이동 중');
-    expect(p.jumpTo.mock.calls.at(-1)?.[0].center).toEqual([127, 37.5]);
-    p.tick(150);
-    expect(p.jumpTo.mock.calls.at(-1)?.[0].zoom).toBeLessThan(12);
-    p.player.pause();
-    p.player.play();
-    for (let ms = 50; ms <= 2000; ms += 50) p.tick(ms);
-    expect(p.onTransitionChange).toHaveBeenLastCalledWith(null);
+    expect(p.onTransitionChange).not.toHaveBeenCalled();
     expect(p.onFrame.mock.calls.at(-1)?.[2]).toBeCloseTo(0.1, 6);
-    expect(p.jumpTo.mock.calls.at(-1)?.[0].center[0]).toBeCloseTo(129, 6);
+    p.setData.mockClear();
+    p.tick(150); p.tick(200);
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBeCloseTo(0.2, 6);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center[0]).toBeGreaterThan(127);
+    expect(p.jumpTo.mock.calls.at(-1)?.[0].center[0]).toBeLessThan(129);
+    expect(p.setData.mock.calls.every(call => call[0].features.length > 0)).toBe(true);
+    for (let ms = 250; ms <= 1050; ms += 50) p.tick(ms);
+    expect(p.player.isPlaying()).toBe(false);
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBeCloseTo(1, 6);
     p.player.seek(0);
     expect(p.jumpTo.mock.calls.at(-1)?.[0].center).toEqual([127, 37.5]);
     p.player.dispose();
