@@ -59,7 +59,7 @@ export function SettingHelp({ title, description, children }: { title: string; d
       close();
     };
     const scroll = (event: Event) => {
-      if (!bubble.current?.contains(event.target as Node)) close();
+      if (!(event.target instanceof Node) || !bubble.current?.contains(event.target)) close();
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape, true);
