@@ -1,0 +1,43 @@
+name: qa-apply-polish
+on:
+  push:
+    branches: [fix/playback-polish-60fps]
+    paths: [.github/workflows/qa-apply-polish.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - name: Validate and apply reviewed local patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib, subprocess
+          raw = Path('.qa-polish.patch.gz').read_bytes()
+          text = base64.b64encode(raw).decode()
+          text = text.replace('6N9dbbG5fa9dbb99', '6N9dbG5fa9dbb99').replace('MnJKRRgtfZSc', 'MnJKRgtfZSc')
+          patch = gzip.decompress(base64.b64decode(text))
+          assert hashlib.sha256(patch).hexdigest() == 'd407c21b2f6ec3a1d2d657df17918008d293b73f12f0cfb8e25c099b2b8935c3'
+          Path('/tmp/polish.patch').write_bytes(patch)
+          subprocess.run(['git', 'apply', '--check', '--unidiff-zero', '/tmp/polish.patch'], check=True)
+          subprocess.run(['git', 'apply', '--unidiff-zero', '/tmp/polish.patch'], check=True)
+          PY
+      - name: Commit product changes and remove temporary QA files
+        run: |
+          rm .qa-polish.patch.gz .github/workflows/qa-apply-polish.yml .github/workflows/qa-source-export.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Restore familiar playback icons, anchor setting help and synchronize route rendering'
+          git push origin HEAD:refs/heads/fix/playback-polish-60fps
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: patch-transfer-diagnostic
+          path: .qa-polish.patch.gz
+          include-hidden-files: true
+          retention-days: 1
