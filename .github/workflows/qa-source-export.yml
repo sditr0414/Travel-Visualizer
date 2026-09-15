@@ -1,0 +1,22 @@
+name: qa-source-export
+on:
+  push:
+    branches: [fix/playback-polish-60fps]
+    paths: [.github/workflows/qa-source-export.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 9de71b659fbbb515935e759d1bd53d290ae7e1a9
+          persist-credentials: false
+      - run: git archive --format=tar.gz HEAD -o source-snapshot.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot
+          path: source-snapshot.tgz
+          retention-days: 1
