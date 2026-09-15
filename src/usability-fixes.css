@@ -76,7 +76,7 @@
 .setting-help-anchor { display: inline-block; max-width: 100%; border-radius: 3px; touch-action: manipulation; }
 .setting-help-anchor:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .movement-pictogram { display: grid; place-items: center; width: 1em; height: 1em; filter: none; color: var(--paper); }
-.movement-pictogram svg { display: block; width: 100%; height: 100%; }
+.movement-pictogram { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", emoji; font-weight: 400; font-style: normal; font-variant-emoji: emoji; }
 .media-caption, .movement-primary, .media-day-marker, .timeline-meta { font-family: inherit; }
 .media-caption-place, .media-caption-date { overflow-wrap: anywhere; }
 .media-day-marker { min-height: 0; }
@@ -113,3 +113,10 @@
   .movement-mode { font-size: 18px; }
   .local-import-panel { max-height: calc(100dvh - 90px); overflow-y: auto; }
 }
+
+/* Icon-only controls retain accessible names and full-size touch targets. */
+.player-dock, .photo-mode .player-dock { grid-template-columns: 44px 44px minmax(0, 1fr); }
+.play-control, .secondary-control, .photo-mode .secondary-control { width: 44px; min-width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+.play-control svg { flex-shrink: 0; }
+.setting-tooltip { box-sizing: border-box; margin: 0; transform: none; transition: none; overflow-wrap: anywhere; overscroll-behavior: contain; }
+.setting-tooltip[hidden], .route-playback-overlay[hidden] { display: none; }

@@ -1,4 +1,4 @@
-import { Accessibility, Bike, Car, CircleHelp, Film, ImageOff, ImagePlus, Plane, Play, Ship, TrainFront, TramFront, type LucideIcon } from 'lucide-react';
+import { Film, ImageOff, ImagePlus, Play } from 'lucide-react';
 import { videoTargetTime } from './video-sync';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { dayMarkerCueFromId } from './day-markers';
@@ -131,7 +131,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
     const movement = MOVEMENT_VISUALS[scene.mobilityClass];
     return (
       <div className="media-transit">
-        <span className="movement-pictogram" data-mobility={scene.mobilityClass} aria-hidden="true"><movement.icon strokeWidth={1.6} /></span>
+        <span className="movement-pictogram" data-mobility={scene.mobilityClass} aria-hidden="true">{movement.emoji}</span>
         <div className="movement-primary">
           <time className="movement-date">{scene.movementDate}</time>
           <span className="movement-speed">{scene.movementSpeed}</span>
@@ -180,15 +180,15 @@ function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted, playing,
   );
 }
 
-const MOVEMENT_VISUALS: Record<MobilityClass, { icon: LucideIcon; label: string }> = {
-  WALK: { icon: Accessibility, label: '도보' },
-  BIKE: { icon: Bike, label: '자전거' },
-  URBAN_TRANSIT: { icon: TramFront, label: '대중교통' },
-  FAST_GROUND: { icon: TrainFront, label: '기차' },
-  FERRY: { icon: Ship, label: '페리' },
-  FLIGHT: { icon: Plane, label: '비행기' },
-  ROAD: { icon: Car, label: '차량' },
-  UNKNOWN: { icon: CircleHelp, label: '기타' }
+const MOVEMENT_VISUALS: Record<MobilityClass, { emoji: string; label: string }> = {
+  WALK: { emoji: '🚶', label: '도보' },
+  BIKE: { emoji: '🚲', label: '자전거' },
+  URBAN_TRANSIT: { emoji: '🚇', label: '대중교통' },
+  FAST_GROUND: { emoji: '🚆', label: '기차' },
+  FERRY: { emoji: '🚢', label: '페리' },
+  FLIGHT: { emoji: '✈️', label: '비행기' },
+  ROAD: { emoji: '🚗', label: '차량' },
+  UNKNOWN: { emoji: '🧭', label: '기타' }
 };
 
 function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean; playing: boolean; elapsedSec: number }) {

@@ -2,7 +2,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MediaJourneyPane } from './MediaJourneyPane';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
-import type { JourneyMedia } from '../types';
+import type { JourneyMedia, MobilityClass } from '../types';
 
 const media: JourneyMedia = {
   id: 'photo-1',
@@ -39,6 +39,15 @@ const baseProps = {
 };
 
 describe('MediaJourneyPane', () => {
+  it.each([['WALK', '🚶'], ['BIKE', '🚲'], ['URBAN_TRANSIT', '🚇'], ['FAST_GROUND', '🚆'], ['FERRY', '🚢'], ['FLIGHT', '✈️'], ['ROAD', '🚗'], ['UNKNOWN', '🧭']])('uses a recognizable emoji for %s', async (mode, emoji) => {
+    const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass={mode as MobilityClass} />);
+    await act(async () => { await Promise.resolve(); });
+    const icon = view.container.querySelector('.movement-pictogram');
+    expect(icon).toHaveTextContent(emoji);
+    expect(icon?.querySelector('svg')).toBeNull();
+    expect(icon).not.toHaveTextContent('♿');
+  });
+
   it('shows coarse place before a Korean-unit timestamp without a place icon', () => {
     const { container } = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} />);
 

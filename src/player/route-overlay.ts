@@ -70,7 +70,7 @@ export function updateRouteOverlay(map: MapLibreMap, owner: object, plan: Playba
     if (!context) return false;
     canvas.className = 'route-playback-overlay';
     canvas.setAttribute('aria-hidden', 'true');
-    Object.assign(canvas.style, { position: 'absolute', left: '0', top: '0', pointerEvents: 'none' });
+    Object.assign(canvas.style, { position: 'absolute', left: '0', top: '0', pointerEvents: 'none', zIndex: '1' });
     map.getCanvasContainer().appendChild(canvas);
     const ctx = context;
     const entry: Overlay = {

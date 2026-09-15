@@ -73,4 +73,6 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 - 명시적으로 제외한 항공 사이의 연결은 `hideRoute`로 표시해 비행 선을 재생성하지 않습니다.
 - AUTO의 확대 bias는 비행 전후에 0.85초 envelope로 연결합니다. 기존 center/zoom 경로에 두 번째 추적 필터를 추가하지 않습니다.
 - UI 분할 기준은 820px, canvas는 100dvh/min-height 0입니다. 열린 설정은 재생바보다 위에 표시합니다.
-- 폰트는 @fontsource-variable/noto-sans-kr의 번들 파일, 픽토그램은 Lucide SVG를 사용합니다. 개인 데이터·폰트 다운로드를 외부 API로 보내지 않습니다.
+- UI 폰트는 @fontsource-variable/noto-sans-kr의 번들 파일입니다. 이동수단은 사용자 요청에 따라 걷는 사람·기차·배 등 컬러 이모지를 사용하며, 접근성/휠체어 아이콘을 도보로 사용하지 않습니다. 재생/일시정지는 화면 글자 없이 아이콘과 aria-label로 제공합니다.
+- 설정명만 도움말의 시각적 트리거입니다. 포커스가 입력으로 이동하거나 스크롤/설정 닫힘이 발생하면 설명을 닫고, 한 번에 하나만 표시합니다. portal 위치는 실제 크기·visual viewport·패널 진입 애니메이션을 고려합니다.
+- 움직이는 4초 경로와 현재 위치는 MapLibre public render/project/getCanvasContainer 기반 2D overlay에서 같은 프레임에 그립니다. GeoJSON worker에 매 프레임 재전송하지 않습니다. 전체 경로/OUTRO는 기존 레이어를 유지하고 hideRoute·모드별 ownership·날짜 변경선을 보존합니다. 60Hz/120Hz는 갱신 계약이며 모든 기기의 실측 FPS를 보장하지 않습니다.

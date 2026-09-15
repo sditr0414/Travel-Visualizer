@@ -4,6 +4,7 @@ import { warmMapTilesAhead } from '../map/tile-warmup';
 import { isDayMarkerId } from '../media/day-markers';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 import { heldMediaStopId } from './media-bridge';
+import { releaseRouteOverlay, updateRouteOverlay } from './route-overlay';
 
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
 const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
@@ -58,7 +59,7 @@ export class PlayerController {
   private lastCamera: { center: Coordinate; zoom: number } | null = null;
   private lastFrame: PlaybackFrame | null = null;
   private transition: { from: { center: Coordinate; zoom: number }; position: Coordinate | null; startSec: number; duration: number } | null = null;
-  private lastGeometryAt = -Infinity;
+  private routeGeometryKind: PlaybackFrame['kind'] | null = null;
   private lastGeometryPosition = -1;
   private frameIndex = -1;
   private framePosition = -1;
@@ -89,9 +90,9 @@ export class PlayerController {
     this.cancelTransition();
     this.lastCamera = null;
     this.lastFrame = null;
-    this.lastGeometryAt = -Infinity;
     this.lastGeometryPosition = -1;
     this.plan = plan;
+    this.routeGeometryKind = null;
     this.timeSec = 0;
     this.frameIndex = -1;
     this.framePosition = -1;
@@ -214,6 +215,7 @@ export class PlayerController {
   dispose(): void {
     this.pause();
     this.cancelTransition();
+    releaseRouteOverlay(this.map, this);
     if (cameraOwners.get(this.map) === this) cameraOwners.delete(this.map);
     this.plan = null;
     this.stops = [];
@@ -356,6 +358,7 @@ export class PlayerController {
       }
       if (ratio >= 1) this.transition = null;
     }
+    const ownedGeometry = this.ownsCamera();
     this.lastCamera = { center, zoom };
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
     cameraOwners.set(this.map, this);
@@ -364,17 +367,26 @@ export class PlayerController {
     this.framePosition = clampedPosition;
 
     const geometryChanged = this.lastGeometryPosition !== clampedPosition || blending;
-    if (!this.playing || (geometryChanged && this.timeSec - this.lastGeometryAt >= 1 / 30)) {
-      this.lastGeometryAt = this.timeSec;
-      this.lastGeometryPosition = clampedPosition;
+    const overlay = updateRouteOverlay(this.map, this, this.plan, clampedPosition, frame, COLORS);
+    if (overlay) {
+      // Moving geometry stays out of the GeoJSON worker. Sources change
+      // only when ownership changes or we enter/leave the static outro.
+      if (!ownedGeometry || this.routeGeometryKind !== frame.kind) {
+        this.setSource('route-progress', frame.kind === 'TRAVEL' ? emptyCollection() : this.fullRouteData);
+        this.setSource('route-head', emptyCollection());
+      }
+    } else if (!this.playing || geometryChanged) {
+      // Non-DOM consumers keep the same geometry, without a 30 Hz cap.
       if (frame.kind === 'TRAVEL') {
         this.setSource('route-progress', trailForFrame(this.plan, baseIndex, frame));
         this.setSource('route-head', this.plan.segments[frame.segmentIndex]?.hideRoute ? emptyCollection() : headForFrame(frame));
-      } else {
+      } else if (this.routeGeometryKind !== frame.kind || !ownedGeometry) {
         this.setSource('route-progress', this.fullRouteData);
         this.setSource('route-head', emptyCollection());
       }
     }
+    this.routeGeometryKind = frame.kind;
+    this.lastGeometryPosition = clampedPosition;
     const stop = activeStopId ? this.stopById.get(activeStopId) : null;
     const elapsed = stop ? clamp(this.timeSec - stop.journeyStartSec, 0, stop.durationSec) : 0;
     this.callbacks.onFrame?.(zoom === frame.zoom ? frame : { ...frame, zoom }, baseIndex, this.timeSec, activeStopId, elapsed);
@@ -382,7 +394,6 @@ export class PlayerController {
 
   private cancelTransition(): void {
     this.transition = null;
-    this.lastGeometryAt = -Infinity;
     this.lastGeometryPosition = -1;
   }
 
