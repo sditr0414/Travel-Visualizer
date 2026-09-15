@@ -963,9 +963,9 @@ export function App({ workerClient }: AppProps) {
       {state.plan && state.phase === 'playing' && <div className="player-reveal-zone" aria-hidden="true" {...playbackChrome.revealZoneProps} />}
       {state.plan && <footer className="player-dock" aria-label="재생 컨트롤" {...playbackChrome.interactionProps}>
         <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기"><RotateCcw size={17} /></button>
-        <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}>
+        <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}
+          aria-label={state.phase === 'playing' ? '일시정지' : '재생'} title={state.phase === 'playing' ? '일시정지' : '재생'}>
           {state.phase === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-          <span>{state.phase === 'playing' ? '일시정지' : '재생'}</span>
         </button>
         <div className="timeline-control">
           <input

@@ -122,7 +122,6 @@ function ensureRouteLayers(map: Map): void {
   const empty = { type: 'FeatureCollection', features: [] } as const;
   if (!map.getSource('route-all')) map.addSource('route-all', { type: 'geojson', data: empty });
   if (!map.getSource('route-progress')) map.addSource('route-progress', { type: 'geojson', data: empty });
-  if (!map.getSource('route-head')) map.addSource('route-head', { type: 'geojson', data: empty });
 
   map.addLayer({
     id: 'route-all',
@@ -138,6 +137,8 @@ function ensureRouteLayers(map: Map): void {
     id: 'route-progress',
     type: 'line',
     source: 'route-progress',
+    filter: ['==', ['geometry-type'], 'LineString'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': ['coalesce', ['get', 'color'], '#ff6b55'],
       'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 12, 6],
@@ -147,7 +148,8 @@ function ensureRouteLayers(map: Map): void {
   map.addLayer({
     id: 'route-head',
     type: 'circle',
-    source: 'route-head',
+    source: 'route-progress',
+    filter: ['==', ['geometry-type'], 'Point'],
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 3, 4.5, 12, 7],
       'circle-color': '#fff7ee',

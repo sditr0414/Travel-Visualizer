@@ -43,4 +43,20 @@ describe('setting-name help', () => {
     fireEvent.pointerDown(document.body);
     expect(tip).toHaveAttribute('hidden');
   });
+  it('keeps only the most recently hovered setting explanation open', () => {
+    const { title, tip } = setup();
+    render(<SettingHelp title="지도 보기" description="보기 설명"><label>지도 보기<select /></label></SettingHelp>);
+    fireEvent.click(title);
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '지도 보기 설명' }));
+    expect(tip).toHaveAttribute('hidden');
+    expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+  });
+  it('does not reopen a dismissed explanation when a control receives pointer focus', () => {
+    const { title, field, tip } = setup();
+    fireEvent.click(title);
+    fireEvent.pointerDown(field);
+    fireEvent.focus(field);
+    expect(tip).toHaveAttribute('hidden');
+  });
+
 });

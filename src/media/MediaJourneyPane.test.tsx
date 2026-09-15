@@ -148,6 +148,18 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });
 
+
+  it.each([
+    ['WALK', '🚶'], ['BIKE', '🚲'], ['URBAN_TRANSIT', '🚇'], ['FAST_GROUND', '🚆'],
+    ['FERRY', '⛴️'], ['FLIGHT', '✈️'], ['ROAD', '🚗'], ['UNKNOWN', '●']
+  ] as const)('uses a recognizable emoji for %s rather than an accessibility symbol', async (mobilityClass, icon) => {
+    const { container } = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass={mobilityClass} />);
+    await act(async () => {});
+    const pictogram = container.querySelector('.movement-pictogram');
+    expect(pictogram).toHaveTextContent(icon);
+    expect(pictogram?.querySelector('svg')).toBeNull();
+  });
+
   it('preloads upcoming photos and holds the previous scene until the active photo is decoded', async () => {
     const nativeImage = globalThis.Image;
     const preloadImages: MockPreloadImage[] = [];
