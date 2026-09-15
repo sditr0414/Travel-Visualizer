@@ -26,7 +26,10 @@ test('icon-only playback controls and familiar walking emoji remain accessible',
   await testInfo.attach('walking-and-controls', { body: await page.screenshot(), contentType: 'image/png' });
 });
 
-test('help follows the animated label and closes when its setting scrolls away', async ({ page }, testInfo) => {
+test('help follows the animated label and closes when its setting scrolls away', async ({ page, isMobile }, testInfo) => {
+  // A tall desktop panel can keep this label visible even at maximum scroll.
+  // Use a genuinely scrollable viewport and assert the label has left its clip.
+  if (!isMobile) await page.setViewportSize({ width: 1440, height: 600 });
   await page.goto('/');
   await loadLocalTimeline(page);
   await page.locator('.settings-panel summary').click();
@@ -52,6 +55,11 @@ test('help follows the animated label and closes when its setting scrolls away',
   await expect(tip).toHaveCount(1);
   await expect(tip).toContainText('왼쪽은 넓게');
   await page.locator('.settings-content').evaluate(node => { node.scrollTop = node.scrollHeight; });
+  await expect.poll(() => page.getByRole('button', { name: '지도 확대 설명', exact: true }).evaluate(node => {
+    const label = node.getBoundingClientRect();
+    const clip = node.closest('.settings-content')!.getBoundingClientRect();
+    return label.bottom <= clip.top;
+  })).toBe(true);
   await expect(tip).toBeHidden();
   await page.locator('.settings-panel summary').click();
   await expect(tip).toBeHidden();
