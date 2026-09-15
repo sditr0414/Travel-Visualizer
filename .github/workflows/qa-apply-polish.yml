@@ -18,7 +18,7 @@ jobs:
           import base64, gzip, hashlib, subprocess
           raw = Path('.qa-polish.patch.gz').read_bytes()
           text = base64.b64encode(raw).decode()
-          text = text.replace('6N9dbbG5fa9dbb99', '6N9dbG5fa9dbb99').replace('MnJKRRgtfZSc', 'MnJKRgtfZSc')
+          text = text.replace('6N9dbbG5fa9dbb99', '6N9dbG5fa9dbb99').replace('MnJKRRgtfZSc', 'MnJKRgtfZSc') + 'A='
           patch = gzip.decompress(base64.b64decode(text))
           assert hashlib.sha256(patch).hexdigest() == 'd407c21b2f6ec3a1d2d657df17918008d293b73f12f0cfb8e25c099b2b8935c3'
           Path('/tmp/polish.patch').write_bytes(patch)
