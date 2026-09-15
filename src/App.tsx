@@ -851,17 +851,17 @@ export function App({ workerClient }: AppProps) {
               <SettingHelp title="정확한 장소 온라인 확인" description={placeLookupStatus.available
                 ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다. 사진 원본과 Timeline은 보내지 않으며 결과는 이 PC에 캐시합니다.`
                 : '서버에 Nominatim 호환 역지오코딩 주소를 설정하면 사용할 수 있습니다. 개인정보 때문에 외부 장소 서비스는 기본으로 연결하지 않습니다.'}>
-                <label><input
+                <div className="setting-checkbox"><input
                   type="checkbox"
                   aria-label="정확한 장소 온라인 확인"
                   checked={placeLookupStatus.available && onlinePlaceLookup}
                   disabled={!placeLookupStatus.available}
                   onChange={event => updatePreference('onlinePlaceLookup', event.target.checked)}
-                /><span>정확한 장소 온라인 확인{placeLookupStatus.available && placeLookupStatus.provider ? ` · ${placeLookupStatus.provider}` : ' · 설정 필요'}</span></label>
+                /><span>정확한 장소 온라인 확인{placeLookupStatus.available && placeLookupStatus.provider ? ` · ${placeLookupStatus.provider}` : ' · 설정 필요'}</span></div>
               </SettingHelp>
             </div>
             <div className="toggle-list photo-day-toggle">
-              <SettingHelp title="날짜 변경 표시" description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다."><label><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></label></SettingHelp>
+              <SettingHelp title="날짜 변경 표시" description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다."><div className="setting-checkbox"><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></div></SettingHelp>
             </div>
             {showDayMarkers && <><SettingHelp title="날짜 표시 시간" description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다."><label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
               <input aria-description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다." aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => updatePreference('dayMarkerSec', Number(event.target.value))} />
@@ -873,7 +873,7 @@ export function App({ workerClient }: AppProps) {
             </label></SettingHelp>
             {videoMode === 'PLAY' && <>
               <div className="toggle-list">
-                <SettingHelp title="영상 소리 재생" description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요."><label><input type="checkbox" aria-description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요." aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></label></SettingHelp>
+                <SettingHelp title="영상 소리 재생" description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요."><div className="setting-checkbox"><input type="checkbox" aria-description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요." aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></div></SettingHelp>
               </div>
               <SettingHelp title="영상 최대 재생" description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다."><label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
                 <input aria-description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다." type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
@@ -936,8 +936,8 @@ export function App({ workerClient }: AppProps) {
           </label></SettingHelp>
 
           <div className="toggle-list">
-            <SettingHelp title="항공 경로 포함" description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><label><input type="checkbox" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></label></SettingHelp>
-            <SettingHelp title="현재 위치 따라가기" description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다."><label><input type="checkbox" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></label></SettingHelp>
+            <SettingHelp title="항공 경로 포함" description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
+            <SettingHelp title="현재 위치 따라가기" description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
           </div>
 
 

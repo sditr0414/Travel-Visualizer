@@ -617,9 +617,9 @@ export function stabilizeTileZoomBoundary(zoom: number, currentLevel: number | n
     return { zoom: target, level };
   }
 
-  const targetLevel = Math.floor(target);
-  if (targetLevel > level) return { zoom: Math.min(target, level + 0.999), level };
-  if (targetLevel < level) return { zoom: Math.max(target, level + 0.001), level };
+  // Hysteresis may retain a bookkeeping level, never the visible camera zoom.
+  // Holding at n +/- .001 then releasing at n +/- .07 made every integer
+  // crossing freeze and jump even when playback was rendering at display rate.
   return { zoom: target, level };
 }
 

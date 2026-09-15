@@ -34,6 +34,29 @@ describe('App integration', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('changes checkbox settings only from the checkbox, never its row or help name', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(), dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.click(screen.getByText('여행 설정'));
+    for (const name of ['항공 경로 포함', '현재 위치 따라가기']) {
+      const checkbox = screen.getByRole('checkbox', { name }) as HTMLInputElement;
+      const initial = checkbox.checked;
+      fireEvent.click(checkbox.parentElement!);
+      expect(checkbox.checked).toBe(initial);
+      fireEvent.click(screen.getByRole('button', { name: `${name} 설명` }));
+      expect(checkbox.checked).toBe(initial);
+      expect(checkbox.closest('label')).toBeNull();
+      fireEvent.click(checkbox);
+      expect(checkbox.checked).toBe(!initial);
+    }
+  });
+
   it('automatically loads the configured local Timeline', async () => {
     const contents = '{"semanticSegments":[]}';
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
