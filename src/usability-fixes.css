@@ -68,15 +68,17 @@
 .topbar-actions, .mode-switch, .mode-switch button, .import-button { flex-shrink: 0; }
 .mode-switch button, .import-button, .settings-panel summary { white-space: nowrap; }
 .topbar, .topbar-actions, .timeline-control { min-width: 0; }
-.player-dock { grid-template-columns: 42px 96px minmax(0, 1fr); }
-.photo-mode .player-dock { grid-template-columns: 38px 80px minmax(0, 1fr); gap: 7px; }
+.player-dock { grid-template-columns: 44px 44px minmax(0, 1fr); }
+.photo-mode .player-dock { grid-template-columns: 44px 44px minmax(0, 1fr); gap: 7px; }
 .photo-mode .secondary-control { width: 38px; }
 .trip-candidate-picker { min-width: 0; }
 .trip-candidate-picker select { width: 100%; min-width: 0; min-height: 44px; text-overflow: ellipsis; }
-.setting-help-anchor { display: inline-block; max-width: 100%; border-radius: 3px; touch-action: manipulation; }
+.setting-help-anchor { justify-self: start; width: fit-content; display: inline-block; max-width: 100%; border-radius: 3px; touch-action: manipulation; }
 .setting-help-anchor:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .movement-pictogram { display: grid; place-items: center; width: 1em; height: 1em; filter: none; color: var(--paper); }
-.movement-pictogram svg { display: block; width: 100%; height: 100%; }
+.movement-pictogram { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-weight: 400; font-variant-emoji: emoji; line-height: 1; }
+.play-control { width: 44px; min-height: 44px; padding: 0; }
+.setting-tooltip[hidden] { display: none; }
 .media-caption, .movement-primary, .media-day-marker, .timeline-meta { font-family: inherit; }
 .media-caption-place, .media-caption-date { overflow-wrap: anywhere; }
 .media-day-marker { min-height: 0; }
@@ -92,7 +94,7 @@
   .photo-mode .topbar { justify-content: flex-start; }
   .mode-switch button { padding: 0 8px; }
   .settings-panel summary { font-size: 13px; }
-  .player-dock, .photo-mode .player-dock { grid-template-columns: 40px 82px minmax(0, 1fr); }
+  .player-dock, .photo-mode .player-dock { grid-template-columns: 44px 44px minmax(0, 1fr); }
   .photo-mode .player-dock, .photo-mode .player-reveal-zone {
     left: 50%; width: calc(100vw - 20px);
     bottom: calc(100% - var(--photo-map-share, 34%) + 10px);
