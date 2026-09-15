@@ -8,15 +8,22 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
         with:
           ref: 9de71b659fbbb515935e759d1bd53d290ae7e1a9
           persist-credentials: false
-      - run: git archive --format=tar.gz HEAD -o source-snapshot.tgz
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: |
+          mkdir -p qa-bin
+          cp "$(command -v node)" qa-bin/node
+          tar -czf qa-dependencies.tgz node_modules qa-bin/node
       - uses: actions/upload-artifact@v4
         with:
-          name: source-snapshot
-          path: source-snapshot.tgz
+          name: qa-dependencies
+          path: qa-dependencies.tgz
           retention-days: 1
