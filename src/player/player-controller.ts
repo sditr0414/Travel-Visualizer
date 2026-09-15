@@ -58,7 +58,6 @@ export class PlayerController {
   private lastCamera: { center: Coordinate; zoom: number } | null = null;
   private lastFrame: PlaybackFrame | null = null;
   private transition: { from: { center: Coordinate; zoom: number }; position: Coordinate | null; startSec: number; duration: number } | null = null;
-  private lastGeometryAt = -Infinity;
   private lastGeometryPosition = -1;
   private frameIndex = -1;
   private framePosition = -1;
@@ -89,7 +88,6 @@ export class PlayerController {
     this.cancelTransition();
     this.lastCamera = null;
     this.lastFrame = null;
-    this.lastGeometryAt = -Infinity;
     this.lastGeometryPosition = -1;
     this.plan = plan;
     this.timeSec = 0;
@@ -108,7 +106,6 @@ export class PlayerController {
     this.stableFlightZooms = buildStableFlightZooms(plan);
     this.setSource('route-all', this.fullRouteData);
     this.setSource('route-progress', emptyCollection());
-    this.setSource('route-head', emptyCollection());
     this.render(0, true);
   }
 
@@ -323,7 +320,8 @@ export class PlayerController {
         zoom += this.stabilizePhotoStopZoomBoost(stopBoostTarget, this.timeSec);
       }
     }
-    zoom = applyUserZoomOffset(zoom + this.viewportZoomAdjustment(), this.zoomOffset);
+    const viewportAdjustment = this.viewportZoomAdjustment();
+    zoom = applyUserZoomOffset(zoom + viewportAdjustment, this.zoomOffset);
     if (this.lockToPosition) {
       zoom = this.stabilizeZoom(zoom, this.timeSec);
     } else {
@@ -359,20 +357,21 @@ export class PlayerController {
     this.lastCamera = { center, zoom };
     this.map.jumpTo({ center: [center.lng, center.lat], zoom });
     cameraOwners.set(this.map, this);
-    this.warmTilesAhead();
+    this.warmTilesAhead(viewportAdjustment);
     this.frameIndex = baseIndex;
     this.framePosition = clampedPosition;
 
     const geometryChanged = this.lastGeometryPosition !== clampedPosition || blending;
-    if (!this.playing || (geometryChanged && this.timeSec - this.lastGeometryAt >= 1 / 30)) {
-      this.lastGeometryAt = this.timeSec;
+    // A separate 30 Hz geometry clock made the trail lag behind the rAF camera.
+    // Keep one bounded (four-second) source update per rendered playback frame.
+    if (!this.playing || geometryChanged) {
       this.lastGeometryPosition = clampedPosition;
       if (frame.kind === 'TRAVEL') {
-        this.setSource('route-progress', trailForFrame(this.plan, baseIndex, frame));
-        this.setSource('route-head', this.plan.segments[frame.segmentIndex]?.hideRoute ? emptyCollection() : headForFrame(frame));
+        const trail = trailForFrame(this.plan, baseIndex, frame) as { type: string; features: object[] };
+        if (!this.plan.segments[frame.segmentIndex]?.hideRoute) trail.features.push(headForFrame(frame));
+        this.setSource('route-progress', trail);
       } else {
         this.setSource('route-progress', this.fullRouteData);
-        this.setSource('route-head', emptyCollection());
       }
     }
     const stop = activeStopId ? this.stopById.get(activeStopId) : null;
@@ -382,7 +381,6 @@ export class PlayerController {
 
   private cancelTransition(): void {
     this.transition = null;
-    this.lastGeometryAt = -Infinity;
     this.lastGeometryPosition = -1;
   }
 
@@ -480,7 +478,7 @@ export class PlayerController {
     return this.displayedZoom;
   }
 
-  private warmTilesAhead(): void {
+  private warmTilesAhead(viewportAdjustment: number): void {
     if (!this.plan?.frames.length) return;
     const lookAheadTimeSec = Math.min(this.getDuration(), this.timeSec + TILE_WARMUP_LOOKAHEAD_SEC);
     const mapped = mapScheduledJourneyTime(lookAheadTimeSec, this.stopSchedule, this.plan.durationSec);
@@ -509,7 +507,7 @@ export class PlayerController {
         zoom += photoStopZoomBoost(photoDistanceMeters, mapped.activeStopProgress, frame.mobilityClass);
       }
     }
-    zoom = applyUserZoomOffset(zoom + this.viewportZoomAdjustment(), this.zoomOffset);
+    zoom = applyUserZoomOffset(zoom + viewportAdjustment, this.zoomOffset);
 
     warmMapTilesAhead(this.map, center, clamp(zoom, 4, 17.3));
   }
@@ -842,12 +840,9 @@ function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan): object {
 
 function headForFrame(frame: TravelFrame): object {
   return {
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      properties: { color: COLORS[frame.mobilityClass] },
-      geometry: { type: 'Point', coordinates: [frame.position.lng, frame.position.lat] }
-    }]
+    type: 'Feature',
+    properties: { color: COLORS[frame.mobilityClass] },
+    geometry: { type: 'Point', coordinates: [frame.position.lng, frame.position.lat] }
   };
 }
 

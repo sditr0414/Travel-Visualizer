@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import type { Coordinate } from '../types';
 
 const DEFAULT_TILE_SIZE = 512;
@@ -126,7 +126,7 @@ function collectWarmupTasks(
   const sourceIds = Object.keys(style.sources ?? {});
 
   for (const sourceId of sourceIds) {
-    if (!sourceHasVisibleLayer(map, sourceId, zoom)) continue;
+    if (!sourceHasVisibleLayer(style.layers ?? [], sourceId, zoom)) continue;
     const source = map.getSource(sourceId) as unknown as RuntimeTileSource | undefined;
     if (!source || (source.type !== 'vector' && source.type !== 'raster')) continue;
 
@@ -183,8 +183,7 @@ function collectWarmupTasks(
   return tasks.slice(0, MAX_TASKS_PER_PASS);
 }
 
-function sourceHasVisibleLayer(map: MapLibreMap, sourceId: string, zoom: number): boolean {
-  const layers = map.getStyle().layers ?? [];
+function sourceHasVisibleLayer(layers: StyleSpecification['layers'], sourceId: string, zoom: number): boolean {
   return layers.some(layer => {
     if (!('source' in layer) || layer.source !== sourceId) return false;
     if (layer.layout?.visibility === 'none') return false;
