@@ -1,7 +1,9 @@
-import { Children, cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-const CLOSE_DELAY_MS = 100;
+const OPEN_DELAY_MS = 180;
+const CLOSE_DELAY_MS = 180;
+const HELP_OPEN_EVENT = 'travel-setting-help-open';
 
 export function SettingHelp({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   const id = useId();
@@ -10,71 +12,125 @@ export function SettingHelp({ title, description, children }: { title: string; d
   const anchor = useRef<HTMLSpanElement>(null);
   const bubble = useRef<HTMLDivElement>(null);
   const pinned = useRef(false);
+  const keyboardFocus = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelClose = () => {
+  const cancelTimer = useCallback(() => {
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
-  };
-  const close = () => {
-    cancelClose();
+  }, []);
+  const close = useCallback(() => {
+    cancelTimer();
     pinned.current = false;
     setOpen(false);
-  };
+  }, [cancelTimer]);
+  const show = useCallback(() => {
+    cancelTimer();
+    document.dispatchEvent(new CustomEvent(HELP_OPEN_EVENT, { detail: id }));
+    setOpen(true);
+  }, [cancelTimer, id]);
   const closeSoon = () => {
-    cancelClose();
-    if (pinned.current) return;
-    timer.current = setTimeout(() => { timer.current = null; setOpen(false); }, CLOSE_DELAY_MS);
+    cancelTimer();
+    if (pinned.current || keyboardFocus.current) return;
+    timer.current = setTimeout(close, CLOSE_DELAY_MS);
   };
-  // Touch browsers can dispatch hover and focus before click. Toggle the explicit
-  // pinned state, not the incidental hover state, so the first tap stays open.
   const togglePinned = () => {
-    cancelClose();
-    pinned.current = !pinned.current;
-    setOpen(pinned.current);
+    if (pinned.current) close();
+    else { pinned.current = true; show(); }
   };
 
-  useEffect(() => () => { if (timer.current !== null) clearTimeout(timer.current); }, []);
+  useEffect(() => {
+    const otherHelp = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== id) close();
+    };
+    document.addEventListener(HELP_OPEN_EVENT, otherHelp);
+    return () => { cancelTimer(); document.removeEventListener(HELP_OPEN_EVENT, otherHelp); };
+  }, [cancelTimer, close, id]);
+
   useEffect(() => {
     if (!open) return;
     const outside = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node) && !bubble.current?.contains(event.target as Node)) {
-        pinned.current = false;
-        setOpen(false);
-      }
+      // An input is not part of the help trigger. Clicking it must not pin a
+      // stale explanation above the setting the user is now editing.
+      if (!anchor.current?.contains(event.target as Node) && !bubble.current?.contains(event.target as Node)) close();
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
-      pinned.current = false;
-      setOpen(false);
+      close();
+    };
+    const scroll = (event: Event) => {
+      if (!bubble.current?.contains(event.target as Node)) close();
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape, true);
+    window.addEventListener('scroll', scroll, true);
+    const details = root.current?.closest('details');
+    const observer = details ? new MutationObserver(() => { if (!details.open) close(); }) : null;
+    if (details) observer?.observe(details, { attributes: true, attributeFilter: ['open'] });
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape, true);
+      window.removeEventListener('scroll', scroll, true);
+      observer?.disconnect();
     };
-  }, [open]);
+  }, [close, open]);
 
   useLayoutEffect(() => {
     if (!open) return;
+    let cancelled = false;
+    let raf = 0;
+    const panel = root.current?.closest<HTMLElement>('.settings-content');
     const position = () => {
       const label = anchor.current;
       const tip = bubble.current;
-      if (!label || !tip) return;
+      if (cancelled || !label || !tip) return;
       const rect = label.getBoundingClientRect();
-      const below = rect.bottom + 8;
-      tip.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - tip.offsetWidth - 12))}px`;
-      tip.style.top = `${Math.max(12, Math.min(below + tip.offsetHeight < window.innerHeight - 12 ? below : rect.top - tip.offsetHeight - 8, window.innerHeight - tip.offsetHeight - 12))}px`;
+      const clip = panel?.getBoundingClientRect();
+      if (clip && (rect.bottom <= clip.top || rect.top >= clip.bottom)) { close(); return; }
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft ?? 0;
+      const top = viewport?.offsetTop ?? 0;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      tip.style.width = `${Math.min(300, Math.max(1, width - 24))}px`;
+      // Use the actual rendered bubble height, never an assumed number of lines.
+      tip.style.maxHeight = `${Math.max(1, height - 24)}px`;
+      const box = tip.getBoundingClientRect();
+      const belowSpace = top + height - 12 - rect.bottom - 8;
+      const aboveSpace = rect.top - 8 - top - 12;
+      const below = belowSpace >= box.height || belowSpace >= aboveSpace;
+      const available = Math.max(1, below ? belowSpace : aboveSpace);
+      tip.style.maxHeight = `${available}px`;
+      const bubbleHeight = Math.min(box.height, available);
+      const x = Math.max(left + 12, Math.min(rect.left, left + width - box.width - 12));
+      const y = below ? rect.bottom + 8 : rect.top - bubbleHeight - 8;
+      tip.style.left = `${x}px`;
+      tip.style.top = `${Math.max(top + 12, Math.min(y, top + height - bubbleHeight - 12))}px`;
+      tip.dataset.placement = below ? 'bottom' : 'top';
     };
     position();
-    window.addEventListener('resize', position);
-    window.addEventListener('scroll', position, true);
-    return () => {
-      window.removeEventListener('resize', position);
-      window.removeEventListener('scroll', position, true);
+    // The parent panel animates its transform on opening. Track that short
+    // interval so a portal cannot keep coordinates from an intermediate frame.
+    const until = performance.now() + 600;
+    const followEntrance = () => {
+      position();
+      if (!cancelled && performance.now() < until) raf = requestAnimationFrame(followEntrance);
     };
-  }, [open, description]);
+    raf = requestAnimationFrame(followEntrance);
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(position) : null;
+    if (anchor.current) observer?.observe(anchor.current);
+    if (panel) observer?.observe(panel);
+    window.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('resize', position);
+    void document.fonts?.ready.then(() => { if (!cancelled) position(); });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+      window.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('resize', position);
+    };
+  }, [close, description, open]);
 
   const decorated = decorateSettingTitle(children, title, id, () => <span
     ref={anchor}
@@ -84,8 +140,14 @@ export function SettingHelp({ title, description, children }: { title: string; d
     aria-label={`${title} 설명`}
     aria-expanded={open}
     aria-describedby={id}
-    onMouseEnter={() => { cancelClose(); setOpen(true); }}
+    onMouseEnter={() => { cancelTimer(); timer.current = setTimeout(show, OPEN_DELAY_MS); }}
     onMouseLeave={closeSoon}
+    onPointerDown={() => { keyboardFocus.current = false; }}
+    onFocus={() => {
+      keyboardFocus.current = anchor.current?.matches(':focus-visible') ?? false;
+      if (keyboardFocus.current) show();
+    }}
+    onBlur={() => { keyboardFocus.current = false; close(); }}
     onClick={event => { event.preventDefault(); event.stopPropagation(); togglePinned(); }}
     onKeyDown={event => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -96,15 +158,12 @@ export function SettingHelp({ title, description, children }: { title: string; d
     }}
   >{title}</span>);
 
-  return <div ref={root} className="setting-with-help"
-    onFocusCapture={() => { cancelClose(); setOpen(true); }}
-    onBlurCapture={event => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !bubble.current?.contains(event.relatedTarget as Node | null)) close();
-    }}
-  >
+  return <div ref={root} className="setting-with-help" onFocusCapture={event => {
+    if (event.target !== anchor.current) close();
+  }}>
     {decorated}
     {createPortal(<div ref={bubble} id={id} role="tooltip" className="setting-tooltip" hidden={!open}
-      onMouseEnter={cancelClose} onMouseLeave={closeSoon}
+      onMouseEnter={cancelTimer} onMouseLeave={closeSoon}
     ><strong>{title}</strong><p>{description}</p></div>, document.body)}
   </div>;
 }
