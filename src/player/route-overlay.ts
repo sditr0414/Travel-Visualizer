@@ -99,14 +99,18 @@ export function updateRouteOverlay(map: MapLibreMap, owner: object, plan: Playba
         ctx.clearRect(0, 0, width, height);
         const trail = collectRouteTrail(state.plan, state.framePosition, state.frame);
         const scale = Math.max(0, Math.min(1, (zoom - 3) / 9));
-        const longitudeShift = 360 * Math.round((center.lng - state.frame.position.lng) / 360);
+        // A trail can contain both +180 and -180 longitudes. Resolve each point
+        // against the camera rather than shifting the entire trail identically.
+        const project = (position: Coordinate) => map.project([
+          center.lng + shortestLongitudeDelta(center.lng, position.lng), position.lat
+        ]);
         ctx.lineWidth = 2.4 + 3.6 * scale;
         ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 0.94;
         let mode: MobilityClass | null = null;
         let last: { x: number; y: number } | null = null;
         let pathOpen = false;
         for (const sample of trail) {
-          const point = map.project([sample.position.lng + longitudeShift, sample.position.lat]);
+          const point = project(sample.position);
           if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) { last = null; continue; }
           if (!last || sample.breakBefore || sample.mobilityClass !== mode) {
             if (pathOpen) ctx.stroke();
@@ -123,7 +127,7 @@ export function updateRouteOverlay(map: MapLibreMap, owner: object, plan: Playba
         }
         if (pathOpen) ctx.stroke();
         if (!state.plan.segments[state.frame.segmentIndex]?.hideRoute) {
-          const point = map.project([state.frame.position.lng + longitudeShift, state.frame.position.lat]);
+          const point = project(state.frame.position);
           if (Number.isFinite(point.x) && Number.isFinite(point.y)) {
             ctx.globalAlpha = 1;
             ctx.beginPath(); ctx.arc(point.x, point.y, 4.5 + 2.5 * scale, 0, Math.PI * 2);
