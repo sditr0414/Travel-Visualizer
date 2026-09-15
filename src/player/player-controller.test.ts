@@ -274,7 +274,7 @@ describe('photo journey stops', () => {
       expect(scheduled).not.toBeNull();
       for (let ms = 25; ms <= 125; ms += 25) (scheduled as unknown as FrameRequestCallback)(ms);
       const camera = jumpTo.mock.calls.at(-1)?.[0] as { zoom: number };
-      // The existing tile-level hysteresis may hold 0.001 below the boundary.
+      // Replaying a flat planned zoom must not inherit an integer-boundary clamp.
       expect(Math.abs(camera.zoom - 12)).toBeLessThanOrEqual(0.0011);
     } finally {
       controller.pause();
@@ -311,17 +311,17 @@ describe('photo journey stops', () => {
     expect((lockedJumpTo.mock.calls.at(-1)?.[0] as { zoom: number }).zoom).toBeCloseTo(8, 5);
   });
 
-  it('holds a tile zoom level briefly around integer boundaries to avoid repeated tile churn', () => {
+  it('keeps level hysteresis from clamping the visible camera zoom', () => {
     const heldBelow = stabilizeTileZoomBoundary(13.98, 14);
     expect(heldBelow.level).toBe(14);
-    expect(heldBelow.zoom).toBeGreaterThanOrEqual(14);
+    expect(heldBelow.zoom).toBe(13.98);
 
     const releasedDown = stabilizeTileZoomBoundary(13.91, 14);
     expect(releasedDown).toEqual({ zoom: 13.91, level: 13 });
 
     const heldAbove = stabilizeTileZoomBoundary(14.02, 13);
     expect(heldAbove.level).toBe(13);
-    expect(heldAbove.zoom).toBeLessThan(14);
+    expect(heldAbove.zoom).toBe(14.02);
 
     const releasedUp = stabilizeTileZoomBoundary(14.08, 13);
     expect(releasedUp).toEqual({ zoom: 14.08, level: 14 });

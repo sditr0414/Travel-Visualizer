@@ -42,6 +42,22 @@ describe('display-synchronized route geometry', () => {
     }
     p.player.dispose();
   });
+  it.each([true, false])('crosses integer zooms without a freeze or catch-up step (follow=%s)', follow => {
+    const p = setup();
+    p.plan.frames = p.plan.frames.map((frame, i) => ({ ...frame, zoom: 13.85 + i * 0.003 }));
+    p.player.setLockToPosition(follow);
+    p.player.loadPlan(p.plan);
+    p.player.play();
+    p.jumpTo.mockClear();
+    for (let i = 1; i <= 180; i += 1) p.tick(i * 1000 / 60);
+    const zooms = p.jumpTo.mock.calls.map(([camera]) => camera.zoom as number);
+    expect(Math.min(...zooms)).toBeLessThan(14);
+    expect(Math.max(...zooms)).toBeGreaterThan(14.07);
+    const steps = zooms.slice(1).map((zoom, i) => zoom - zooms[i]);
+    expect(Math.min(...steps)).toBeGreaterThan(0);
+    expect(Math.max(...steps)).toBeLessThan(0.012);
+    p.player.dispose();
+  });
   it('does not rebuild unchanged geometry on every photo dwell frame', () => {
     const p = setup();
     p.player.loadPlan(p.plan, [{ id: 'photo', atSec: 0, durationSec: 2 }]);
