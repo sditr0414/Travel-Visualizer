@@ -1,6 +1,37 @@
 import { expect, test } from '@playwright/test';
 import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
+test('individual movements keep separate distances and include their assigned estimated gap', async ({ page }) => {
+  await attachLocalPhotoManifest(page);
+  await page.goto('/');
+  await page.getByLabel('타임라인 파일 열기', { exact: true }).setInputFiles({
+    name: 'individual-distances.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ semanticSegments: [
+      { startTime: '2026-04-10T09:00:00+09:00', endTime: '2026-04-10T09:30:00+09:00',
+        activity: { start: { latLng: '37.5000°, 127.0000°' }, end: { latLng: '37.5100°, 127.0100°' },
+          distanceMeters: 1800, topCandidate: { type: 'WALKING', probability: 0.95 } } },
+      { startTime: '2026-04-10T09:30:00+09:00', endTime: '2026-04-10T09:40:00+09:00',
+        activity: { start: { latLng: '37.5110°, 127.0110°' }, end: { latLng: '37.5140°, 127.0140°' },
+          distanceMeters: 650, topCandidate: { type: 'WALKING', probability: 0.95 } } }
+    ] }))
+  });
+  await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '사진 여정', exact: true }).click();
+  await page.locator('.settings-panel summary').click();
+  await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
+  await page.locator('.settings-panel summary').click();
+  for (const [mode, selector] of [['경로 보기', '.journey-hud'], ['사진 여정', '.is-current .media-transit']]) {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    await page.getByLabel('처음부터 보기', { exact: true }).click();
+    await expect(page.locator(`${selector} .movement-distance`)).toHaveText('1.8 km');
+    const position = page.getByLabel('재생 위치');
+    const box = (await position.boundingBox())!;
+    await position.click({ position: { x: box.width * 0.8, y: box.height / 2 } });
+    // The second 650 m walk owns the approximately 142 m coordinate gap.
+    await expect(page.locator(`${selector} .movement-distance`)).toHaveText('792 m');
+  }
+});
+
 test('estimated transport appears consistently in the map and photo journey', async ({ page, isMobile }, testInfo) => {
   await attachLocalPhotoManifest(page);
   await page.goto('/');
@@ -15,7 +46,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '경로 보기', exact: true }).click();
   await expect(page.locator('.journey-hud > strong')).toHaveText('대중교통');
-  await expect(page.locator('.journey-hud .movement-distance')).toHaveText('총 8 km');
+  await expect(page.locator('.journey-hud .movement-distance')).toHaveText('8 km');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
@@ -23,7 +54,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await page.getByLabel('처음부터 보기', { exact: true }).click();
   await expect(page.locator('.is-current .movement-mode')).toHaveText('대중교통');
   await expect(page.locator('.is-current .movement-pictogram')).toHaveText('🚇');
-  await expect(page.locator('.is-current .movement-distance')).toHaveText('총 8 km');
+  await expect(page.locator('.is-current .movement-distance')).toHaveText('8 km');
   await testInfo.attach(`estimated-transport-${isMobile ? 'mobile' : 'desktop'}`, { body: await page.screenshot(), contentType: 'image/png' });
 });
 
@@ -72,7 +103,7 @@ test('transport names retain the original column and natural emoji text box', as
   await expect(icon).toHaveText('🚶');
   await expect(name).toHaveText('도보');
   const distance = page.locator('.is-current .movement-distance');
-  await expect(distance).toHaveText('총 1.8 km');
+  await expect(distance).toHaveText('1.8 km');
   const distanceBox = (await distance.boundingBox())!;
   const paneBox = (await page.locator('.media-journey-pane').boundingBox())!;
   expect(distanceBox.x).toBeGreaterThanOrEqual(paneBox.x);

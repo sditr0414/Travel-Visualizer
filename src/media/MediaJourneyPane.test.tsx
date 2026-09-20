@@ -145,8 +145,8 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).toHaveTextContent('차량');
     expect(container.querySelector('.movement-primary')).toHaveTextContent('3월 18일 (수) 11시');
     expect(container.querySelector('.movement-primary')).toHaveTextContent('82 km/h');
-    expect(container.querySelector('.movement-distance')).toHaveTextContent('총 24.6 km');
-    expect(container.querySelector('.movement-distance')).toHaveAttribute('title', '선택한 여행의 차량 총 이동거리');
+    expect(container.querySelector('.movement-distance')).toHaveTextContent('24.6 km');
+    expect(container.querySelector('.movement-distance')).toHaveAttribute('title', '현재 이동 구간의 거리');
     expect(container.querySelector('.movement-route')).toHaveTextContent('후쿠오카→기타큐슈');
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });

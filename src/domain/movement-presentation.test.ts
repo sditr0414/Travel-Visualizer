@@ -1,6 +1,6 @@
 import { simplePlan } from '../test/fixtures';
 import type { MobilityClass, PlaybackSegment } from '../types';
-import { formatMovementDistance, movementDistanceTotals, movementPresentation } from './movement-presentation';
+import { formatMovementDistance, movementDistances, movementPresentation } from './movement-presentation';
 import { parseTimeline } from '../timeline-parser.js';
 import { buildPlaybackPlan } from './planner';
 
@@ -68,25 +68,46 @@ describe('movement presentation', () => {
   });
 });
 
-describe('total distance by displayed transport', () => {
-  it('combines non-adjacent movements of the same mode without changing their records', () => {
+describe('individual movement distance', () => {
+  it('keeps separate distances for movements of the same mode without changing their records', () => {
     const segments = [recorded('WALK'), recorded('ROAD'), { ...recorded('WALK'), distanceMeters: 650 }];
     const original = structuredClone(segments);
-    expect(movementDistanceTotals(segments)).toEqual(new Map([['WALK', 2650], ['ROAD', 2000]]));
+    expect(movementDistances(segments)).toEqual(['2 km', '2 km', '650 m']);
     expect(segments).toEqual(original);
   });
 
-  it('uses the displayed transport for an unclassified movement with usable distance', () => {
+  it('adds an estimated movement to the matching preceding movement', () => {
     const unknown = { ...gap(600), inferenceSource: 'activity' };
-    expect(movementDistanceTotals([recorded('WALK'), unknown, recorded('ROAD')]))
-      .toEqual(new Map([['WALK', 2600], ['ROAD', 2000]]));
+    expect(movementDistances([recorded('WALK'), unknown, recorded('ROAD')])).toEqual(['2.6 km', '2.6 km', '2 km']);
   });
 
-  it('does not count visual connections, excluded routes or invalid distances', () => {
-    const segments = [recorded('WALK'), gap(100_000), { ...recorded('FLIGHT'), hideRoute: true },
+  it('adds a visual gap to the matching following movement while keeping recorded speed unchanged', () => {
+    const segments = [recorded('ROAD'), gap(600), recorded('WALK')];
+    expect(movementDistances(segments)).toEqual(['2 km', '2.6 km', '2.6 km']);
+    expect(segments[1].inference.speedKmh).toBe(0);
+  });
+
+  it('assigns a gap only once when both neighbours use the same transport', () => {
+    expect(movementDistances([recorded('WALK'), gap(200), recorded('WALK')]))
+      .toEqual(['2.2 km', '2.2 km', '2 km']);
+    expect(movementDistances([recorded('WALK'), gap(200), { ...recorded('WALK'), distanceMeters: 300 }]))
+      .toEqual(['2 km', '500 m', '500 m']);
+  });
+
+  it('combines estimated gaps on both sides with their individual movement', () => {
+    expect(movementDistances([gap(200), recorded('ROAD'), gap(300)]))
+      .toEqual(['2.5 km', '2.5 km', '2.5 km']);
+  });
+
+  it('keeps a separately inferred movement independent when neither neighbour matches', () => {
+    expect(movementDistances([recorded('ROAD'), gap(1500, 1200), recorded('FERRY')]))
+      .toEqual(['2 km', '1.5 km', '2 km']);
+  });
+
+  it('hides distances for excluded routes and invalid values', () => {
+    const segments = [recorded('WALK'), { ...gap(100_000), hideRoute: true }, { ...recorded('FLIGHT'), hideRoute: true },
       ...[NaN, Infinity, -1].map(distanceMeters => ({ ...recorded('ROAD'), distanceMeters }))];
-    expect(movementDistanceTotals(segments)).toEqual(new Map([['WALK', 2000]]));
-    expect(movementDistanceTotals([]).size).toBe(0);
+    expect(movementDistances(segments)).toEqual(['2 km', null, null, null, null, null]);
   });
 
   it('counts only the part of a recorded movement inside the selected trip dates', () => {
@@ -99,7 +120,7 @@ describe('total distance by displayed transport', () => {
         distanceMeters: 9000, topCandidate: { type: 'IN_PASSENGER_VEHICLE', probability: 0.95 } }
     }] }, options);
     const plan = buildPlaybackPlan(trip.movements, options);
-    expect(movementDistanceTotals(plan.segments).get('ROAD')).toBeCloseTo(4500);
+    expect(movementDistances(plan.segments)).toEqual(['4.5 km']);
   });
 
   it('formats short and long distances without splitting numeric units', () => {

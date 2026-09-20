@@ -18,7 +18,7 @@ import { MediaLibraryDialog } from './ui/MediaLibraryDialog';
 import { usePreferences } from './settings/preferences';
 import { usePlaybackChrome } from './ui/playback-chrome';
 import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
-import { formatMovementDistance, movementDistanceTotals, movementPresentation } from './domain/movement-presentation';
+import { movementDistances, movementPresentation } from './domain/movement-presentation';
 
 interface AppProps {
   workerClient?: TimelineWorkerPort;
@@ -386,7 +386,7 @@ export function App({ workerClient }: AppProps) {
     activeMediaRef.current = '__controller-reset__';
     cityRouteCacheRef.current.clear();
     if (!map || !state.plan) return;
-    const distanceTotals = movementDistanceTotals(state.plan.segments);
+    const distances = movementDistances(state.plan.segments);
 
     const createController = (mode: JourneyMode, stops: PlaybackStop[]) => {
       const controller = new PlayerController(map, {
@@ -422,7 +422,7 @@ export function App({ workerClient }: AppProps) {
           if (playersRef.current[mode]?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
           lastHudUpdateRef.current = performance.now();
           setActiveStopElapsed(stopElapsedSec);
-          const nextHud = hudForFrame(frame, state.plan!, timeSec, distanceTotals);
+          const nextHud = hudForFrame(frame, state.plan!, timeSec, distances);
           if (frame.kind === 'TRAVEL') {
             const segment = state.plan!.segments[frame.segmentIndex];
             const cached = cityRouteCacheRef.current.get(frame.segmentIndex);
@@ -792,7 +792,7 @@ export function App({ workerClient }: AppProps) {
       {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud route-persistent-hud" aria-label="현재 이동 정보">
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong>{hud.mobility}</strong>
-        <div className="hud-meta"><span>{hud.date}</span><span className="hud-movement-metrics"><span>{hud.speed}</span>{hud.distance !== null && <span className="movement-distance" title={`선택한 여행의 ${hud.mobility} 총 이동거리`}>총 {hud.distance}</span>}</span></div>
+        <div className="hud-meta"><span>{hud.date}</span><span className="hud-movement-metrics"><span>{hud.speed}</span>{hud.distance !== null && <span className="movement-distance" title="현재 이동 구간의 거리">{hud.distance}</span>}</span></div>
       </section>}
 
       {state.scan && <details
@@ -1013,12 +1013,11 @@ export function App({ workerClient }: AppProps) {
   );
 }
 
-function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, distanceTotals: ReadonlyMap<MobilityClass, number>): HudState {
+function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, distances: Array<string | null>): HudState {
   if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '—', distance: null, originCity: null, destinationCity: null };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
   const movement = movementPresentation(plan.segments, travel.segmentIndex);
-  const distanceMeters = distanceTotals.get(movement.mobilityClass);
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
   return {
     timeSec,
@@ -1026,7 +1025,7 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, 
     mobilityClass: movement.mobilityClass,
     mobility: movement.label,
     speed: segment.inferenceSource === 'visual-gap' ? '—' : `${travel.speedKmh.toFixed(0)} km/h`,
-    distance: distanceMeters === undefined ? null : formatMovementDistance(distanceMeters),
+    distance: distances[travel.segmentIndex],
     originCity: null,
     destinationCity: null
   };

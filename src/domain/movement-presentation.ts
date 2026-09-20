@@ -15,16 +15,27 @@ export function movementPresentation(segments: PlaybackSegment[], index: number)
   return { mobilityClass, label: LABELS[mobilityClass] };
 }
 
-/** Sum source movement distances, never the synthetic lines connecting missing records. */
-export function movementDistanceTotals(segments: PlaybackSegment[]): ReadonlyMap<MobilityClass, number> {
-  const totals = new Map<MobilityClass, number>();
-  segments.forEach((segment, index) => {
-    const meters = segment.distanceMeters;
-    if (segment.hideRoute || segment.inferenceSource === 'visual-gap' || !Number.isFinite(meters) || meters < 0) return;
+/** Keep individual movements separate; attach each estimated gap to one matching neighbour. */
+export function movementDistances(segments: PlaybackSegment[]): Array<string | null> {
+  const distances = segments.map(segment => segment.hideRoute || !Number.isFinite(segment.distanceMeters)
+    || segment.distanceMeters < 0 ? null : segment.distanceMeters);
+  const owners = segments.map((segment, index) => {
+    if (distances[index] === null || segment.inference.mobilityClass !== 'UNKNOWN') return index;
     const { mobilityClass } = movementPresentation(segments, index);
-    totals.set(mobilityClass, (totals.get(mobilityClass) ?? 0) + meters);
+    if (mobilityClass === 'UNKNOWN') return index;
+    const matching = (candidate: number) => distances[candidate] != null
+      && segments[candidate]?.inference.mobilityClass === mobilityClass ? segments[candidate] : undefined;
+    const seconds = (segment.endMs - segment.startMs) / 1000;
+    const speed = segment.distanceMeters / seconds * 3.6;
+    const usableSpeed = seconds >= 60 && seconds <= 6 * 3600 && speed >= 1 && speed <= 1000 ? speed : undefined;
+    const previous = matching(index - 1);
+    const next = matching(index + 1);
+    const neighbour = closestNeighbourSegment(segment, previous, next, usableSpeed);
+    return neighbour ? neighbour === previous ? index - 1 : index + 1 : index;
   });
-  return totals;
+  const totals = new Array<number>(segments.length).fill(0);
+  distances.forEach((meters, index) => { if (meters !== null) totals[owners[index]] += meters; });
+  return distances.map((meters, index) => meters === null ? null : formatMovementDistance(totals[owners[index]]));
 }
 
 export function formatMovementDistance(meters: number): string {
@@ -67,10 +78,14 @@ function estimateGap(segments: PlaybackSegment[], index: number): MobilityClass 
 }
 
 function closestNeighbour(segment: PlaybackSegment, previous?: PlaybackSegment, next?: PlaybackSegment, speed?: number): MobilityClass {
+  return closestNeighbourSegment(segment, previous, next, speed)?.inference.mobilityClass ?? 'UNKNOWN';
+}
+
+function closestNeighbourSegment(segment: PlaybackSegment, previous?: PlaybackSegment, next?: PlaybackSegment, speed?: number): PlaybackSegment | undefined {
   const candidates = [previous, next].filter((candidate): candidate is PlaybackSegment => !!candidate
     && candidate.inference.mobilityClass !== 'UNKNOWN' && !candidate.hideRoute
     && !(segment.hideRoute && candidate.inference.mobilityClass === 'FLIGHT'));
-  if (!candidates.length) return 'UNKNOWN';
+  if (!candidates.length) return undefined;
   const similarityCost = (candidate: PlaybackSegment) => {
     const distanceCost = Number.isFinite(segment.distanceMeters)
       ? Math.abs(Math.log((Math.max(0, segment.distanceMeters) + 100) / (candidate.distanceMeters + 100))) : 0;
@@ -80,8 +95,7 @@ function closestNeighbour(segment: PlaybackSegment, previous?: PlaybackSegment, 
     return distanceCost * 0.35 + directionCost * 0.65 + speedCost;
   };
   // Equal evidence continues the preceding movement, avoiding arbitrary flicker.
-  return candidates.reduce((best, candidate) => similarityCost(candidate) < similarityCost(best) ? candidate : best)
-    .inference.mobilityClass;
+  return candidates.reduce((best, candidate) => similarityCost(candidate) < similarityCost(best) ? candidate : best);
 }
 
 function directionDifference(a: PlaybackSegment, b: PlaybackSegment): number {
