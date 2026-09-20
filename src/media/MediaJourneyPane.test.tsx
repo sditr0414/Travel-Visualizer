@@ -149,6 +149,14 @@ describe('MediaJourneyPane', () => {
   });
 
 
+  it('shows the estimated transport label with its matching pictogram', () => {
+    const { container } = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps}
+      mobilityClass="WALK" movementLabel="도보" movementSpeed="—" />);
+    expect(container.querySelector('.movement-mode')).toHaveTextContent('도보');
+    expect(container.querySelector('.movement-pictogram')).toHaveTextContent('🚶');
+    expect(container.querySelector('.movement-speed')).toHaveTextContent('—');
+  });
+
   it.each([
     ['WALK', '🚶'], ['BIKE', '🚲'], ['URBAN_TRANSIT', '🚇'], ['FAST_GROUND', '🚆'],
     ['FERRY', '⛴️'], ['FLIGHT', '✈️'], ['ROAD', '🚗'], ['UNKNOWN', '●']

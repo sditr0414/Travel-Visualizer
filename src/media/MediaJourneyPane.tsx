@@ -14,6 +14,7 @@ interface Props {
   videoMuted: boolean;
   photoDisplaySec: number;
   mobilityClass: MobilityClass;
+  movementLabel?: string;
   movementDate: string;
   movementSpeed: string;
   originCity: string | null;
@@ -27,7 +28,7 @@ interface Props {
 type SceneDescriptor =
   | { kind: 'photo'; key: string; item: JourneyMedia; place: string; url: string | null }
   | { kind: 'day'; key: string; dayKey: string; dayNumber: number }
-  | { kind: 'transit'; key: string; mobilityClass: MobilityClass; movementDate: string; movementSpeed: string; originCity: string | null; destinationCity: string | null }
+  | { kind: 'transit'; key: string; mobilityClass: MobilityClass; movementLabel?: string; movementDate: string; movementSpeed: string; originCity: string | null; destinationCity: string | null }
   | { kind: 'empty'; key: 'empty' };
 
 type AssetPreloadStatus = 'loading' | 'ready' | 'error';
@@ -51,7 +52,7 @@ interface PreloadHandle {
 const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
-export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles, emptyDescription, onOpenLibrary }: Props) {
+export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementLabel, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles, emptyDescription, onOpenLibrary }: Props) {
   const dayCue = useMemo(() => dayMarkerCueFromId(activeId), [activeId]);
   const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
@@ -79,6 +80,7 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
         kind: 'transit',
         key: `transit:${mobilityClass}`,
         mobilityClass,
+        movementLabel,
         movementDate,
         movementSpeed,
         originCity,
@@ -86,7 +88,7 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
       };
     }
     return { kind: 'empty', key: 'empty' };
-  }, [active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementDate, movementSpeed, originCity, placeName]);
+  }, [active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementLabel, movementDate, movementSpeed, originCity, placeName]);
   const canEnterScene = desiredScene.kind !== 'photo' || activeAsset?.status === 'ready' || activeAsset?.status === 'error';
   const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
@@ -138,7 +140,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
           <time className="movement-date">{scene.movementDate}</time>
           <span className="movement-speed">{scene.movementSpeed}</span>
         </div>
-        <strong className="movement-mode">{movement.label}</strong>
+        <strong className="movement-mode">{scene.movementLabel ?? movement.label}</strong>
         {scene.originCity && scene.destinationCity && scene.originCity !== scene.destinationCity && (
           <div className="movement-route" aria-label={`출발 ${scene.originCity}, 도착 ${scene.destinationCity}`}>
             <span>{scene.originCity}</span><span aria-hidden="true">→</span><span>{scene.destinationCity}</span>
@@ -190,7 +192,7 @@ const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> =
   FERRY: { icon: '⛴️', label: '페리' },
   FLIGHT: { icon: '✈️', label: '비행기' },
   ROAD: { icon: '🚗', label: '차량' },
-  UNKNOWN: { icon: '●', label: '기타' }
+  UNKNOWN: { icon: '●', label: '이동 중' }
 };
 
 function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean; playing: boolean; elapsedSec: number }) {

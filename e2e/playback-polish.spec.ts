@@ -3,6 +3,36 @@ import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
 test.use({ timezoneId: 'Asia/Seoul' });
 
+test('travel settings aligns with neighbouring toolbar controls', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  const settings = await page.locator('.settings-panel').boundingBox();
+  const modes = await page.locator('.mode-switch').boundingBox();
+  expect(settings!.height).toBe(modes!.height);
+  expect(settings!.y).toBe(modes!.y);
+  for (const button of await page.locator('.topbar .import-button:visible').all()) {
+    const rect = await button.boundingBox();
+    expect(rect!.height).toBe(settings!.height);
+    expect(rect!.y).toBe(settings!.y);
+  }
+  await testInfo.attach('aligned-toolbar', { body: await page.screenshot(), contentType: 'image/png' });
+});
+
+test('hover help closes when the mouse moves onto its bubble', async ({ page, isMobile }, testInfo) => {
+  test.skip(isMobile, 'Mouse hover is checked on desktop; tap and keyboard help have separate coverage.');
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  await page.locator('.settings-panel summary').click();
+  const title = page.getByRole('button', { name: '지도 보기 방식 설명', exact: true });
+  await title.hover();
+  const tip = page.getByRole('tooltip');
+  await expect(tip).toBeVisible();
+  const rect = await tip.boundingBox();
+  await page.mouse.move(rect!.x + 30, rect!.y + 25);
+  await expect(tip).toBeHidden();
+  await testInfo.attach('settings-hover', { body: await page.screenshot(), contentType: 'image/png' });
+});
+
 test('icon-only playback controls and familiar walking emoji remain accessible', async ({ page }, testInfo) => {
   await attachLocalPhotoManifest(page);
   await page.goto('/');

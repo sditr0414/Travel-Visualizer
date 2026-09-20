@@ -18,6 +18,7 @@ import { MediaLibraryDialog } from './ui/MediaLibraryDialog';
 import { usePreferences } from './settings/preferences';
 import { usePlaybackChrome } from './ui/playback-chrome';
 import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
+import { movementPresentation } from './domain/movement-presentation';
 
 interface AppProps {
   workerClient?: TimelineWorkerPort;
@@ -43,11 +44,6 @@ interface AppliedPlanSettings {
 }
 
 type JourneyMode = 'ROUTE' | 'PHOTOS';
-
-const MOBILITY_LABELS: Record<string, string> = {
-  WALK: '도보', BIKE: '자전거', URBAN_TRANSIT: '대중교통', FAST_GROUND: '기차',
-  FERRY: '페리', FLIGHT: '비행기', ROAD: '차량', UNKNOWN: '기타'
-};
 
 const PHOTO_MAP_MIN_DESKTOP = 0.38;
 const PHOTO_MAP_MIN_MOBILE = 0.34;
@@ -704,6 +700,7 @@ export function App({ workerClient }: AppProps) {
           videoMuted={videoMuted}
           photoDisplaySec={photoDisplaySec}
           mobilityClass={hud.mobilityClass}
+          movementLabel={hud.mobility}
           movementDate={hud.date}
           movementSpeed={hud.speed}
           originCity={hud.originCity}
@@ -1017,12 +1014,13 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number):
   if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '—', originCity: null, destinationCity: null };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
+  const movement = movementPresentation(plan.segments, travel.segmentIndex);
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
   return {
     timeSec,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Seoul' }).format(sourceMs),
-    mobilityClass: travel.mobilityClass,
-    mobility: segment.inferenceSource === 'visual-gap' ? '경로 연결' : `${MOBILITY_LABELS[travel.mobilityClass] ?? '기타'}${segment.inferred ? ' · 추정' : ''}`,
+    mobilityClass: movement.mobilityClass,
+    mobility: movement.label,
     speed: segment.inferenceSource === 'visual-gap' ? '—' : `${travel.speedKmh.toFixed(0)} km/h`,
     originCity: null,
     destinationCity: null

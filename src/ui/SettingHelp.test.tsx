@@ -28,6 +28,13 @@ describe('setting-name help', () => {
     fireEvent.click(title);
     expect(tip).toHaveAttribute('hidden');
   });
+  it('closes hover help when the pointer moves from the name onto the bubble', async () => {
+    const { title, tip } = setup();
+    fireEvent.mouseEnter(title);
+    fireEvent.mouseLeave(title);
+    fireEvent.mouseEnter(tip);
+    await waitFor(() => expect(tip).toHaveAttribute('hidden'));
+  });
   it('supports keyboard activation and Escape without closing the settings parent', () => {
     const { title, field, tip } = setup();
     expect(field).toHaveAttribute('aria-describedby', tip.id);

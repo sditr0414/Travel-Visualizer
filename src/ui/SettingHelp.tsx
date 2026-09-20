@@ -132,7 +132,6 @@ export function SettingHelp({ title, description, children }: { title: string; d
   >
     {decorated}
     {createPortal(<div ref={bubble} id={id} role="tooltip" className="setting-tooltip" hidden={!open}
-      onMouseEnter={cancelClose} onMouseLeave={closeSoon}
     ><strong>{title}</strong><p>{description}</p></div>, document.body)}
   </div>;
 }

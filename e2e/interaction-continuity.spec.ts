@@ -1,6 +1,30 @@
 import { expect, test } from '@playwright/test';
 import { attachLocalPhotoManifest, loadLocalTimeline } from './helpers';
 
+test('estimated transport appears consistently in the map and photo journey', async ({ page, isMobile }, testInfo) => {
+  await attachLocalPhotoManifest(page);
+  await page.goto('/');
+  await page.getByLabel('타임라인 파일 열기', { exact: true }).setInputFiles({
+    name: 'unknown-transport.json', mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ semanticSegments: [{
+      startTime: '2026-04-10T09:00:00+09:00', endTime: '2026-04-10T09:15:00+09:00',
+      activity: { start: { latLng: '37.5000°, 127.0000°' }, end: { latLng: '37.5400°, 127.0400°' },
+        distanceMeters: 8000, topCandidate: { type: 'UNKNOWN', probability: 0 } }
+    }] }))
+  });
+  await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '경로 보기', exact: true }).click();
+  await expect(page.locator('.journey-hud > strong')).toHaveText('대중교통');
+  await page.getByRole('button', { name: '사진 여정', exact: true }).click();
+  await page.locator('.settings-panel summary').click();
+  await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
+  await page.locator('.settings-panel summary').click();
+  await page.getByLabel('처음부터 보기', { exact: true }).click();
+  await expect(page.locator('.is-current .movement-mode')).toHaveText('대중교통');
+  await expect(page.locator('.is-current .movement-pictogram')).toHaveText('🚇');
+  await testInfo.attach(`estimated-transport-${isMobile ? 'mobile' : 'desktop'}`, { body: await page.screenshot(), contentType: 'image/png' });
+});
+
 test('checkbox whitespace and help never toggle values; the visible box and Space do', async ({ page }) => {
   await attachLocalPhotoManifest(page);
   await page.goto('/');
