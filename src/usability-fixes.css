@@ -78,6 +78,16 @@
 /* Use the original text box metrics so the transport caption keeps its baseline. */
 .movement-pictogram { font-variant-emoji: emoji; }
 .media-transit .movement-mode { text-align: center; word-break: keep-all; }
+.journey-hud { max-width: calc(100% - 32px); }
+.hud-meta { flex-wrap: wrap; row-gap: 4px; }
+.hud-meta > span, .hud-movement-metrics { white-space: nowrap; }
+.movement-metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--muted); font-size: clamp(18px, 1.35vw, 21px); font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.movement-metrics > span { white-space: nowrap; }
+.movement-metrics .movement-distance::before { content: '·'; margin-right: 8px; }
+@media (max-width: 820px) {
+  .journey-hud { max-width: calc(100% - 20px); }
+  .movement-metrics { font-size: 15px; }
+}
 .play-control { width: 44px; min-height: 44px; padding: 0; }
 .setting-tooltip[hidden] { display: none; }
 .media-caption, .movement-primary, .media-day-marker, .timeline-meta { font-family: inherit; }

@@ -15,6 +15,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '경로 보기', exact: true }).click();
   await expect(page.locator('.journey-hud > strong')).toHaveText('대중교통');
+  await expect(page.locator('.journey-hud .movement-distance')).toHaveText('총 8 km');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
@@ -22,6 +23,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await page.getByLabel('처음부터 보기', { exact: true }).click();
   await expect(page.locator('.is-current .movement-mode')).toHaveText('대중교통');
   await expect(page.locator('.is-current .movement-pictogram')).toHaveText('🚇');
+  await expect(page.locator('.is-current .movement-distance')).toHaveText('총 8 km');
   await testInfo.attach(`estimated-transport-${isMobile ? 'mobile' : 'desktop'}`, { body: await page.screenshot(), contentType: 'image/png' });
 });
 
@@ -69,6 +71,12 @@ test('transport names retain the original column and natural emoji text box', as
   const name = page.locator('.is-current .movement-mode');
   await expect(icon).toHaveText('🚶');
   await expect(name).toHaveText('도보');
+  const distance = page.locator('.is-current .movement-distance');
+  await expect(distance).toHaveText('총 1.8 km');
+  const distanceBox = (await distance.boundingBox())!;
+  const paneBox = (await page.locator('.media-journey-pane').boundingBox())!;
+  expect(distanceBox.x).toBeGreaterThanOrEqual(paneBox.x);
+  expect(distanceBox.x + distanceBox.width).toBeLessThanOrEqual(paneBox.x + paneBox.width);
   await expect(icon).toHaveCSS('display', 'block');
   await expect.poll(async () => {
     const a = await icon.boundingBox();

@@ -15,6 +15,25 @@ export function movementPresentation(segments: PlaybackSegment[], index: number)
   return { mobilityClass, label: LABELS[mobilityClass] };
 }
 
+/** Sum source movement distances, never the synthetic lines connecting missing records. */
+export function movementDistanceTotals(segments: PlaybackSegment[]): ReadonlyMap<MobilityClass, number> {
+  const totals = new Map<MobilityClass, number>();
+  segments.forEach((segment, index) => {
+    const meters = segment.distanceMeters;
+    if (segment.hideRoute || segment.inferenceSource === 'visual-gap' || !Number.isFinite(meters) || meters < 0) return;
+    const { mobilityClass } = movementPresentation(segments, index);
+    totals.set(mobilityClass, (totals.get(mobilityClass) ?? 0) + meters);
+  });
+  return totals;
+}
+
+export function formatMovementDistance(meters: number): string {
+  const roundedMeters = Math.round(meters);
+  return roundedMeters < 1000
+    ? `${roundedMeters.toLocaleString('ko-KR')} m`
+    : `${(roundedMeters / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })} km`;
+}
+
 function estimateGap(segments: PlaybackSegment[], index: number): MobilityClass {
   const segment = segments[index];
   const previous = segments[index - 1];

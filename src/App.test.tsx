@@ -279,6 +279,28 @@ describe('App integration', () => {
     await waitFor(() => expect(position).toHaveValue('1'));
   });
 
+  it('refreshes transport totals after replanning and clears them for the overview', async () => {
+    const secondPlan = simplePlan();
+    secondPlan.segments[0].distanceMeters = 5000;
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValueOnce({ trip: {}, plan: simplePlan() }).mockResolvedValue({ trip: {}, plan: secondPlan }),
+      cancel: vi.fn(), dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByText('총 2 km')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '1' } });
+    expect(screen.queryByText('총 2 km')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '처음부터 보기' }));
+    expect(screen.getByText('총 2 km')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('여행 설정'));
+    fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'DAY' } });
+    fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
+    await waitFor(() => expect(screen.getByText('총 5 km')).toBeInTheDocument());
+    expect(screen.queryByText('총 2 km')).not.toBeInTheDocument();
+  });
+
   it('starts photo journeys with preview media and keeps the route tab after replanning', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
@@ -297,6 +319,7 @@ describe('App integration', () => {
     expect(screen.queryByAltText('IMG trip')).not.toBeInTheDocument();
     expect(screen.getByText('도보')).toBeInTheDocument();
     expect(screen.getByText('12 km/h')).toBeInTheDocument();
+    expect(screen.getByText('총 2 km')).toBeInTheDocument();
     expect(screen.queryByText(/개의 사진·영상이 경로에 연결되었습니다/)).not.toBeInTheDocument();
     expect(screen.queryByText('현재 장면')).not.toBeInTheDocument();
     const playerStatus = screen.getByLabelText('재생 컨트롤').querySelector('.player-status');
