@@ -44,7 +44,7 @@ describe('App integration', () => {
     fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     fireEvent.click(screen.getByText('여행 설정'));
-    for (const name of ['항공 경로 포함', '현재 위치 따라가기']) {
+    for (const name of ['항공 경로 포함', '현재 위치 따라가기', '일시정지 시 전체 경로 표시']) {
       const checkbox = screen.getByRole('checkbox', { name }) as HTMLInputElement;
       const initial = checkbox.checked;
       fireEvent.click(checkbox.parentElement!);
@@ -106,7 +106,8 @@ describe('App integration', () => {
     }), expect.any(Function));
     expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'none');
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
-    await waitFor(() => expect(fakeMap.setLayoutProperty).toHaveBeenCalledWith('route-all', 'visibility', 'visible'));
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
+    expect(fakeMap.setLayoutProperty).toHaveBeenLastCalledWith('route-all', 'visibility', 'none');
 
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 기간')).toBeInTheDocument();
@@ -132,6 +133,67 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
   });
 
+
+  it.each(['경로 보기', '사진 여정'])('keeps paused %s focused while preserving requested and journey overviews', async mode => {
+    // Existing saved preferences must also default the new option to off.
+    localStorage.setItem('travel-camera.preferences.v3', JSON.stringify({ includeFlights: true, showDayMarkers: false }));
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }),
+      cancel: vi.fn(), dispose: vi.fn()
+    };
+    const { unmount } = render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: mode }));
+    const expectRoute = (visibility: string) => expect(fakeMap.setLayoutProperty).toHaveBeenLastCalledWith('route-all', 'visibility', visibility);
+    expectRoute('visible');
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
+    expectRoute('none');
+    fireEvent.click(screen.getByRole('button', { name: '재생' }));
+    fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
+    expectRoute('none');
+    fireEvent.click(screen.getByRole('button', { name: '전체 경로' }));
+    expectRoute('visible');
+    expect(screen.getByLabelText('재생 위치')).toHaveValue('0.1');
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.2' } });
+    expectRoute('none');
+    fireEvent.click(screen.getByRole('button', { name: '전체 경로' }));
+    fireEvent.click(screen.getByRole('button', { name: '재생' }));
+    expectRoute('none');
+    fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
+    expectRoute('none');
+    fireEvent.click(screen.getByText('여행 설정'));
+    const option = screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' });
+    expect(option).not.toBeChecked();
+    fireEvent.click(option);
+    expectRoute('visible');
+    expect(screen.getByRole('button', { name: '경로 다시 만들기' })).toBeDisabled();
+    expect(worker.plan).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem('travel-camera.preferences.v3')!).showFullRouteWhenPaused).toBe(true);
+    fireEvent.click(option);
+    expectRoute('none');
+    fireEvent.click(screen.getByText('여행 설정'));
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '1' } });
+    expectRoute('visible');
+    fireEvent.click(screen.getByRole('button', { name: '처음부터 보기' }));
+    expectRoute('visible');
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
+    expectRoute('none');
+    fireEvent.click(screen.getByText('여행 설정'));
+    fireEvent.click(option);
+    unmount();
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
+    expectRoute('visible');
+    fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '기본 설정으로 되돌리기' }));
+    expect(screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' })).not.toBeChecked();
+    expectRoute('none');
+  });
 
   it('offers multiple recommended trips with destination hints and lets the user select one', async () => {
     const worker: TimelineWorkerPort = {

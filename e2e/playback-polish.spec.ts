@@ -82,6 +82,8 @@ test('help follows the animated label and closes when its setting scrolls away',
   await title.click();
   await testInfo.attach('anchored-help', { body: await page.screenshot(), contentType: 'image/png' });
   // Hover a second setting while the first is pinned: only one tooltip may exist.
+  // Keep the real pointer outside the panel so scrolling cannot hover a different label.
+  await page.mouse.move(5, 300);
   await page.getByRole('button', { name: '지도 확대 설명', exact: true }).dispatchEvent('mouseover');
   await expect(tip).toHaveCount(1);
   await expect(tip).toContainText('왼쪽은 넓게');

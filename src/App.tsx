@@ -58,7 +58,7 @@ export function App({ workerClient }: AppProps) {
   const [client] = useState<TimelineWorkerPort>(() => workerClient ?? new TimelineWorkerClient());
 
   const { preferences, update: updatePreference, reset: resetPreferences } = usePreferences();
-  const { includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, onlinePlaceLookup, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
+  const { includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, showFullRouteWhenPaused, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, onlinePlaceLookup, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [excludedMedia, setExcludedMedia] = useState<Set<string>>(() => new Set());
   const [helpOpen, setHelpOpen] = useState(false);
@@ -84,6 +84,7 @@ export function App({ workerClient }: AppProps) {
   const [activePlaceName, setActivePlaceName] = useState<string | null>(null);
   const [placeLookupStatus, setPlaceLookupStatus] = useState<PhotoPlaceLookupStatus>({ available: false, provider: null, cache: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [routeOverviewRequested, setRouteOverviewRequested] = useState(false);
   const [appliedPlanSettings, setAppliedPlanSettings] = useState<AppliedPlanSettings | null>(null);
   const [hud, setHud] = useState<HudState>({ timeSec: 0, overview: false, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
   const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
@@ -399,6 +400,7 @@ export function App({ workerClient }: AppProps) {
         onFrame: (frame, _frameIndex, timeSec, stopId, stopElapsedSec = 0) => {
           playbackPositionsRef.current[mode] = timeSec;
           if (mode !== journeyModeRef.current) return;
+          setRouteOverviewRequested(false);
           if (stopId !== activeMediaRef.current) {
             activeMediaRef.current = stopId;
             setActiveMediaId(stopId);
@@ -514,8 +516,9 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     if (!map?.getLayer('route-all')) return;
-    map.setLayoutProperty('route-all', 'visibility', state.phase === 'playing' ? 'none' : 'visible');
-  }, [map, state.phase, state.plan]);
+    const visible = state.phase !== 'playing' && (showJourneySummary || routeOverviewRequested || showFullRouteWhenPaused);
+    map.setLayoutProperty('route-all', 'visibility', visible ? 'visible' : 'none');
+  }, [map, state.phase, state.plan, showJourneySummary, routeOverviewRequested, showFullRouteWhenPaused]);
 
   const onMapReady = useCallback((nextMap: MapLibreMap) => setMap(nextMap), []);
   const onMapError = useCallback((message: string | null) => setMapNotice(message), []);
@@ -565,6 +568,7 @@ export function App({ workerClient }: AppProps) {
       player.pause();
       dispatch({ type: 'PAUSE' });
     } else {
+      setRouteOverviewRequested(false);
       player.play();
       dispatch({ type: 'PLAY' });
     }
@@ -629,6 +633,7 @@ export function App({ workerClient }: AppProps) {
   const showRouteOverview = () => {
     if (!map || !state.plan) return;
     pausePlayback();
+    setRouteOverviewRequested(true);
     fitJourneyOverview(map, state.plan);
   };
 
@@ -671,7 +676,7 @@ export function App({ workerClient }: AppProps) {
       if (event.code === 'Space') {
         event.preventDefault();
         if (player.isPlaying()) { player.pause(); dispatch({ type: 'PAUSE' }); }
-        else { player.play(); dispatch({ type: 'PLAY' }); }
+        else { setRouteOverviewRequested(false); player.play(); dispatch({ type: 'PLAY' }); }
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault(); player.pause();
         player.seek(playbackPositionsRef.current[journeyModeRef.current] + (event.key === 'ArrowRight' ? 5 : -5));
@@ -956,10 +961,11 @@ export function App({ workerClient }: AppProps) {
           <div className="toggle-list">
             <SettingHelp title="항공 경로 포함" description={"비행 구간을 경로에 포함합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
             <SettingHelp title="현재 위치 따라가기" description={"켜면 이동 위치를 지도 중앙에 둡니다.\n끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다.\n바로 적용됩니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
+            <SettingHelp title="일시정지 시 전체 경로 표시" description={"일시정지한 장면에 전체 경로를 함께 표시합니다.\n기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다.\n전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="일시정지 시 전체 경로 표시" aria-description="일시정지한 장면에 전체 경로를 함께 표시합니다. 기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다. 전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다." checked={showFullRouteWhenPaused} onChange={event => updatePreference('showFullRouteWhenPaused', event.target.checked)} /><span>일시정지 시 전체 경로 표시</span></div></SettingHelp>
           </div>
 
           <div className="settings-footer">
-            <p className="settings-apply-note" role="status">{planNeedsRebuild ? '변경한 기간과 재생 구성을 경로에 적용하세요.' : '지도 확대와 사진 설정은 바로 적용됩니다.'}</p>
+            <p className="settings-apply-note" role="status">{planNeedsRebuild ? '변경한 기간과 재생 구성을 경로에 적용하세요.' : '지도 표시와 사진 설정은 바로 적용됩니다.'}</p>
             <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map || !planNeedsRebuild || !startDate || !endDate || startDate > endDate}>
               <Route size={16} /> {state.plan ? '경로 다시 만들기' : '경로 만들기'}
             </button>
