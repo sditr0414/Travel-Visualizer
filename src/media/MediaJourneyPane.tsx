@@ -20,6 +20,8 @@ interface Props {
   destinationCity: string | null;
   placeName: string | null;
   onFiles: (files: FileList) => void;
+  emptyDescription?: string;
+  onOpenLibrary?: () => void;
 }
 
 type SceneDescriptor =
@@ -49,7 +51,7 @@ interface PreloadHandle {
 const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
-export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles }: Props) {
+export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementDate, movementSpeed, originCity, destinationCity, placeName, onFiles, emptyDescription, onOpenLibrary }: Props) {
   const dayCue = useMemo(() => dayMarkerCueFromId(activeId), [activeId]);
   const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
@@ -102,18 +104,18 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
         {buffering && <span className="media-buffering" role="status">사진·영상 준비 중…</span>}
         {previousScene && (
           <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true">
-            <SceneContent playing={false} elapsedSec={Number.NaN} scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} />
+            <SceneContent playing={false} elapsedSec={Number.NaN} scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
           </div>
         )}
         <div key={currentScene.key} className="media-scene-layer is-current">
-          <SceneContent playing={playing && currentScene.key === desiredScene.key} elapsedSec={elapsedSec} scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} />
+          <SceneContent playing={playing && currentScene.key === desiredScene.key} elapsedSec={elapsedSec} scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
         </div>
       </div>
     </aside>
   );
 }
 
-function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedSec }: { playing: boolean; elapsedSec: number; scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
+function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedSec, emptyDescription, onOpenLibrary }: { emptyDescription?: string; onOpenLibrary?: () => void; playing: boolean; elapsedSec: number; scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
   if (scene.kind === 'photo') {
     return <PhotoScene playing={playing} elapsedSec={elapsedSec} item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
   }
@@ -148,9 +150,9 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
   return (
     <div className="media-empty">
       <span><ImagePlus size={24} /></span>
-      <strong>사진으로 여정을 이어보세요</strong>
-      <p>촬영 시간과 위치를 읽어 이동 경로의 알맞은 장면에 연결합니다.</p>
-      <label className="media-import-action">사진·영상 선택<input type="file" accept="image/*,video/*,.heic,.heif" multiple onChange={event => event.currentTarget.files && onFiles(event.currentTarget.files)} /></label>
+      <strong>{onOpenLibrary ? '감상할 사진을 선택해 주세요' : '여행에 사진을 더해보세요'}</strong>
+      <p>{emptyDescription ?? '사진과 영상을 선택하면 촬영 시각에 맞춰 여행 경로에 연결합니다.'}</p>
+      {onOpenLibrary ? <button type="button" className="media-import-action" onClick={onOpenLibrary}>사진 목록 열기</button> : <label className="media-import-action">사진·영상 선택<input type="file" accept="image/*,video/*,.heic,.heif" multiple onChange={event => event.currentTarget.files && onFiles(event.currentTarget.files)} /></label>}
     </div>
   );
 }

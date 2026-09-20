@@ -149,3 +149,23 @@ test('a real decoded short video pauses, seeks backward and holds its final fram
   expect(state.paused || state.ended).toBe(true);
   await testInfo.attach('video-sync', { body: JSON.stringify(state), contentType: 'application/json' });
 });
+
+
+test('excluded photos can be restored directly from the photo empty state', async ({ page }) => {
+  await attachLocalPhotoManifest(page);
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  await expect(page.getByRole('button', { name: '사진 여정', exact: true })).toHaveClass(/active/);
+  await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진 목록 관리', exact: true }).click();
+  const library = page.getByRole('dialog', { name: '사진 목록', exact: true });
+  await library.getByRole('checkbox').uncheck();
+  await library.getByRole('button', { name: '사진 목록 닫기' }).click();
+  await page.locator('.settings-panel summary').click();
+  await expect(page.getByText('모든 사진이 감상에서 제외되어 있습니다. 사진 목록에서 다시 포함해 주세요.')).toBeVisible();
+  await page.getByRole('button', { name: '사진 목록 열기', exact: true }).click();
+  await library.getByRole('button', { name: '모두 포함하기' }).click();
+  await expect(library.getByRole('checkbox')).toBeChecked();
+  await library.getByRole('button', { name: '사진 목록 닫기' }).click();
+  await expect(page.getByRole('button', { name: '사진 목록 열기', exact: true })).toBeHidden();
+});

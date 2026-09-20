@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Camera, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
+import { Camera, CircleHelp, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { ONLINE_STYLE_URL } from './map/map-style';
 import { resolveCityLabel } from './map/city-label';
@@ -181,7 +181,7 @@ export function App({ workerClient }: AppProps) {
       dispatch({ type: 'SCAN_SUCCESS', scan });
     } catch (error) {
       if (operation !== scanOperationRef.current) return;
-      dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : 'Timeline을 읽지 못했습니다.' });
+      dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '타임라인을 읽지 못했습니다. 파일을 다시 선택해 주세요.' });
     }
   }, [client, reportProgress]);
 
@@ -249,7 +249,7 @@ export function App({ workerClient }: AppProps) {
   const attachMediaFiles = useCallback(async (files: File[], plan: PlaybackPlan, activatePhotoJourney = true) => {
     const operation = ++mediaOperationRef.current;
     setMediaLoading(true);
-    setMediaProgress({ phase: 'PREPARE', processed: 0, total: files.length, message: '미디어 파일을 준비하고 있습니다.' });
+    setMediaProgress({ phase: 'PREPARE', processed: 0, total: files.length, message: '사진과 영상을 확인하고 있습니다.' });
     pausePlayback();
     try {
       const loaded = await loadJourneyMedia(files, plan, progress => {
@@ -283,7 +283,7 @@ export function App({ workerClient }: AppProps) {
       setMediaLibrary(loaded);
       mediaLibraryLoadedRef.current = true;
       if (activatePhotoJourney) changeJourneyMode('PHOTOS', true);
-      setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 로컬 사진·영상을 연결했습니다.` });
+      setMediaProgress({ phase: 'COMPLETE', processed: loaded.all.length, total: loaded.all.length, message: `${loaded.all.length}개의 사진·영상을 연결했습니다.` });
       dispatch({ type: 'NOTICE', message: `${manifest.rootName}에서 ${loaded.all.length}개의 사진·영상을 여행 경로에 연결했습니다.` });
     } catch (error) {
       if (operation !== mediaOperationRef.current) return;
@@ -515,10 +515,10 @@ export function App({ workerClient }: AppProps) {
   const onFileSelected = async (file: File | undefined) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.json')) {
-      dispatch({ type: 'FAIL', message: 'Google Timeline JSON 파일을 선택해 주세요.' });
+      dispatch({ type: 'FAIL', message: 'Google 지도에서 내보낸 타임라인 JSON 파일을 선택해 주세요.' });
       return;
     }
-    if (file.size > 250 * 1024 * 1024) { dispatch({ type: 'FAIL', message: '파일이 너무 큽니다. 250MB 이하의 Timeline JSON을 선택해 주세요.' }); return; }
+    if (file.size > 250 * 1024 * 1024) { dispatch({ type: 'FAIL', message: '파일이 너무 큽니다. 250 MB 이하의 타임라인 JSON 파일을 선택해 주세요.' }); return; }
     setSettingsOpen(false);
     manualTimelineSelectedRef.current = true;
     pausePlayback();
@@ -526,7 +526,7 @@ export function App({ workerClient }: AppProps) {
     try {
       await scanSource({ kind: 'local-file', name: file.name }, await file.text());
     } catch (error) {
-      dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : 'Timeline 파일을 읽지 못했습니다.' });
+      dispatch({ type: 'FAIL', message: error instanceof Error ? error.message : '타임라인 파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.' });
     }
   };
 
@@ -541,7 +541,7 @@ export function App({ workerClient }: AppProps) {
     const relativePath = files[0].webkitRelativePath;
     setSelectedMediaSummary({ name: relativePath?.split('/')[0] || '선택한 파일', count: files.length });
     if (!state.plan) {
-      dispatch({ type: 'NOTICE', message: `${files.length}개의 사진·영상을 선택했습니다. Timeline을 선택하면 자동으로 연결합니다.` });
+      dispatch({ type: 'NOTICE', message: `${files.length}개의 사진·영상을 선택했습니다. 타임라인을 열면 자동으로 연결합니다.` });
       return;
     }
     await attachMediaFiles(files, state.plan);
@@ -710,6 +710,14 @@ export function App({ workerClient }: AppProps) {
           destinationCity={hud.destinationCity}
           placeName={activePlaceName}
           onFiles={files => void onMediaFiles(files)}
+          emptyDescription={!state.plan
+            ? '타임라인을 먼저 열어 여행 경로를 준비해 주세요.'
+            : mediaLibrary.all.length && !media.length
+              ? '모든 사진이 감상에서 제외되어 있습니다. 사진 목록에서 다시 포함해 주세요.'
+              : selectedMediaSummary?.count
+                ? '선택한 여행 기간에 맞는 사진이 없습니다. 여행 기간을 바꾸거나 다른 사진을 선택해 주세요.'
+                : '사진과 영상을 선택하면 촬영 시각에 맞춰 여행 경로에 연결합니다.'}
+          onOpenLibrary={mediaLibrary.all.length && !media.length ? () => setLibraryOpen(true) : undefined}
         />
         <div
           className="photo-split-handle"
@@ -734,7 +742,7 @@ export function App({ workerClient }: AppProps) {
           <span className="brand-mark" aria-hidden="true"><Route size={18} /></span>
           <div>
             <strong>Travel Camera</strong>
-            <span>나의 이동을 한 편의 장면으로</span>
+            <span>지도와 사진으로 다시 보는 여행</span>
           </div>
         </div>
         <div className="topbar-actions">
@@ -742,12 +750,12 @@ export function App({ workerClient }: AppProps) {
           <button type="button" className={journeyMode === 'ROUTE' ? 'active' : ''} aria-pressed={journeyMode === 'ROUTE'} onClick={() => changeJourneyMode('ROUTE')}><Route size={14} /> 경로 보기</button>
           <button type="button" className={journeyMode === 'PHOTOS' ? 'active' : ''} aria-pressed={journeyMode === 'PHOTOS'} onClick={() => changeJourneyMode('PHOTOS')}><Images size={14} /> 사진 여정</button>
         </div>
-        {state.plan && <button className="import-button overview-button" type="button" aria-label="전체 경로" onClick={showRouteOverview} disabled={busy || !map}><MapPinned size={16} /><span>전체 경로</span></button>}
-        <label className="import-button media-import-button">
+        {state.plan && <button className="import-button overview-button" type="button" aria-label="전체 경로" title="전체 경로 보기" onClick={showRouteOverview} disabled={busy || !map}><MapPinned size={16} /><span>전체 경로</span></button>}
+        <label className="import-button media-import-button" title="사진 폴더 선택">
           <FolderOpen size={16} aria-hidden="true" /><span>사진 폴더</span>
           <input type="file" aria-label="사진 폴더 선택" multiple {...{ webkitdirectory: '' }} disabled={mediaLoading} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} />
         </label>
-        <label className="import-button">
+        <label className="import-button" title="타임라인 파일 열기">
           <Upload size={16} aria-hidden="true" />
           <span>타임라인 파일 열기</span>
           <input
@@ -762,21 +770,22 @@ export function App({ workerClient }: AppProps) {
             }}
           />
         </label>
+        <button className="import-button help-trigger" type="button" aria-label="사용 안내" title="사용 안내" onClick={() => { pausePlayback(); setHelpOpen(true); }}><CircleHelp size={18} aria-hidden="true" /></button>
         </div>
       </header>
 
       {state.phase === 'idle' && (
         <section className="local-import-panel" aria-labelledby="local-import-title">
           <div className="local-import-heading">
-            <span><FolderOpen size={20} /></span>
-            <div><strong id="local-import-title">내 여행 파일로 시작</strong><p>기본 Timeline과 사진 폴더를 이 PC에서 바로 불러옵니다.</p></div>
+            <span aria-hidden="true"><Route size={22} /></span>
+            <div><h1 id="local-import-title">다녀온 여행을 다시 펼쳐보세요</h1><p>타임라인으로 이동 경로를 따라가고,<br />사진과 영상으로 그 순간을 감상하세요.</p></div>
           </div>
           <div className="local-import-actions">
-            <label className="local-import-primary"><FileJson size={18} /><span><strong>타임라인 파일 열기</strong><small>Google 지도에서 내보낸 JSON 파일</small></span><input type="file" aria-label="시작할 타임라인 파일 열기" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>
-            <label className="local-import-secondary"><Images size={18} /><span><strong>사진 폴더 선택</strong><small>{selectedMediaSummary ? `${selectedMediaSummary.name} · ${selectedMediaSummary.count}개` : '선택 사항 · Takeout 정보도 함께 읽습니다'}</small></span><input type="file" aria-label="시작할 사진 폴더 선택" multiple {...{ webkitdirectory: '' }} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
+            <label className="local-import-primary"><FileJson size={18} /><span><strong>타임라인 파일 열기</strong><small>Google 지도에서 내보낸 JSON · 최대 250 MB</small></span><input type="file" aria-label="시작할 타임라인 파일 열기" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>
+            <label className="local-import-secondary"><Images size={18} /><span><strong>사진 폴더 선택</strong><small>{selectedMediaSummary ? `${selectedMediaSummary.name} · ${selectedMediaSummary.count}개` : '선택 사항 · 사진과 영상을 경로에 연결합니다'}</small></span><input type="file" aria-label="시작할 사진 폴더 선택" multiple {...{ webkitdirectory: '' }} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
           </div>
-          <button className="settings-help-link" type="button" aria-label="사용 방법" onClick={() => setHelpOpen(true)}>Timeline 준비 방법과 사용 안내</button>
-          <p className="local-privacy"><ShieldCheck size={13} /> 개인 파일은 업로드하지 않습니다. 배경 지도에는 인터넷이 필요합니다.</p>
+          <button className="settings-help-link" type="button" aria-label="사용 방법" onClick={() => setHelpOpen(true)}>타임라인 준비 방법</button>
+          <p className="local-privacy"><ShieldCheck size={13} /> 파일은 이 기기에서만 읽습니다. 온라인 지도는 인터넷이 필요합니다.</p>
         </section>
       )}
 
@@ -800,11 +809,42 @@ export function App({ workerClient }: AppProps) {
             <div><span>현재 타임라인</span><strong>{state.source?.name ?? '준비 중'}</strong></div>
           </div>
 
-          <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setHelpOpen(true); }}>처음 사용하는 분을 위한 안내</button>
+          <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setHelpOpen(true); }}>사용 안내</button>
+          <section className="trip-range-control" aria-labelledby="trip-range-title">
+            <div className="trip-range-heading">
+              <div><span id="trip-range-title">여행 기간</span><strong>{formatTripRange(startDate, endDate)}</strong></div>
+              <div className="trip-range-presets">
+                <button type="button" onClick={() => {
+                  setStartDate(state.scan!.startDate);
+                  setEndDate(state.scan!.endDate);
+                }}>전체 기간</button>
+              </div>
+            </div>
+            {!!state.scan.tripCandidates?.length && <label className="select-field trip-candidate-picker">
+              <span>추천 여행</span>
+              <select aria-label="추천 여행" value={state.scan.tripCandidates.find(candidate =>
+                candidate.startDate === startDate && candidate.endDate === endDate)?.id ?? ''}
+                onChange={event => {
+                  const candidate = state.scan?.tripCandidates?.find(item => item.id === event.target.value);
+                  if (candidate) { setStartDate(candidate.startDate); setEndDate(candidate.endDate); }
+                }}>
+                <option value="" disabled>여행 선택</option>
+                {state.scan.tripCandidates.map((candidate, index) => <option key={candidate.id} value={candidate.id}>
+                  {candidate.destinationHint ?? ('추천 여행 ' + (index + 1))} · {formatTripRange(candidate.startDate, candidate.endDate)} · {formatTripCandidateSummary(candidate)}
+                </option>)}
+              </select>
+            </label>}
+            <div className="trip-range-fields">
+              <label><span>시작일</span><input aria-label="여행 시작" type="date" value={startDate} min={state.scan.startDate} max={endDate || state.scan.endDate} onChange={event => setStartDate(event.target.value)} /></label>
+              <span className="trip-range-arrow" aria-hidden="true">→</span>
+              <label><span>종료일</span><input aria-label="여행 마지막 날" type="date" value={endDate} min={startDate || state.scan.startDate} max={state.scan.endDate} onChange={event => setEndDate(event.target.value)} /></label>
+            </div>
+          </section>
+
           <section className="settings-group">
             <div className="settings-group-title"><Camera size={14} /><span>카메라</span></div>
-            <SettingHelp title="지도 보기 방식" description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 경로 재생성 후 적용됩니다."><label className="select-field">지도 보기 방식
-              <select aria-description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 경로 재생성 후 적용됩니다." value={cameraMode} onChange={event => updatePreference('cameraMode', event.target.value as CameraMode)}>
+            <SettingHelp title="지도 보기 방식" description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><label className="select-field">지도 보기 방식
+              <select aria-description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." value={cameraMode} onChange={event => updatePreference('cameraMode', event.target.value as CameraMode)}>
                 <option value="AUTO">자동 · 추천</option><option value="DAY">날짜별로 보기</option><option value="SEGMENT">이동 구간별로 보기</option>
               </select>
             </label></SettingHelp>
@@ -820,13 +860,13 @@ export function App({ workerClient }: AppProps) {
 
           {journeyMode === 'PHOTOS' && <section className="settings-group">
             <div className="settings-group-title"><Images size={14} /><span>사진 여정</span><output>{media.length}개</output></div>
-            <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setLibraryOpen(true); }}>사진 목록 · 감상에서 제외하기</button>
+            <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setLibraryOpen(true); }}>사진 목록 관리</button>
             <div className="media-import-row">
               <label>파일 선택<input type="file" accept="image/*,video/*,.heic,.heif" multiple onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
               <label>폴더 선택<input type="file" multiple {...{ webkitdirectory: '' }} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
             </div>
             {mediaProgress && <div className="media-progress" data-phase={mediaProgress.phase}>
-              <div><strong>{mediaProgress.phase === 'COMPLETE' ? '준비 완료' : '로컬 미디어 분석'}</strong><output>{Math.round(mediaProgressValue * 100)}%</output></div>
+              <div><strong>{mediaProgress.phase === 'COMPLETE' ? '준비 완료' : '사진·영상 확인 중'}</strong><output>{Math.round(mediaProgressValue * 100)}%</output></div>
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}
@@ -839,9 +879,9 @@ export function App({ workerClient }: AppProps) {
             <SettingHelp title="사진 표시 시간" description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다."><label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
               <input aria-description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다." type="range" min="1" max="10" step="0.5" value={photoDisplaySec} onChange={event => updatePreference('photoDisplaySec', Number(event.target.value))} />
             </label></SettingHelp>
-            <SettingHelp title="사진을 볼 때 지도 확대" description="좁은 지역 상세 확대: 사진을 감상하는 좁은 지역을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다."><label className="select-field">사진을 볼 때 지도 확대
-              <select aria-description="좁은 지역 상세 확대: 사진을 감상하는 좁은 지역을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다." aria-label="사진을 볼 때 지도 확대" value={photoDetailZoomMode} onChange={event => updatePreference('photoDetailZoomMode', event.target.value as 'AUTO' | 'OFF')}>
-                <option value="AUTO">좁은 지역 상세 확대 · 추천</option><option value="OFF">기본 확대만</option>
+            <SettingHelp title="사진을 볼 때 지도 확대" description="사진 위치 가까이 보기: 사진을 감상하는 장소 주변을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다."><label className="select-field">사진을 볼 때 지도 확대
+              <select aria-description="사진 위치 가까이 보기: 사진을 감상하는 장소 주변을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다." aria-label="사진을 볼 때 지도 확대" value={photoDetailZoomMode} onChange={event => updatePreference('photoDetailZoomMode', event.target.value as 'AUTO' | 'OFF')}>
+                <option value="AUTO">사진 위치 가까이 보기 · 추천</option><option value="OFF">기본 확대만</option>
               </select>
             </label></SettingHelp>
             {photoDetailZoomMode === 'AUTO' && <><SettingHelp title="상세 확대 강도" description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요."><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
@@ -849,8 +889,8 @@ export function App({ workerClient }: AppProps) {
             </label></SettingHelp></>}
             <div className="toggle-list">
               <SettingHelp title="정확한 장소 온라인 확인" description={placeLookupStatus.available
-                ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다. 사진 원본과 Timeline은 보내지 않으며 결과는 이 PC에 캐시합니다.`
-                : '서버에 Nominatim 호환 역지오코딩 주소를 설정하면 사용할 수 있습니다. 개인정보 때문에 외부 장소 서비스는 기본으로 연결하지 않습니다.'}>
+                ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다. 사진 원본과 타임라인은 보내지 않으며 확인한 장소는 이 PC에 저장합니다.`
+                : '별도의 장소 서비스 연결이 필요합니다. 연결하지 않아도 사진과 여행 경로를 감상할 수 있습니다. 연결 방법은 사용 안내에서 확인하세요.'}>
                 <div className="setting-checkbox"><input
                   type="checkbox"
                   aria-label="정확한 장소 온라인 확인"
@@ -879,42 +919,12 @@ export function App({ workerClient }: AppProps) {
                 <input aria-description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다." type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
               </label></SettingHelp>
             </>}
-            <p className="privacy-note">사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다. ‘정확한 장소 온라인 확인’을 직접 켠 경우에만 신뢰 가능한 GPS 좌표가 설정한 장소 서비스로 전송됩니다.</p>
+            <p className="privacy-note">사진과 영상 원본은 외부로 업로드하지 않습니다. ‘정확한 장소 온라인 확인’을 직접 켠 경우에만 신뢰 가능한 GPS 좌표가 설정한 장소 서비스로 전송됩니다.</p>
           </section>}
 
-          <section className="trip-range-control" aria-labelledby="trip-range-title">
-            <div className="trip-range-heading">
-              <div><span id="trip-range-title">여행 기간</span><strong>{formatTripRange(startDate, endDate)}</strong></div>
-              <div className="trip-range-presets">
-                <button type="button" onClick={() => {
-                  setStartDate(state.scan!.startDate);
-                  setEndDate(state.scan!.endDate);
-                }}>전체 기간</button>
-              </div>
-            </div>
-            {!!state.scan.tripCandidates?.length && <label className="select-field trip-candidate-picker">
-              <span>추천 여행</span>
-              <select aria-label="추천 여행" value={state.scan.tripCandidates.find(candidate =>
-                candidate.startDate === startDate && candidate.endDate === endDate)?.id ?? ''}
-                onChange={event => {
-                  const candidate = state.scan?.tripCandidates?.find(item => item.id === event.target.value);
-                  if (candidate) { setStartDate(candidate.startDate); setEndDate(candidate.endDate); }
-                }}>
-                <option value="" disabled>여행 선택</option>
-                {state.scan.tripCandidates.map((candidate, index) => <option key={candidate.id} value={candidate.id}>
-                  {candidate.destinationHint ?? ('추천 여행 ' + (index + 1))} · {formatTripRange(candidate.startDate, candidate.endDate)} · {formatTripCandidateSummary(candidate)}
-                </option>)}
-              </select>
-            </label>}
-            <div className="trip-range-fields">
-              <label><span>시작</span><input aria-label="여행 시작" type="date" value={startDate} min={state.scan.startDate} max={endDate || state.scan.endDate} onChange={event => setStartDate(event.target.value)} /></label>
-              <span className="trip-range-arrow" aria-hidden="true">→</span>
-              <label><span>마지막</span><input aria-label="여행 마지막 날" type="date" value={endDate} min={startDate || state.scan.startDate} max={state.scan.endDate} onChange={event => setEndDate(event.target.value)} /></label>
-            </div>
-          </section>
 
           <SettingHelp title="경로 재생 시간" description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."><label className="range-field">
-            <span><span>경로 재생 시간</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '중앙값'}</output></span>
+            <span><span>경로 재생 시간</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동'}</output></span>
             <input aria-description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."
               type="range"
               min={state.plan?.durationLimits.minSeconds ?? 45}
@@ -928,8 +938,8 @@ export function App({ workerClient }: AppProps) {
             />
           </label></SettingHelp>
 
-          <SettingHelp title="지도 소스" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 필요한 지명 글꼴은 최초 사용 후 이 PC에 캐시합니다."><label className="select-field">지도 소스
-            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 준비된 지역만 상세하며 필요한 지명 글꼴은 최초 사용 후 이 PC에 캐시합니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
+          <SettingHelp title="배경 지도" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 설치한 지역을 자세히 보여줍니다. 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다."><label className="select-field">배경 지도
+            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 설치한 지역을 자세히 보여줍니다. 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
               <option value="online">온라인 지도</option>
               <option value="local-pmtiles" disabled={!state.mapStatus?.ready}>설치형 지도{!state.mapStatus?.ready ? " · 설치 필요" : ""}</option>
             </select>
@@ -940,29 +950,31 @@ export function App({ workerClient }: AppProps) {
             <SettingHelp title="현재 위치 따라가기" description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
           </div>
 
-
-          <button className="settings-help-link" type="button" onClick={() => { resetPreferences(); setTargetDurationSec(0); durationCustomizedRef.current = false; }}>감상 설정 기본값 복원</button>
-          <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map || !planNeedsRebuild || !startDate || !endDate || startDate > endDate}>
-            <Route size={16} /> {state.plan ? '경로 다시 만들기' : '경로 만들기'}
-          </button>
+          <div className="settings-footer">
+            <p className="settings-apply-note" role="status">{planNeedsRebuild ? '변경한 기간과 재생 구성을 경로에 적용하세요.' : '지도 확대와 사진 설정은 바로 적용됩니다.'}</p>
+            <button className="plan-button" type="button" onClick={() => void createPlan()} disabled={busy || !state.scan || !map || !planNeedsRebuild || !startDate || !endDate || startDate > endDate}>
+              <Route size={16} /> {state.plan ? '경로 다시 만들기' : '경로 만들기'}
+            </button>
+            <button className="settings-help-link" type="button" onClick={() => { resetPreferences(); setTargetDurationSec(0); durationCustomizedRef.current = false; }}>기본 설정으로 되돌리기</button>
+          </div>
         </div>
       </details>}
 
       {(busy || state.phase === 'error') && (
         <section className={`status-card ${state.phase === 'error' ? 'error' : ''}`} role={state.phase === 'error' ? 'alert' : 'status'}>
           {busy && <span className="progress-orbit" aria-hidden="true" />}
-          <div><strong>{state.phase === 'error' ? '확인이 필요해요' : mediaLoading ? mediaProgress?.message : state.statusMessage}</strong>
+          <div><strong>{state.phase === 'error' ? '여행을 준비하지 못했습니다' : mediaLoading ? mediaProgress?.message : state.statusMessage}</strong>
             {busy && <progress max="1" value={mediaLoading ? mediaProgressValue : state.progress} />}
             {state.error && <p>{state.error}</p>}
           </div>
-          {state.phase === 'error' && state.scan && <button className="error-file-action" onClick={() => setSettingsOpen(true)}>기간 확인하고 다시 시도</button>}
-          {state.phase === 'error' && <label className="error-file-action">타임라인 파일 다시 열기<input type="file" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>}
+          {state.phase === 'error' && state.scan && <button className="error-file-action" onClick={() => setSettingsOpen(true)}>여행 기간 확인</button>}
+          {state.phase === 'error' && <label className="error-file-action">다른 타임라인 선택<input type="file" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>}
         </section>
       )}
 
       {state.plan && state.phase === 'playing' && <div className="player-reveal-zone" aria-hidden="true" {...playbackChrome.revealZoneProps} />}
       {state.plan && <footer className="player-dock" aria-label="재생 컨트롤" {...playbackChrome.interactionProps}>
-        <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기"><RotateCcw size={17} /></button>
+        <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기" title="처음부터 보기"><RotateCcw size={17} /></button>
         <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}
           aria-label={state.phase === 'playing' ? '일시정지' : '재생'} title={state.phase === 'playing' ? '일시정지' : '재생'}>
           {state.phase === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
@@ -970,6 +982,7 @@ export function App({ workerClient }: AppProps) {
         <div className="timeline-control">
           <input
             aria-label="재생 위치"
+            aria-valuetext={`${formatClock(hud.timeSec)} / ${formatClock(duration)}`}
             type="range"
             min="0"
             max={duration}

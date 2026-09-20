@@ -91,7 +91,7 @@ describe('App integration', () => {
     };
     render(<App workerClient={worker} />);
     expect(screen.getByTestId('map-stage')).toBeInTheDocument();
-    expect(screen.getByText('내 여행 파일로 시작')).toBeInTheDocument();
+    expect(screen.getByText('다녀온 여행을 다시 펼쳐보세요')).toBeInTheDocument();
     expect(worker.scan).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), {
       target: { files: [timelineFile()] }
@@ -310,7 +310,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
     expect(screen.getByLabelText('지도 보기 방식')).toHaveValue('AUTO');
-    expect(screen.getByText(/사진과 영상 원본은 이 PC의 로컬 서버에서만 제공됩니다/)).toBeInTheDocument();
+    expect(screen.getByText(/사진과 영상 원본은 외부로 업로드하지 않습니다/)).toBeInTheDocument();
     expect(screen.getByLabelText('정확한 장소 온라인 확인')).toBeDisabled();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('표시할 사진')).toHaveValue('PREVIEW');

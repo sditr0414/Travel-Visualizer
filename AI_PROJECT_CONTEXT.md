@@ -1,8 +1,8 @@
-# AI Project Context — Travel Camera Visualizer v3
+# AI Project Context — Travel Camera Visualizer
 
 ## Product and runtime
 
-Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하는 반응형 앱입니다. Node.js 24+, React 19, TypeScript, Vite 8, MapLibre를 사용합니다. Timeline·사진 원본은 업로드하지 않습니다. 온라인 지도는 외부 타일을 사용하고 설치형 지도의 glyph는 최초 사용 후 로컬 서버 캐시에 보관합니다. 정확한 장소 온라인 확인은 기본 OFF이며 사용자가 설정한 역지오코딩 서비스가 있을 때만 신뢰 가능한 GPS 좌표를 보냅니다. 이 문서는 v2의 UI 지침을 대체합니다.
+Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하는 반응형 앱입니다. Node.js 24+, React 19, TypeScript, Vite 8, MapLibre를 사용합니다. Timeline·사진 원본은 업로드하지 않습니다. 온라인 지도는 외부 타일을 사용하고 설치형 지도의 glyph는 최초 사용 후 로컬 서버 캐시에 보관합니다. 정확한 장소 온라인 확인은 기본 OFF이며 사용자가 설정한 역지오코딩 서비스가 있을 때만 신뢰 가능한 GPS 좌표를 보냅니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
 
 `npm start`/Windows 런처는 프로덕션 빌드를 사용합니다. `scripts/ensure-build.mjs`는 소스 fingerprint가 바뀌었을 때만 빌드합니다. `npm run dev`는 개발용입니다. 서버는 127.0.0.1에만 바인딩합니다. 모바일 UI는 직접 파일 선택을 지원하며, 다른 기기에서 접근하려면 별도의 HTTPS 정적 호스팅이 필요합니다. LAN 공개를 위해 로컬 개인 파일 API의 접근 제한을 완화하지 않습니다.
 
@@ -16,8 +16,8 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 
 ## UI and accessibility
 
-- 사용자가 v2 디자인 계승을 명시했습니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널, 기존 색상·간격을 유지합니다. 색상 기준도 v2 토큰(`--ink #171a1d`, `--surface rgba(24,27,30,.92)`, `--paper #f7f3ed`, `--muted #aaa7a2`, `--accent #ff725d`)을 따르며 새 UI가 별도 청회색 팔레트를 만들지 않습니다. 전면 재설계하지 않습니다.
-- `styles.css`, `ux-polish.css`, `settings-polish.css`는 v2 기준을 복원했습니다. 설명·복구·도움말 등 제한된 추가 스타일은 `usability-fixes.css`에 둡니다.
+- 사용자 승인에 따라 기존 UI 골조를 유지하면서 레퍼런스를 참고해 개선합니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널과 지도·사진 분할을 유지하되 정보 순서·타이포그래피·간격·문구는 개선할 수 있습니다. 색상 기준도 v2 토큰(`--ink #171a1d`, `--surface rgba(24,27,30,.92)`, `--paper #f7f3ed`, `--muted #aaa7a2`, `--accent #ff725d`)을 따르며 새 UI가 별도 청회색 팔레트를 만들지 않습니다. 지도 중심의 감상 경험과 기존 재생 동작을 보존합니다.
+- `styles.css`의 토큰과 기존 CSS를 기준으로 하며 제품 UI 개선은 `usability-fixes.css`에 둡니다. 첫 화면은 타임라인 열기를 주 행동으로 제시하고, 설정은 여행 기간을 먼저 보여줍니다. 하단 적용 영역은 고정하고 재계산이 필요한 변경과 즉시 적용되는 변경을 구분합니다.
 - 설정 이름의 hover·키보드 포커스·탭으로 설명을 표시하고 입력과 aria-describedby로 연결합니다. 추천 여행은 native select로 고릅니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
 - 도움말·사진 목록은 공통 native Dialog를 사용합니다. 개인 파일·날짜는 저장하지 않고 검증한 감상 설정만 저장합니다.
 - 사진 목록은 촬영 정보 출처·GPS/Timeline 위치 추정·가능한 경우 GPS 수평 오차·감상 제외 기능을 유지합니다. 사진 여정 설정에서 엽니다.
@@ -64,7 +64,7 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 
 ## Validation
 
-사용자가 지정한 범위가 우선입니다. 수정 후 App 핵심 검사와 lint/build를 확인하고, 배포 화면에서 초기 지도의 실제 렌더링을 확인했습니다. 390px 모바일 viewport의 가로 넘침도 확인했으며 실기기 검증과는 구별합니다. 변경별 검증과 남은 배포 확인은 V3_RELEASE_NOTES.md를 갱신합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.
+사용자가 지정한 범위가 우선입니다. 수정 후 App 핵심 검사와 lint/build를 확인하고, 배포 화면에서 초기 지도의 실제 렌더링을 확인했습니다. 390px 모바일 viewport의 가로 넘침도 확인했으며 실기기 검증과는 구별합니다. V3_RELEASE_NOTES.md는 보존 버전의 기록으로 유지하고 main의 변경 사항은 README에 정리합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.
 
 ## 사진 여정 검토 후 유지할 계약
 
@@ -89,3 +89,9 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 - 이동수단 이모지의 자연스러운 글자 상자와 기존 2열 배치를 유지합니다. 이모지 변경 때문에 아래 이동수단 이름의 위치를 다시 설계하지 않습니다.
 - 설정 체크박스의 상태 변경은 실제 체크박스와 키보드 조작에서만 일어납니다. 설정 이름은 설명을 표시하며 빈 공간은 선택하지 않습니다. aria-label/aria-describedby를 보존합니다.
 - 타일 레벨 관리 때문에 실제 camera zoom을 정수 경계에 고정하지 않습니다. ±0.001 고정 후 ±0.07 해제는 미세 정지/급변을 만들므로 다시 추가하지 않습니다. 기존 planner 경로와 최종 zoomOffset 1회 적용은 유지합니다.
+
+## 제품 UI 문구와 레퍼런스
+
+- 사용자에게는 ‘타임라인’, ‘사진·영상’, ‘여행 기간’, ‘경로 다시 만들기’를 일관되게 사용합니다. JSON 형식과 서비스 설정 같은 구현 설명은 도움말의 접힌 상세 안내와 README에 둡니다. 파일 원본 비업로드와 선택적 GPS 좌표 전송의 차이는 유지합니다.
+- 도움말은 실제 추천 여행 선택 동작을 설명합니다. 사진 미선택·기간 불일치·전체 제외 상태는 서로 다른 안내와 복구 경로를 제공합니다.
+- 21st.dev의 [settings](https://21st.dev/@ln-dev7/components/settings)와 [upload](https://21st.dev/@ephraimduncan/components/upload-1) 공개 미리보기를 참고했습니다. 제목·설명 계층과 파일 선택 정보 배치를 직접 구현했으며 외부 컴포넌트 코드나 의존성을 가져오지 않았습니다.

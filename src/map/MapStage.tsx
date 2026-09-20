@@ -44,6 +44,12 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
           style,
           center: [127.6, 36.2],
           zoom: 5.4,
+          locale: {
+            'Map.Title': '여행 지도',
+            'NavigationControl.ZoomIn': '지도 확대',
+            'NavigationControl.ZoomOut': '지도 축소',
+            'AttributionControl.ToggleAttribution': '지도 출처 보기'
+          },
           attributionControl: false,
           cooperativeGestures: false,
           cancelPendingTileRequestsWhileZooming: false,

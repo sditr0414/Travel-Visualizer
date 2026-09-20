@@ -23,7 +23,7 @@ export async function loadJourneyMedia(
     void analysis.catch(() => analyzedFileSets.delete(files));
   }
   const records = await analysis;
-  onProgress?.({ phase: 'MATCH', processed: 0, total: records.length, message: '촬영 정보와 Timeline을 연결하고 있습니다.' });
+  onProgress?.({ phase: 'MATCH', processed: 0, total: records.length, message: '촬영 시각과 여행 경로를 맞추고 있습니다.' });
   const mapped = records.map(record => {
     const file = allFiles[record.fileIndex];
     const position = record.lat != null && record.lng != null ? { lat: record.lat, lng: record.lng } : null;
@@ -49,7 +49,7 @@ export async function loadJourneyMedia(
   onProgress?.({ phase: 'BUILD', processed: mapped.length, total: mapped.length, message: '사진 장면을 구성하고 있습니다.' });
   const all = organizeJourneyMedia(mapped, plan, 'ALL');
   const preview = organizeJourneyMedia(mapped, plan, 'PREVIEW');
-  onProgress?.({ phase: 'COMPLETE', processed: all.length, total: all.length, message: `${all.length}개의 미디어를 경로에 연결했습니다.` });
+  onProgress?.({ phase: 'COMPLETE', processed: all.length, total: all.length, message: `${all.length}개의 사진·영상을 경로에 연결했습니다.` });
   return { preview, all };
 }
 

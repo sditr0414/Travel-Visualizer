@@ -9,7 +9,7 @@ export async function analyzeMediaFiles(
   onProgress?: (progress: MediaImportProgress) => void
 ): Promise<MediaMetadataRecord[]> {
   const mediaCount = files.filter(isMediaFile).length;
-  onProgress?.({ phase: 'PREPARE', processed: files.length, total: files.length, message: `${mediaCount.toLocaleString()}개의 미디어 파일을 확인했습니다.` });
+  onProgress?.({ phase: 'PREPARE', processed: files.length, total: files.length, message: `${mediaCount.toLocaleString()}개의 사진·영상을 확인했습니다.` });
   if (!mediaCount) return [];
 
   if (typeof Worker === 'function') {
@@ -65,7 +65,7 @@ export async function analyzeMediaFilesInline(
       // Invalid or unrelated JSON files are intentionally ignored.
     }
     if (index % 20 === 0 || index === sidecars.length - 1) {
-      onProgress?.({ phase: 'SIDECAR', processed: index + 1, total: Math.max(1, sidecars.length), message: `${index + 1} / ${sidecars.length} 로컬 sidecar 확인` });
+      onProgress?.({ phase: 'SIDECAR', processed: index + 1, total: Math.max(1, sidecars.length), message: `${index + 1} / ${sidecars.length} 보조 촬영 정보 확인` });
       await yieldToBrowser();
     }
   }
@@ -115,7 +115,7 @@ function analyzeInWorker(files: File[], onProgress?: (progress: MediaImportProgr
       if (message.type === 'ERROR') reject(new Error(message.message));
       else resolve(message.records);
     });
-    worker.addEventListener('error', event => { cleanup(); reject(event.error || new Error('미디어 Worker를 시작하지 못했습니다.')); }, { once: true });
+    worker.addEventListener('error', event => { cleanup(); reject(event.error || new Error('사진 분석을 시작하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.')); }, { once: true });
     worker.postMessage({ files });
   });
 }

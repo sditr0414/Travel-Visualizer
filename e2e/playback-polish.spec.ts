@@ -27,9 +27,9 @@ test('icon-only playback controls and familiar walking emoji remain accessible',
 });
 
 test('help follows the animated label and closes when its setting scrolls away', async ({ page, isMobile }, testInfo) => {
-  // A tall desktop panel can keep this label visible even at maximum scroll.
-  // Use a genuinely scrollable viewport and assert the label has left its clip.
-  if (!isMobile) await page.setViewportSize({ width: 1440, height: 600 });
+  // Trip dates precede camera controls, so a tall panel can retain this label
+  // even at maximum scroll. Exercise actual clipping on both device layouts.
+  await page.setViewportSize({ width: isMobile ? 390 : 1440, height: 600 });
   await page.goto('/');
   await loadLocalTimeline(page);
   await page.locator('.settings-panel summary').click();

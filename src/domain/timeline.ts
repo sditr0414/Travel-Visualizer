@@ -54,13 +54,13 @@ export function parseTimelineJson(text: string): TimelineRoot {
   try {
     value = JSON.parse(text);
   } catch {
-    throw new Error('올바른 JSON 파일이 아닙니다.');
+    throw new Error('파일을 읽을 수 없습니다. Google 지도에서 내보낸 타임라인 JSON 파일을 선택해 주세요.');
   }
   if (!value || typeof value !== 'object' || !Array.isArray((value as TimelineRoot).semanticSegments)) {
-    throw new Error('Google Timeline의 semanticSegments를 찾을 수 없습니다.');
+    throw new Error('지원하지 않는 타임라인 형식입니다. 스마트폰 Google 지도에서 내보낸 JSON 파일을 선택해 주세요.');
   }
   if (!(value as TimelineRoot).semanticSegments?.length) {
-    throw new Error('Timeline에 이동 기록이 없습니다.');
+    throw new Error('이 타임라인에는 이동 기록이 없습니다. 기록이 있는 다른 파일을 선택해 주세요.');
   }
   return value as TimelineRoot;
 }
@@ -99,7 +99,7 @@ export function scanTimeline(json: TimelineRoot): TimelineScanResult {
   }
 
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
-    throw new Error('Timeline에서 유효한 날짜를 찾을 수 없습니다.');
+    throw new Error('타임라인의 날짜를 확인할 수 없습니다. Google 지도에서 파일을 다시 내보내 주세요.');
   }
 
   const fullRange = { startDate: toKoreaDate(start), endDate: toKoreaDate(end) };

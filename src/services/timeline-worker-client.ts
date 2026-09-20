@@ -53,7 +53,7 @@ export class TimelineWorkerClient implements TimelineWorkerPort {
   }
 
   dispose(): void {
-    for (const request of this.pending.values()) request.reject(new Error('Worker가 종료되었습니다.'));
+    for (const request of this.pending.values()) request.reject(new Error('타임라인 분석이 종료되었습니다.'));
     this.pending.clear();
     this.worker.terminate();
   }
@@ -76,7 +76,7 @@ export class TimelineWorkerClient implements TimelineWorkerPort {
     worker.addEventListener('message', event => this.handleMessage(event.data as WorkerResponse));
     worker.addEventListener('error', () => {
       if (this.currentRequestId === null) return;
-      this.pending.get(this.currentRequestId)?.reject(new Error('Timeline Worker를 시작하지 못했습니다.'));
+      this.pending.get(this.currentRequestId)?.reject(new Error('타임라인 분석을 시작하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.'));
       this.pending.delete(this.currentRequestId);
       this.currentRequestId = null;
     });
