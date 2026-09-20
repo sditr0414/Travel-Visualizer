@@ -146,7 +146,7 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-primary')).toHaveTextContent('3월 18일 (수) 11시');
     expect(container.querySelector('.movement-primary')).toHaveTextContent('82 km/h');
     expect(container.querySelector('.movement-distance')).toHaveTextContent('24.6 km');
-    expect(container.querySelector('.movement-distance')).toHaveAttribute('title', '현재 이동 구간의 거리');
+    expect(container.querySelector('.movement-distance')).toHaveAttribute('title', '이동거리');
     expect(container.querySelector('.movement-route')).toHaveTextContent('후쿠오카→기타큐슈');
     expect(container.querySelector('.movement-mode')).not.toHaveTextContent('도로 이동');
   });
@@ -158,6 +158,14 @@ describe('MediaJourneyPane', () => {
     expect(container.querySelector('.movement-mode')).toHaveTextContent('도보');
     expect(container.querySelector('.movement-pictogram')).toHaveTextContent('🚶');
     expect(container.querySelector('.movement-speed')).toHaveTextContent('—');
+  });
+
+  it('shows only the journey total in the closing overview', () => {
+    const { container } = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps}
+      mobilityClass="UNKNOWN" movementLabel="전체 경로" movementDate="여행 전체"
+      movementSpeed="" movementDistance="총 2.5 km" />);
+    expect(container.querySelector('.movement-distance')).toHaveTextContent('총 2.5 km');
+    expect(container.querySelector('.movement-speed')).toBeNull();
   });
 
   it.each([

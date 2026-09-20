@@ -1,6 +1,6 @@
 import { simplePlan } from '../test/fixtures';
 import type { MobilityClass, PlaybackSegment } from '../types';
-import { formatMovementDistance, movementDistances, movementPresentation } from './movement-presentation';
+import { formatMovementDistance, movementDistances, movementPresentation, movementSpeed, totalJourneyDistance } from './movement-presentation';
 import { parseTimeline } from '../timeline-parser.js';
 import { buildPlaybackPlan } from './planner';
 
@@ -35,7 +35,7 @@ describe('movement presentation', () => {
     expect(movementPresentation([gap(1500, 1200)], 0))
       .toEqual({ mobilityClass: 'WALK', label: '도보' });
   });
-  it.each([0, 1, 12 * 3600])('uses neighbouring transport without inventing speed for a gap lasting %s seconds', seconds => {
+  it.each([0, 1, 12 * 3600])('uses neighbouring transport without changing source speed for a gap lasting %s seconds', seconds => {
     expect(movementPresentation([recorded('WALK'), gap(100_000, seconds), recorded('WALK')], 1))
       .toEqual({ mobilityClass: 'WALK', label: '도보' });
     expect(movementPresentation([gap(100_000, seconds)], 0)).toEqual({ mobilityClass: 'UNKNOWN', label: '이동 중' });
@@ -65,6 +65,76 @@ describe('movement presentation', () => {
     expect(movementPresentation([segment], 0).label).toBe('차량');
     expect(movementPresentation([{ ...segment, googleType: 'UNKNOWN', inferred: true }], 0).label)
       .toBe('차량');
+  });
+});
+
+describe('display speed for estimated movements', () => {
+  it('preserves the current frame speed for a recorded transport', () => {
+    expect(movementSpeed([recorded('ROAD')], 0, 82.4)).toBe('82 km/h');
+    expect(movementSpeed([recorded('ROAD')], 0, 0)).toBe('0 km/h');
+  });
+
+  it('uses a meaningful time interval without changing the original gap', () => {
+    const segments = [gap(1500, 1200)];
+    const original = structuredClone(segments);
+    expect(movementSpeed(segments, 0, 0)).toBe('5 km/h');
+    expect(segments).toEqual(original);
+  });
+
+  it.each([0, 1, 12 * 3600])('borrows matching transport speed for an unusable %s-second interval', seconds => {
+    const road = recorded('ROAD');
+    road.inference.speedKmh = 72;
+    expect(movementSpeed([road, gap(10_000, seconds)], 1, 0)).toBe('72 km/h');
+  });
+
+  it('borrows from the same neighbour that owns the estimated distance', () => {
+    const previous = recorded('WALK'); previous.inference.speedKmh = 4;
+    const next = { ...recorded('WALK'), distanceMeters: 300 }; next.inference.speedKmh = 6;
+    const segments = [previous, gap(200), next];
+    expect(movementDistances(segments)).toEqual(['2 km', '500 m', '500 m']);
+    expect(movementSpeed(segments, 1, 0)).toBe('6 km/h');
+  });
+
+  it('rejects a gap speed that is implausible for its displayed transport', () => {
+    const walk = recorded('WALK'); walk.inference.speedKmh = 4;
+    expect(movementSpeed([walk, gap(600, 60), recorded('ROAD')], 1, 0)).toBe('4 km/h');
+  });
+
+  it('does not borrow the speed of a different transport', () => {
+    const road = recorded('ROAD'); road.inference.speedKmh = 80;
+    const walk = recorded('WALK'); walk.inference.speedKmh = 5;
+    expect(movementSpeed([road, gap(600), walk], 1, 0)).toBe('5 km/h');
+  });
+
+  it('uses the matching movement’s distance and time if its stored speed is missing', () => {
+    const road = recorded('ROAD'); road.inference.speedKmh = 0;
+    expect(movementSpeed([road, gap(200)], 1, 0)).toBe('12 km/h');
+  });
+
+  it('keeps missing and excluded movements from producing invalid speeds', () => {
+    expect(movementSpeed([gap(200)], 0, 0)).toBe('—');
+    expect(movementSpeed([gap(NaN, 600)], 0, NaN)).toBe('—');
+    expect(movementSpeed([recorded('ROAD'), { ...gap(500_000, 3600), hideRoute: true }], 1, 0)).toBe('—');
+  });
+});
+
+describe('whole journey distance', () => {
+  it('includes assigned gaps exactly once while retaining separate movement displays', () => {
+    const segments = [recorded('WALK'), gap(200), { ...recorded('WALK'), distanceMeters: 300 }];
+    expect(movementDistances(segments)).toEqual(['2 km', '500 m', '500 m']);
+    expect(totalJourneyDistance(segments)).toBe('2.5 km');
+  });
+
+  it('excludes hidden flights and invalid distances from the whole journey', () => {
+    const segments = [recorded('WALK'), { ...recorded('FLIGHT'), hideRoute: true },
+      { ...gap(500_000), hideRoute: true },
+      ...[NaN, Infinity, -1].map(distanceMeters => ({ ...recorded('ROAD'), distanceMeters }))];
+    expect(totalJourneyDistance(segments)).toBe('2 km');
+  });
+
+  it('distinguishes missing distance from a known zero distance', () => {
+    expect(totalJourneyDistance([])).toBeNull();
+    expect(totalJourneyDistance([{ ...recorded('WALK'), distanceMeters: 0 }])).toBe('0 m');
   });
 });
 

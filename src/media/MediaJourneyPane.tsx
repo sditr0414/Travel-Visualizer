@@ -140,7 +140,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
         <span className="movement-pictogram" data-mobility={scene.mobilityClass} aria-hidden="true">{movement.icon}</span>
         <div className="movement-primary">
           <time className="movement-date">{scene.movementDate}</time>
-          <div className="movement-metrics"><span className="movement-speed">{scene.movementSpeed}</span>{scene.movementDistance != null && <span className="movement-distance" title="현재 이동 구간의 거리">{scene.movementDistance}</span>}</div>
+          <div className="movement-metrics">{scene.movementSpeed && <span className="movement-speed">{scene.movementSpeed}</span>}{scene.movementDistance != null && <span className="movement-distance" title="이동거리">{scene.movementDistance}</span>}</div>
         </div>
         <strong className="movement-mode">{scene.movementLabel ?? movement.label}</strong>
         {scene.originCity && scene.destinationCity && scene.originCity !== scene.destinationCity && (

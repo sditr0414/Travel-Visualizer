@@ -29,6 +29,9 @@ test('individual movements keep separate distances and include their assigned es
     await position.click({ position: { x: box.width * 0.8, y: box.height / 2 } });
     // The second 650 m walk owns the approximately 142 m coordinate gap.
     await expect(page.locator(`${selector} .movement-distance`)).toHaveText('792 m');
+    await position.press('End');
+    await expect(page.locator(`${selector} .movement-distance`)).toHaveText('총 2.6 km');
+    await expect(page.locator(`${selector}`)).not.toContainText('km/h');
   }
 });
 

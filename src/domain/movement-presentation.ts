@@ -7,6 +7,12 @@ const LABELS: Record<MobilityClass, string> = {
   FERRY: '페리', FLIGHT: '비행기', ROAD: '차량', UNKNOWN: '이동 중'
 };
 
+// Use the same transport plausibility limits as the mobility identity rules.
+const MAX_SPEED: Record<MobilityClass, number> = {
+  WALK: 18, BIKE: 55, URBAN_TRANSIT: 140, FAST_GROUND: 360,
+  FERRY: 95, FLIGHT: 1300, ROAD: 220, UNKNOWN: 1000
+};
+
 /** Display-only estimates never change the route, camera, or recorded speed. */
 export function movementPresentation(segments: PlaybackSegment[], index: number) {
   const segment = segments[index];
@@ -15,27 +21,60 @@ export function movementPresentation(segments: PlaybackSegment[], index: number)
   return { mobilityClass, label: LABELS[mobilityClass] };
 }
 
+/** Estimate display speed without changing playback timing, camera motion or source data. */
+export function movementSpeed(segments: PlaybackSegment[], index: number, frameSpeedKmh: number): string {
+  const segment = segments[index];
+  if (segment.hideRoute) return '—';
+  if (segment.inference.mobilityClass !== 'UNKNOWN' && segment.inferenceSource !== 'visual-gap') {
+    return Number.isFinite(frameSpeedKmh) && frameSpeedKmh >= 0 ? `${frameSpeedKmh.toFixed(0)} km/h` : '—';
+  }
+  const { mobilityClass } = movementPresentation(segments, index);
+  const plausible = (speed: number | undefined): speed is number => speed !== undefined && Number.isFinite(speed)
+    && speed > 0 && speed <= MAX_SPEED[mobilityClass];
+  const calculated = usableGapSpeed(segment);
+  if (plausible(calculated)) return `${calculated.toFixed(0)} km/h`;
+  const neighbour = matchingNeighbour(segments, index, mobilityClass);
+  if (!neighbour) return '—';
+  const borrowed = plausible(neighbour.inference.speedKmh) ? neighbour.inference.speedKmh : usableGapSpeed(neighbour);
+  return plausible(borrowed) ? `${borrowed.toFixed(0)} km/h` : '—';
+}
+
 /** Keep individual movements separate; attach each estimated gap to one matching neighbour. */
 export function movementDistances(segments: PlaybackSegment[]): Array<string | null> {
-  const distances = segments.map(segment => segment.hideRoute || !Number.isFinite(segment.distanceMeters)
-    || segment.distanceMeters < 0 ? null : segment.distanceMeters);
+  const distances = segments.map(visibleDistanceMeters);
   const owners = segments.map((segment, index) => {
     if (distances[index] === null || segment.inference.mobilityClass !== 'UNKNOWN') return index;
     const { mobilityClass } = movementPresentation(segments, index);
     if (mobilityClass === 'UNKNOWN') return index;
-    const matching = (candidate: number) => distances[candidate] != null
-      && segments[candidate]?.inference.mobilityClass === mobilityClass ? segments[candidate] : undefined;
-    const seconds = (segment.endMs - segment.startMs) / 1000;
-    const speed = segment.distanceMeters / seconds * 3.6;
-    const usableSpeed = seconds >= 60 && seconds <= 6 * 3600 && speed >= 1 && speed <= 1000 ? speed : undefined;
-    const previous = matching(index - 1);
-    const next = matching(index + 1);
-    const neighbour = closestNeighbourSegment(segment, previous, next, usableSpeed);
-    return neighbour ? neighbour === previous ? index - 1 : index + 1 : index;
+    const neighbour = matchingNeighbour(segments, index, mobilityClass);
+    return neighbour ? neighbour === segments[index - 1] ? index - 1 : index + 1 : index;
   });
   const totals = new Array<number>(segments.length).fill(0);
   distances.forEach((meters, index) => { if (meters !== null) totals[owners[index]] += meters; });
   return distances.map((meters, index) => meters === null ? null : formatMovementDistance(totals[owners[index]]));
+}
+
+/** Sum each underlying movement once, including estimated gaps but excluding hidden routes. */
+export function totalJourneyDistance(segments: PlaybackSegment[]): string | null {
+  const distances = segments.map(visibleDistanceMeters).filter((meters): meters is number => meters !== null);
+  return distances.length ? formatMovementDistance(distances.reduce((sum, meters) => sum + meters, 0)) : null;
+}
+
+function visibleDistanceMeters(segment: PlaybackSegment): number | null {
+  return segment.hideRoute || !Number.isFinite(segment.distanceMeters) || segment.distanceMeters < 0 ? null : segment.distanceMeters;
+}
+
+function matchingNeighbour(segments: PlaybackSegment[], index: number, mobilityClass: MobilityClass): PlaybackSegment | undefined {
+  const matching = (candidate?: PlaybackSegment) => candidate && !candidate.hideRoute
+    && Number.isFinite(candidate.distanceMeters) && candidate.distanceMeters >= 0
+    && candidate.inference.mobilityClass === mobilityClass ? candidate : undefined;
+  return closestNeighbourSegment(segments[index], matching(segments[index - 1]), matching(segments[index + 1]), usableGapSpeed(segments[index]));
+}
+
+function usableGapSpeed(segment: PlaybackSegment): number | undefined {
+  const seconds = (segment.endMs - segment.startMs) / 1000;
+  const speed = segment.distanceMeters / seconds * 3.6;
+  return Number.isFinite(seconds) && seconds >= 60 && seconds <= 6 * 3600 && speed >= 1 && speed <= 1000 ? speed : undefined;
 }
 
 export function formatMovementDistance(meters: number): string {
@@ -52,7 +91,6 @@ function estimateGap(segments: PlaybackSegment[], index: number): MobilityClass 
   if (segment.hideRoute) return closestNeighbour(segment, previous, next);
   const distance = segment.distanceMeters;
   if (!Number.isFinite(distance) || distance < 30) return closestNeighbour(segment, previous, next);
-  const seconds = (segment.endMs - segment.startMs) / 1000;
   const before = segments[index - 1]?.inference.mobilityClass;
   const after = segments[index + 1]?.inference.mobilityClass;
 
@@ -66,9 +104,8 @@ function estimateGap(segments: PlaybackSegment[], index: number): MobilityClass 
 
   // Only use speed when there is an actual, bounded time interval. A GPS jump
   // or overnight stay uses neighbouring movement evidence instead.
-  if (!Number.isFinite(seconds) || seconds < 60 || seconds > 6 * 3600) return closestNeighbour(segment, previous, next);
-  const speed = distance / seconds * 3.6;
-  if (speed < 1 || speed > 1000) return closestNeighbour(segment, previous, next);
+  const speed = usableGapSpeed(segment);
+  if (speed === undefined) return closestNeighbour(segment, previous, next);
   const inference = inferMobility({ ...segment, inferenceSource: 'display-gap', avgSpeedKmh: speed });
   if (inference.confidence < 0.55) {
     const neighbour = closestNeighbour(segment, previous, next, speed);

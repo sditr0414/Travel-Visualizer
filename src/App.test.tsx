@@ -279,7 +279,7 @@ describe('App integration', () => {
     await waitFor(() => expect(position).toHaveValue('1'));
   });
 
-  it('updates the individual movement distance on seek and replan and clears it for the overview', async () => {
+  it('updates individual distance on seek and replan and shows the journey total for the overview', async () => {
     const firstPlan = simplePlan();
     const firstFrame = firstPlan.frames.find(frame => frame.kind === 'TRAVEL')!;
     const outro = firstPlan.frames.find(frame => frame.kind === 'OUTRO')!;
@@ -305,6 +305,8 @@ describe('App integration', () => {
     fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '2' } });
     expect(screen.queryByText('650 m')).not.toBeInTheDocument();
     expect(screen.queryByText('2 km')).not.toBeInTheDocument();
+    expect(screen.getByText('총 2.7 km')).toBeInTheDocument();
+    expect(screen.getByLabelText('현재 이동 정보')).not.toHaveTextContent('km/h');
     fireEvent.click(screen.getByRole('button', { name: '처음부터 보기' }));
     expect(screen.getByText('2 km')).toBeInTheDocument();
     fireEvent.click(screen.getByText('여행 설정'));
@@ -312,6 +314,25 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
     await waitFor(() => expect(screen.getByText('5 km')).toBeInTheDocument());
     expect(screen.queryByText('2 km')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '1' } });
+    expect(screen.getByText('총 5 km')).toBeInTheDocument();
+  });
+
+  it('shows estimated speed for an unknown gap without changing the playback plan', async () => {
+    const plan = simplePlan();
+    const walk = plan.segments[0];
+    plan.segments.push({ ...walk, index: 1, distanceMeters: 200, startMs: walk.endMs, endMs: walk.endMs,
+      inferenceSource: 'visual-gap', inference: { ...walk.inference, mobilityClass: 'UNKNOWN', speedKmh: 0 } });
+    plan.frames[0] = { ...plan.frames[0], kind: 'TRAVEL', segmentIndex: 1, sceneId: 0, progress: 0, speedKmh: 0, mobilityClass: 'UNKNOWN' };
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan }), cancel: vi.fn(), dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByText('12 km/h')).toBeInTheDocument());
+    expect(screen.getByText('2.2 km')).toBeInTheDocument();
+    expect(plan.segments[1].inference.speedKmh).toBe(0);
   });
 
   it('starts photo journeys with preview media and keeps the route tab after replanning', async () => {
