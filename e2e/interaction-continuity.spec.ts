@@ -52,7 +52,8 @@ test('estimated transport appears consistently in the map and photo journey', as
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '경로 보기', exact: true }).click();
   await page.getByLabel('재생 위치').press('ArrowRight');
-  await expect(page.locator('.journey-hud > strong')).toHaveText('대중교통');
+  await expect(page.locator('.journey-hud .hud-mobility-label')).toHaveText('대중교통');
+  await expect(page.locator('.journey-hud .hud-mobility-icon')).toHaveText('🚇');
   await expect(page.locator('.journey-hud .movement-distance')).toHaveText('8 km');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();

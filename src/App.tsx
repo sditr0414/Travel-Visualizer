@@ -20,7 +20,7 @@ import { usePlaybackChrome } from './ui/playback-chrome';
 import { JourneySummary } from './ui/JourneySummary';
 import { buildJourneySummary } from './domain/journey-summary';
 import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
-import { movementDistances, movementPresentation, movementSpeed } from './domain/movement-presentation';
+import { MOVEMENT_VISUALS, movementDistances, movementPresentation, movementSpeed } from './domain/movement-presentation';
 
 interface AppProps {
   workerClient?: TimelineWorkerPort;
@@ -798,7 +798,7 @@ export function App({ workerClient }: AppProps) {
       {state.plan && journeyMode === 'ROUTE' && <section className={`journey-hud route-persistent-hud${showJourneySummary ? ' is-overview' : ''}`} aria-label={showJourneySummary ? '여행 전체' : '현재 이동 정보'}>
         {showJourneySummary && journeySummary ? <JourneySummary summary={journeySummary} /> : <>
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
-        <strong>{hud.mobility}</strong>
+        <strong className="hud-mobility"><span className="hud-mobility-icon" aria-hidden="true">{MOVEMENT_VISUALS[hud.mobilityClass].icon}</span><span className="hud-mobility-label">{hud.mobility}</span></strong>
         <div className="hud-meta"><span>{hud.date}</span>{(hud.speed || hud.distance !== null) && <span className="hud-movement-metrics">{hud.speed && <span>{hud.speed}</span>}{hud.distance !== null && <span className="movement-distance" title="이동거리">{hud.distance}</span>}</span>}</div>
         </>}
       </section>}
