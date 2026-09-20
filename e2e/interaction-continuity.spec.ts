@@ -23,6 +23,7 @@ test('individual movements keep separate distances and include their assigned es
   for (const [mode, selector] of [['경로 보기', '.journey-hud'], ['사진 여정', '.is-current .media-transit']]) {
     await page.getByRole('button', { name: mode, exact: true }).click();
     await page.getByLabel('처음부터 보기', { exact: true }).click();
+    await page.getByLabel('재생 위치').press('ArrowRight');
     await expect(page.locator(`${selector} .movement-distance`)).toHaveText('1.8 km');
     const position = page.getByLabel('재생 위치');
     const box = (await position.boundingBox())!;
@@ -30,8 +31,10 @@ test('individual movements keep separate distances and include their assigned es
     // The second 650 m walk owns the approximately 142 m coordinate gap.
     await expect(page.locator(`${selector} .movement-distance`)).toHaveText('792 m');
     await position.press('End');
-    await expect(page.locator(`${selector} .movement-distance`)).toHaveText('총 2.6 km');
-    await expect(page.locator(`${selector}`)).not.toContainText('km/h');
+    const summary = page.getByRole('region', { name: '전체 여정 분석' });
+    await expect(summary.locator('.journey-summary-total strong')).toHaveText('2.6 km');
+    await expect(summary.locator('.journey-summary-distance')).toHaveText('2.6 km');
+    await expect(summary).not.toContainText('km/h');
   }
 });
 
@@ -48,6 +51,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   });
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '경로 보기', exact: true }).click();
+  await page.getByLabel('재생 위치').press('ArrowRight');
   await expect(page.locator('.journey-hud > strong')).toHaveText('대중교통');
   await expect(page.locator('.journey-hud .movement-distance')).toHaveText('8 km');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
@@ -55,6 +59,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();
+  await page.getByLabel('재생 위치').press('ArrowRight');
   await expect(page.locator('.is-current .movement-mode')).toHaveText('대중교통');
   await expect(page.locator('.is-current .movement-pictogram')).toHaveText('🚇');
   await expect(page.locator('.is-current .movement-distance')).toHaveText('8 km');
@@ -101,6 +106,7 @@ test('transport names retain the original column and natural emoji text box', as
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();
+  await page.getByLabel('재생 위치').press('ArrowRight');
   const icon = page.locator('.is-current .movement-pictogram');
   const name = page.locator('.is-current .movement-mode');
   await expect(icon).toHaveText('🚶');
@@ -121,4 +127,40 @@ test('transport names retain the original column and natural emoji text box', as
   const b = (await name.boundingBox())!;
   expect(b.y).toBeGreaterThan(a.y + a.height);
   await testInfo.attach(`transport-${isMobile ? 'mobile' : 'desktop'}`, { body: await page.screenshot(), contentType: 'image/png' });
+});
+
+
+test('opening, reset and closing views share the complete trip summary in both modes', async ({ page }, testInfo) => {
+  await attachLocalPhotoManifest(page);
+  await page.goto('/');
+  await loadLocalTimeline(page);
+  const position = page.getByLabel('재생 위치');
+  for (const mode of ['경로 보기', '사진 여정']) {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    const summary = page.getByRole('region', { name: '전체 여정 분석' });
+    await expect(summary).toBeVisible();
+    await expect(position).toHaveValue('0');
+    await expect(summary.locator('.journey-summary-period')).toHaveText('2026.4.10 – 2026.4.11총 2일');
+    await expect(summary.locator('.journey-summary-total strong')).toHaveText('7 km');
+    await expect(summary.locator('.journey-summary-mode')).toHaveText(['🚗차량', '🚶도보']);
+    await expect(summary.locator('.journey-summary-distance')).toHaveText(['5.2 km', '1.8 km']);
+    await expect(summary.locator('.journey-summary-share')).toHaveText(['74.3%', '25.7%']);
+    const original = (await summary.textContent())!;
+    await page.getByRole('button', { name: '재생', exact: true }).click();
+    await expect(summary).toHaveCount(0);
+    await page.getByRole('button', { name: '일시정지', exact: true }).click();
+    await page.getByLabel('처음부터 보기', { exact: true }).click();
+    await expect(position).toHaveValue('0');
+    await expect(summary).toHaveText(original);
+    await position.press('End');
+    await expect(summary).toHaveText(original);
+    await expect(summary).not.toContainText('km/h');
+    const box = (await summary.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    expect(await summary.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await testInfo.attach(`journey-summary-${mode}`, { body: await page.screenshot(), contentType: 'image/png' });
+  }
 });

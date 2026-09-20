@@ -17,8 +17,10 @@ import { HelpDialog } from './ui/HelpDialog';
 import { MediaLibraryDialog } from './ui/MediaLibraryDialog';
 import { usePreferences } from './settings/preferences';
 import { usePlaybackChrome } from './ui/playback-chrome';
+import { JourneySummary } from './ui/JourneySummary';
+import { buildJourneySummary } from './domain/journey-summary';
 import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
-import { movementDistances, movementPresentation, movementSpeed, totalJourneyDistance } from './domain/movement-presentation';
+import { movementDistances, movementPresentation, movementSpeed } from './domain/movement-presentation';
 
 interface AppProps {
   workerClient?: TimelineWorkerPort;
@@ -26,6 +28,7 @@ interface AppProps {
 
 interface HudState {
   timeSec: number;
+  overview: boolean;
   date: string;
   mobilityClass: MobilityClass;
   mobility: string;
@@ -82,7 +85,7 @@ export function App({ workerClient }: AppProps) {
   const [placeLookupStatus, setPlaceLookupStatus] = useState<PhotoPlaceLookupStatus>({ available: false, provider: null, cache: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appliedPlanSettings, setAppliedPlanSettings] = useState<AppliedPlanSettings | null>(null);
-  const [hud, setHud] = useState<HudState>({ timeSec: 0, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
+  const [hud, setHud] = useState<HudState>({ timeSec: 0, overview: false, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
   const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
   const journeyModeRef = useRef<JourneyMode>('ROUTE');
   const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
@@ -108,6 +111,8 @@ export function App({ workerClient }: AppProps) {
   const [selectedMediaSummary, setSelectedMediaSummary] = useState<{ name: string; count: number } | null>(null);
   const media = useMemo(() => state.plan ? organizeJourneyMedia(mediaLibrary.all.filter(item => !excludedMedia.has(item.id)), state.plan, photoViewMode) : [], [excludedMedia, mediaLibrary, photoViewMode, state.plan]);
   const playbackChrome = usePlaybackChrome({ playing: state.phase === 'playing', keepVisible: settingsOpen });
+  const journeySummary = useMemo(() => state.plan ? buildJourneySummary(state.plan) : null, [state.plan]);
+  const showJourneySummary = hud.overview || (hud.timeSec === 0 && state.phase !== 'playing');
 
   const mapSource = useMemo<MapSourceConfig>(() => mapKind === 'online'
     ? { kind: 'online', styleUrl: ONLINE_STYLE_URL }
@@ -387,7 +392,6 @@ export function App({ workerClient }: AppProps) {
     cityRouteCacheRef.current.clear();
     if (!map || !state.plan) return;
     const distances = movementDistances(state.plan.segments);
-    const totalDistance = totalJourneyDistance(state.plan.segments);
 
     const createController = (mode: JourneyMode, stops: PlaybackStop[]) => {
       const controller = new PlayerController(map, {
@@ -423,7 +427,7 @@ export function App({ workerClient }: AppProps) {
           if (playersRef.current[mode]?.isPlaying() && timeSec > 0 && performance.now() - lastHudUpdateRef.current < 90) return;
           lastHudUpdateRef.current = performance.now();
           setActiveStopElapsed(stopElapsedSec);
-          const nextHud = hudForFrame(frame, state.plan!, timeSec, distances, totalDistance);
+          const nextHud = hudForFrame(frame, state.plan!, timeSec, distances);
           if (frame.kind === 'TRAVEL') {
             const segment = state.plan!.segments[frame.segmentIndex];
             const cached = cityRouteCacheRef.current.get(frame.segmentIndex);
@@ -442,6 +446,7 @@ export function App({ workerClient }: AppProps) {
             }
           }
           setHud(nextHud);
+          if (timeSec === 0 && !controller.isPlaying()) fitJourneyOverview(map, state.plan!);
         },
         onComplete: () => {
           if (mode !== journeyModeRef.current) return;
@@ -499,9 +504,13 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     if (!map) return;
-    const timer = window.setTimeout(() => (map as MapLibreMap & { resize?: () => void }).resize?.(), 220);
+    const timer = window.setTimeout(() => {
+      (map as MapLibreMap & { resize?: () => void }).resize?.();
+      const mode = journeyModeRef.current;
+      if (state.plan && playbackPositionsRef.current[mode] === 0 && !playersRef.current[mode]?.isPlaying()) fitJourneyOverview(map, state.plan);
+    }, 220);
     return () => window.clearTimeout(timer);
-  }, [journeyMode, map, mapShare]);
+  }, [journeyMode, map, mapShare, state.plan]);
 
   useEffect(() => {
     if (!map?.getLayer('route-all')) return;
@@ -620,12 +629,7 @@ export function App({ workerClient }: AppProps) {
   const showRouteOverview = () => {
     if (!map || !state.plan) return;
     pausePlayback();
-    const points = state.plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL').map(frame => frame.position);
-    if (!points.length) return;
-    const bounds = points.reduce((b, p) => [Math.min(b[0], p.lng), Math.min(b[1], p.lat), Math.max(b[2], p.lng), Math.max(b[3], p.lat)], [Infinity, Infinity, -Infinity, -Infinity]);
-    map.setLayoutProperty('route-all', 'visibility', 'visible');
-    const height = map.getCanvas().clientHeight;
-    map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: Math.min(65, Math.max(20, height * 0.15)), maxZoom: 14, duration: 0 });
+    fitJourneyOverview(map, state.plan);
   };
 
   const busy = state.phase === 'loading' || state.phase === 'planning' || mediaLoading;
@@ -696,6 +700,7 @@ export function App({ workerClient }: AppProps) {
       </Suspense>
       {journeyMode === 'PHOTOS' && <>
         <MediaJourneyPane
+          summary={showJourneySummary ? journeySummary : null}
           media={media}
           activeId={state.phase === 'ready' || state.phase === 'planning' ? null : activeMediaId}
           playing={state.phase === 'playing'} elapsedSec={activeStopElapsed}
@@ -790,10 +795,12 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && journeyMode === 'ROUTE' && <section className="journey-hud route-persistent-hud" aria-label="현재 이동 정보">
+      {state.plan && journeyMode === 'ROUTE' && <section className={`journey-hud route-persistent-hud${showJourneySummary ? ' is-overview' : ''}`} aria-label={showJourneySummary ? '여행 전체' : '현재 이동 정보'}>
+        {showJourneySummary && journeySummary ? <JourneySummary summary={journeySummary} /> : <>
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong>{hud.mobility}</strong>
         <div className="hud-meta"><span>{hud.date}</span>{(hud.speed || hud.distance !== null) && <span className="hud-movement-metrics">{hud.speed && <span>{hud.speed}</span>}{hud.distance !== null && <span className="movement-distance" title="이동거리">{hud.distance}</span>}</span>}</div>
+        </>}
       </section>}
 
       {state.scan && <details
@@ -1014,14 +1021,15 @@ export function App({ workerClient }: AppProps) {
   );
 }
 
-function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, distances: Array<string | null>, totalDistance: string | null): HudState {
-  if (frame.kind === 'OUTRO') return { timeSec, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '', distance: totalDistance === null ? null : `총 ${totalDistance}`, originCity: null, destinationCity: null };
+function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, distances: Array<string | null>): HudState {
+  if (frame.kind === 'OUTRO') return { timeSec, overview: true, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '', distance: null, originCity: null, destinationCity: null };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
   const movement = movementPresentation(plan.segments, travel.segmentIndex);
   const sourceMs = segment.startMs + (segment.endMs - segment.startMs) * travel.progress;
   return {
     timeSec,
+    overview: false,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Seoul' }).format(sourceMs),
     mobilityClass: movement.mobilityClass,
     mobility: movement.label,
@@ -1030,6 +1038,15 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, 
     originCity: null,
     destinationCity: null
   };
+}
+
+function fitJourneyOverview(map: MapLibreMap, plan: PlaybackPlan): void {
+  const points = plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL').map(frame => frame.position);
+  if (!points.length) return;
+  const bounds = points.reduce((b, p) => [Math.min(b[0], p.lng), Math.min(b[1], p.lat), Math.max(b[2], p.lng), Math.max(b[3], p.lat)], [Infinity, Infinity, -Infinity, -Infinity]);
+  map.setLayoutProperty('route-all', 'visibility', 'visible');
+  const height = map.getCanvas().clientHeight;
+  map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: Math.min(65, Math.max(20, height * 0.15)), maxZoom: 14, duration: 0 });
 }
 
 function formatClock(seconds: number): string {

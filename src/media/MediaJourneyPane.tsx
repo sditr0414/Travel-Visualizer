@@ -4,8 +4,12 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { dayMarkerCueFromId } from './day-markers';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
+import { MOVEMENT_VISUALS } from '../domain/movement-presentation';
+import type { JourneySummaryData } from '../domain/journey-summary';
+import { JourneySummary } from '../ui/JourneySummary';
 
 interface Props {
+  summary?: JourneySummaryData | null;
   media: JourneyMedia[];
   activeId: string | null;
   playing?: boolean;
@@ -27,6 +31,7 @@ interface Props {
 }
 
 type SceneDescriptor =
+  | { kind: 'summary'; key: 'summary'; summary: JourneySummaryData }
   | { kind: 'photo'; key: string; item: JourneyMedia; place: string; url: string | null }
   | { kind: 'day'; key: string; dayKey: string; dayNumber: number }
   | { kind: 'transit'; key: string; mobilityClass: MobilityClass; movementLabel?: string; movementDate: string; movementSpeed: string; movementDistance?: string | null; originCity: string | null; destinationCity: string | null }
@@ -53,12 +58,13 @@ interface PreloadHandle {
 const MEDIA_PRELOAD_AHEAD = 4;
 const MEDIA_PRELOAD_TIMEOUT_MS = 6000;
 
-export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementLabel, movementDate, movementSpeed, movementDistance, originCity, destinationCity, placeName, onFiles, emptyDescription, onOpenLibrary }: Props) {
+export function MediaJourneyPane({ summary, media, activeId, playing = false, elapsedSec = 0, videoMode, videoMuted, photoDisplaySec, mobilityClass, movementLabel, movementDate, movementSpeed, movementDistance, originCity, destinationCity, placeName, onFiles, emptyDescription, onOpenLibrary }: Props) {
   const dayCue = useMemo(() => dayMarkerCueFromId(activeId), [activeId]);
   const active = dayCue ? null : media.find(item => item.id === activeId) ?? null;
   const preloadedAssets = useMediaPreload(media, activeId, videoMode);
   const activeAsset = active ? preloadedAssets[active.id] : undefined;
   const desiredScene = useMemo<SceneDescriptor>(() => {
+    if (summary) return { kind: 'summary', key: 'summary', summary };
     if (dayCue && activeId) {
       return {
         kind: 'day',
@@ -90,7 +96,7 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
       };
     }
     return { kind: 'empty', key: 'empty' };
-  }, [active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementLabel, movementDate, movementSpeed, movementDistance, originCity, placeName]);
+  }, [summary, active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementLabel, movementDate, movementSpeed, movementDistance, originCity, placeName]);
   const canEnterScene = desiredScene.kind !== 'photo' || activeAsset?.status === 'ready' || activeAsset?.status === 'error';
   const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
@@ -107,7 +113,7 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
       >
         {buffering && <span className="media-buffering" role="status">사진·영상 준비 중…</span>}
         {previousScene && (
-          <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true">
+          <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true" inert>
             <SceneContent playing={false} elapsedSec={Number.NaN} scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
           </div>
         )}
@@ -120,6 +126,7 @@ export function MediaJourneyPane({ media, activeId, playing = false, elapsedSec 
 }
 
 function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedSec, emptyDescription, onOpenLibrary }: { emptyDescription?: string; onOpenLibrary?: () => void; playing: boolean; elapsedSec: number; scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
+  if (scene.kind === 'summary') return <JourneySummary summary={scene.summary} />;
   if (scene.kind === 'photo') {
     return <PhotoScene playing={playing} elapsedSec={elapsedSec} item={scene.item} place={scene.place} preloadedUrl={scene.url} videoMode={videoMode} videoMuted={videoMuted} />;
   }
@@ -185,17 +192,6 @@ function PhotoScene({ item, place, preloadedUrl, videoMode, videoMuted, playing,
     </article>
   );
 }
-
-const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> = {
-  WALK: { icon: '🚶', label: '도보' },
-  BIKE: { icon: '🚲', label: '자전거' },
-  URBAN_TRANSIT: { icon: '🚇', label: '대중교통' },
-  FAST_GROUND: { icon: '🚆', label: '기차' },
-  FERRY: { icon: '⛴️', label: '페리' },
-  FLIGHT: { icon: '✈️', label: '비행기' },
-  ROAD: { icon: '🚗', label: '차량' },
-  UNKNOWN: { icon: '●', label: '이동 중' }
-};
 
 function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: { item: JourneyMedia; url: string; videoMode: Props['videoMode']; videoMuted: boolean; playing: boolean; elapsedSec: number }) {
   const [failed, setFailed] = useState(false);

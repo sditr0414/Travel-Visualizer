@@ -2,9 +2,15 @@ import { inferMobility } from '../mobility.js';
 import { shortestLongitudeDelta } from '../geo.js';
 import type { MobilityClass, PlaybackSegment } from '../types';
 
-const LABELS: Record<MobilityClass, string> = {
-  WALK: '도보', BIKE: '자전거', URBAN_TRANSIT: '대중교통', FAST_GROUND: '기차',
-  FERRY: '페리', FLIGHT: '비행기', ROAD: '차량', UNKNOWN: '이동 중'
+export const MOVEMENT_VISUALS: Record<MobilityClass, { icon: string; label: string }> = {
+  WALK: { icon: '🚶', label: '도보' },
+  BIKE: { icon: '🚲', label: '자전거' },
+  URBAN_TRANSIT: { icon: '🚇', label: '대중교통' },
+  FAST_GROUND: { icon: '🚆', label: '기차' },
+  FERRY: { icon: '⛴️', label: '페리' },
+  FLIGHT: { icon: '✈️', label: '비행기' },
+  ROAD: { icon: '🚗', label: '차량' },
+  UNKNOWN: { icon: '●', label: '이동 중' }
 };
 
 // Use the same transport plausibility limits as the mobility identity rules.
@@ -18,7 +24,7 @@ export function movementPresentation(segments: PlaybackSegment[], index: number)
   const segment = segments[index];
   const recorded = segment.inference.mobilityClass;
   const mobilityClass = recorded === 'UNKNOWN' ? estimateGap(segments, index) : recorded;
-  return { mobilityClass, label: LABELS[mobilityClass] };
+  return { mobilityClass, label: MOVEMENT_VISUALS[mobilityClass].label };
 }
 
 /** Estimate display speed without changing playback timing, camera motion or source data. */
@@ -60,7 +66,7 @@ export function totalJourneyDistance(segments: PlaybackSegment[]): string | null
   return distances.length ? formatMovementDistance(distances.reduce((sum, meters) => sum + meters, 0)) : null;
 }
 
-function visibleDistanceMeters(segment: PlaybackSegment): number | null {
+export function visibleDistanceMeters(segment: PlaybackSegment): number | null {
   return segment.hideRoute || !Number.isFinite(segment.distanceMeters) || segment.distanceMeters < 0 ? null : segment.distanceMeters;
 }
 

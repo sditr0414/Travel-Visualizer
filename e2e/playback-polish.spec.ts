@@ -47,6 +47,7 @@ test('icon-only playback controls and familiar walking emoji remain accessible',
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();
+  await page.getByLabel('재생 위치').press('ArrowRight');
   const icon = page.locator('.is-current .movement-pictogram');
   await expect(icon).toHaveText('🚶');
   await expect(icon.locator('svg')).toHaveCount(0);

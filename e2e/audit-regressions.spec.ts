@@ -162,6 +162,8 @@ test('excluded photos can be restored directly from the photo empty state', asyn
   await library.getByRole('checkbox').uncheck();
   await library.getByRole('button', { name: '사진 목록 닫기' }).click();
   await page.locator('.settings-panel summary').click();
+  // The opening view is the trip summary; inspect the empty state during the journey.
+  await setRange(page, 'input[aria-label="재생 위치"]', 5);
   await expect(page.getByText('모든 사진이 감상에서 제외되어 있습니다. 사진 목록에서 다시 포함해 주세요.')).toBeVisible();
   await page.getByRole('button', { name: '사진 목록 열기', exact: true }).click();
   await library.getByRole('button', { name: '모두 포함하기' }).click();
