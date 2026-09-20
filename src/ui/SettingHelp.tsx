@@ -132,7 +132,7 @@ export function SettingHelp({ title, description, children }: { title: string; d
   >
     {decorated}
     {createPortal(<div ref={bubble} id={id} role="tooltip" className="setting-tooltip" hidden={!open}
-    ><strong>{title}</strong><p>{description}</p></div>, document.body)}
+    ><strong>{title}</strong>{description.split('\n').map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>, document.body)}
   </div>;
 }
 

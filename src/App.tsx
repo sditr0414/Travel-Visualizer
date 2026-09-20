@@ -710,9 +710,9 @@ export function App({ workerClient }: AppProps) {
           emptyDescription={!state.plan
             ? '타임라인을 먼저 열어 여행 경로를 준비해 주세요.'
             : mediaLibrary.all.length && !media.length
-              ? '모든 사진이 감상에서 제외되어 있습니다. 사진 목록에서 다시 포함해 주세요.'
+              ? '모든 사진이 감상에서 제외되어 있습니다.\n사진 목록에서 다시 포함해 주세요.'
               : selectedMediaSummary?.count
-                ? '선택한 여행 기간에 맞는 사진이 없습니다. 여행 기간을 바꾸거나 다른 사진을 선택해 주세요.'
+                ? '선택한 여행 기간에 맞는 사진이 없습니다.\n여행 기간을 바꾸거나 다른 사진을 선택해 주세요.'
                 : '사진과 영상을 선택하면 촬영 시각에 맞춰 여행 경로에 연결합니다.'}
           onOpenLibrary={mediaLibrary.all.length && !media.length ? () => setLibraryOpen(true) : undefined}
         />
@@ -778,11 +778,11 @@ export function App({ workerClient }: AppProps) {
             <div><h1 id="local-import-title">다녀온 여행을 다시 펼쳐보세요</h1><p>타임라인으로 이동 경로를 따라가고,<br />사진과 영상으로 그 순간을 감상하세요.</p></div>
           </div>
           <div className="local-import-actions">
-            <label className="local-import-primary"><FileJson size={18} /><span><strong>타임라인 파일 열기</strong><small>Google 지도에서 내보낸 JSON · 최대 250 MB</small></span><input type="file" aria-label="시작할 타임라인 파일 열기" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>
+            <label className="local-import-primary"><FileJson size={18} /><span><strong>타임라인 파일 열기</strong><small>Google 지도에서 내보낸 JSON · <span className="keep-together">최대 250 MB</span></small></span><input type="file" aria-label="시작할 타임라인 파일 열기" accept="application/json,.json"  onChange={event => void onFileSelected(event.currentTarget.files?.[0])} /></label>
             <label className="local-import-secondary"><Images size={18} /><span><strong>사진 폴더 선택</strong><small>{selectedMediaSummary ? `${selectedMediaSummary.name} · ${selectedMediaSummary.count}개` : '선택 사항 · 사진과 영상을 경로에 연결합니다'}</small></span><input type="file" aria-label="시작할 사진 폴더 선택" multiple {...{ webkitdirectory: '' }} onChange={event => event.currentTarget.files && void onMediaFiles(event.currentTarget.files)} /></label>
           </div>
           <button className="settings-help-link" type="button" aria-label="사용 방법" onClick={() => setHelpOpen(true)}>타임라인 준비 방법</button>
-          <p className="local-privacy"><ShieldCheck size={13} /> 파일은 이 기기에서만 읽습니다. 온라인 지도는 인터넷이 필요합니다.</p>
+          <p className="local-privacy"><ShieldCheck size={13} /><span>파일은 이 기기에서만 읽습니다.<br />온라인 지도는 인터넷이 필요합니다.</span></p>
         </section>
       )}
 
@@ -840,15 +840,15 @@ export function App({ workerClient }: AppProps) {
 
           <section className="settings-group">
             <div className="settings-group-title"><Camera size={14} /><span>카메라</span></div>
-            <SettingHelp title="지도 보기 방식" description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><label className="select-field">지도 보기 방식
+            <SettingHelp title="지도 보기 방식" description={"자동은 이동 거리와 하루 동선을 함께 고려합니다.\n날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><label className="select-field">지도 보기 방식
               <select aria-description="자동은 이동 거리와 하루 동선을 함께 고려합니다. 날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." value={cameraMode} onChange={event => updatePreference('cameraMode', event.target.value as CameraMode)}>
                 <option value="AUTO">자동 · 추천</option><option value="DAY">날짜별로 보기</option><option value="SEGMENT">이동 구간별로 보기</option>
               </select>
             </label></SettingHelp>
-            <SettingHelp title="지도 확대" description="왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다."><label className="range-field"><span><span>지도 확대</span><output>{formatSigned(zoomOffset)}</output></span>
+            <SettingHelp title="지도 확대" description={"왼쪽은 넓게, 오른쪽은 자세히 봅니다.\n바로 적용됩니다."}><label className="range-field"><span><span>지도 확대</span><output>{formatSigned(zoomOffset)}</output></span>
               <input aria-description="왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다." type="range" min="-1.5" max="1.5" step="0.1" value={zoomOffset} onChange={event => updatePreference('zoomOffset', Number(event.target.value))} />
             </label></SettingHelp>
-            <SettingHelp title="구간별 재생 시간" description="날짜마다 비슷하게: 짧은 여행일도 충분히 보여줍니다. 이동 거리에 맞게: 긴 이동에 더 많은 시간을 배분합니다. 변경 후 경로 다시 만들기로 적용합니다."><label className="select-field">구간별 재생 시간
+            <SettingHelp title="구간별 재생 시간" description={"날짜마다 비슷하게: 짧은 여행일도 충분히 보여줍니다.\n이동 거리에 맞게: 긴 이동에 더 많은 시간을 배분합니다.\n변경 후 경로 다시 만들기로 적용합니다."}><label className="select-field">구간별 재생 시간
               <select aria-description="날짜마다 비슷하게: 짧은 여행일도 충분히 보여줍니다. 이동 거리에 맞게: 긴 이동에 더 많은 시간을 배분합니다. 변경 후 경로 다시 만들기로 적용합니다." value={pacingMode} onChange={event => updatePreference('pacingMode', event.target.value as PacingMode)}>
                 <option value="LOCAL_DAYS">날짜마다 비슷하게 · 추천</option><option value="GLOBAL">이동 거리에 맞게</option>
               </select>
@@ -867,27 +867,27 @@ export function App({ workerClient }: AppProps) {
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}
-            <SettingHelp title="표시할 사진" description="대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다. 모든 사진: 연결된 사진을 모두 보여줍니다."><label className="select-field">표시할 사진
+            <SettingHelp title="표시할 사진" description={"대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다.\n모든 사진: 연결된 사진을 모두 보여줍니다."}><label className="select-field">표시할 사진
               <select aria-description="대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다. 모든 사진: 연결된 사진을 모두 보여줍니다." aria-label="표시할 사진" value={photoViewMode} onChange={event => changePhotoViewMode(event.target.value as PhotoViewMode)}>
                 <option value="PREVIEW">대표 사진만 · {mediaLibrary.preview.length}개</option>
                 <option value="ALL">모든 사진 · {mediaLibrary.all.length}개</option>
               </select>
             </label></SettingHelp>
-            <SettingHelp title="사진 표시 시간" description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다."><label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
+            <SettingHelp title="사진 표시 시간" description={"사진 한 장을 보여주는 시간입니다.\n감상 중에는 경로 이동이 잠시 멈춥니다."}><label className="range-field"><span><span>사진 표시 시간</span><output>{photoDisplaySec.toFixed(1)}초</output></span>
               <input aria-description="사진 한 장을 보여주는 시간입니다. 감상 중에는 경로 이동이 잠시 멈춥니다." type="range" min="1" max="10" step="0.5" value={photoDisplaySec} onChange={event => updatePreference('photoDisplaySec', Number(event.target.value))} />
             </label></SettingHelp>
-            <SettingHelp title="사진을 볼 때 지도 확대" description="사진 위치 가까이 보기: 사진을 감상하는 장소 주변을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다."><label className="select-field">사진을 볼 때 지도 확대
+            <SettingHelp title="사진을 볼 때 지도 확대" description={"사진 위치 가까이 보기: 사진을 감상하는 장소 주변을 더 자세히 보여줍니다.\n기본 확대만: 추가 확대 없이 재생합니다.\n비행 중에는 추가 확대하지 않으며 바로 적용됩니다."}><label className="select-field">사진을 볼 때 지도 확대
               <select aria-description="사진 위치 가까이 보기: 사진을 감상하는 장소 주변을 더 자세히 보여줍니다. 기본 확대만: 추가 확대 없이 재생합니다. 비행 중에는 추가 확대하지 않으며 바로 적용됩니다." aria-label="사진을 볼 때 지도 확대" value={photoDetailZoomMode} onChange={event => updatePreference('photoDetailZoomMode', event.target.value as 'AUTO' | 'OFF')}>
                 <option value="AUTO">사진 위치 가까이 보기 · 추천</option><option value="OFF">기본 확대만</option>
               </select>
             </label></SettingHelp>
-            {photoDetailZoomMode === 'AUTO' && <><SettingHelp title="상세 확대 강도" description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요."><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
+            {photoDetailZoomMode === 'AUTO' && <><SettingHelp title="상세 확대 강도" description={"1.0이 기본입니다.\n화면이 너무 가까우면 낮춰 주세요."}><label className="range-field"><span><span>상세 확대 강도</span><output>{photoDetailZoomStrength.toFixed(1)}×</output></span>
               <input aria-description="1.0이 기본입니다. 화면이 너무 가까우면 낮춰 주세요." aria-label="상세 확대 강도" type="range" min="0.5" max="1.5" step="0.1" value={photoDetailZoomStrength} onChange={event => updatePreference('photoDetailZoomStrength', Number(event.target.value))} />
             </label></SettingHelp></>}
             <div className="toggle-list">
               <SettingHelp title="정확한 장소 온라인 확인" description={placeLookupStatus.available
-                ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다. 사진 원본과 타임라인은 보내지 않으며 확인한 장소는 이 PC에 저장합니다.`
-                : '별도의 장소 서비스 연결이 필요합니다. 연결하지 않아도 사진과 여행 경로를 감상할 수 있습니다. 연결 방법은 사용 안내에서 확인하세요.'}>
+                ? `GPS가 충분히 신뢰되는 사진만 ${placeLookupStatus.provider ?? '설정된 장소 서비스'}에 좌표를 보내 정확한 장소명을 확인합니다.\n사진 원본과 타임라인은 보내지 않으며 확인한 장소는 이 PC에 저장합니다.`
+                : '별도의 장소 서비스 연결이 필요합니다.\n연결하지 않아도 사진과 여행 경로를 감상할 수 있습니다.\n연결 방법은 사용 안내에서 확인하세요.'}>
                 <div className="setting-checkbox"><input
                   type="checkbox"
                   aria-label="정확한 장소 온라인 확인"
@@ -898,29 +898,29 @@ export function App({ workerClient }: AppProps) {
               </SettingHelp>
             </div>
             <div className="toggle-list photo-day-toggle">
-              <SettingHelp title="날짜 변경 표시" description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다."><div className="setting-checkbox"><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></div></SettingHelp>
+              <SettingHelp title="날짜 변경 표시" description={"여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다.\n끄면 날짜 카드 없이 감상합니다.\n바로 적용됩니다."}><div className="setting-checkbox"><input type="checkbox" aria-description="여행 첫날과 날짜가 바뀌는 지점에서 날짜 카드를 보여줍니다. 끄면 날짜 카드 없이 감상합니다. 바로 적용됩니다." aria-label="날짜 변경 표시" checked={showDayMarkers} onChange={event => updatePreference('showDayMarkers', event.target.checked)} /><span>날짜 변경 표시</span></div></SettingHelp>
             </div>
             {showDayMarkers && <><SettingHelp title="날짜 표시 시간" description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다."><label className="range-field"><span><span>날짜 표시 시간</span><output>{dayMarkerSec.toFixed(1)}초</output></span>
               <input aria-description="여행 첫날과 날짜가 바뀌는 지점의 날짜 카드 표시 시간입니다." aria-label="날짜 표시 시간" type="range" min="1" max="5" step="0.5" value={dayMarkerSec} onChange={event => updatePreference('dayMarkerSec', Number(event.target.value))} />
             </label></SettingHelp></>}
-            <SettingHelp title="영상 재생" description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시를 선택하면 영상의 첫 화면만 보여줍니다."><label className="select-field">영상 재생
+            <SettingHelp title="영상 재생" description={"자동 재생은 앱의 재생·일시정지와 함께 동작합니다.\n첫 화면만 표시를 선택하면 영상의 첫 화면만 보여줍니다."}><label className="select-field">영상 재생
               <select aria-description="자동 재생은 앱의 재생·일시정지와 함께 동작합니다. 첫 화면만 표시를 선택하면 영상의 첫 화면만 보여줍니다." aria-label="영상 재생" value={videoMode} onChange={event => updatePreference('videoMode', event.target.value as 'THUMBNAIL' | 'PLAY')}>
                 <option value="PLAY">자동 재생</option><option value="THUMBNAIL">첫 화면만 표시</option>
               </select>
             </label></SettingHelp>
             {videoMode === 'PLAY' && <>
               <div className="toggle-list">
-                <SettingHelp title="영상 소리 재생" description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요."><div className="setting-checkbox"><input type="checkbox" aria-description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요." aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></div></SettingHelp>
+                <SettingHelp title="영상 소리 재생" description={"영상의 원래 소리를 함께 재생합니다.\n브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요."}><div className="setting-checkbox"><input type="checkbox" aria-description="영상의 원래 소리를 함께 재생합니다. 브라우저가 소리 재생을 막으면 영상 위의 재생 버튼을 눌러 주세요." aria-label="영상 소리 재생" checked={!videoMuted} onChange={event => updatePreference('videoMuted', !event.target.checked)} /><span>영상 소리 재생</span></div></SettingHelp>
               </div>
-              <SettingHelp title="영상 최대 재생" description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다."><label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
+              <SettingHelp title="영상 최대 재생" description={"긴 영상은 이 시간까지만 재생합니다.\n짧은 영상은 마지막 화면을 유지합니다."}><label className="range-field"><span><span>영상 최대 재생</span><output>{videoMaxSec.toFixed(1)}초</output></span>
                 <input aria-description="긴 영상은 이 시간까지만 재생합니다. 짧은 영상은 마지막 화면을 유지합니다." type="range" min="2" max="15" step="0.5" value={videoMaxSec} onChange={event => updatePreference('videoMaxSec', Number(event.target.value))} />
               </label></SettingHelp>
             </>}
-            <p className="privacy-note">사진과 영상 원본은 외부로 업로드하지 않습니다. ‘정확한 장소 온라인 확인’을 직접 켠 경우에만 신뢰 가능한 GPS 좌표가 설정한 장소 서비스로 전송됩니다.</p>
+            <p className="privacy-note">사진과 영상 원본은 외부로 업로드하지 않습니다.<br />‘정확한 장소 온라인 확인’을 직접 켠 경우에만 신뢰 가능한 GPS 좌표가 설정한 장소 서비스로 전송됩니다.</p>
           </section>}
 
 
-          <SettingHelp title="경로 재생 시간" description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."><label className="range-field">
+          <SettingHelp title="경로 재생 시간" description={"실제 이동을 이 시간으로 압축합니다.\n사진과 날짜 카드의 감상 시간은 별도로 더해집니다."}><label className="range-field">
             <span><span>경로 재생 시간</span><output>{targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동'}</output></span>
             <input aria-description="실제 이동을 이 시간으로 압축합니다. 사진과 날짜 카드의 감상 시간은 별도로 더해집니다."
               type="range"
@@ -935,7 +935,7 @@ export function App({ workerClient }: AppProps) {
             />
           </label></SettingHelp>
 
-          <SettingHelp title="배경 지도" description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 설치한 지역을 자세히 보여줍니다. 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다."><label className="select-field">배경 지도
+          <SettingHelp title="배경 지도" description={"온라인 지도는 인터넷을 사용합니다.\n설치형 지도는 설치한 지역을 자세히 보여줍니다.\n아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다."}><label className="select-field">배경 지도
             <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 설치한 지역을 자세히 보여줍니다. 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
               <option value="online">온라인 지도</option>
               <option value="local-pmtiles" disabled={!state.mapStatus?.ready}>설치형 지도{!state.mapStatus?.ready ? " · 설치 필요" : ""}</option>
@@ -943,8 +943,8 @@ export function App({ workerClient }: AppProps) {
           </label></SettingHelp>
 
           <div className="toggle-list">
-            <SettingHelp title="항공 경로 포함" description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요."><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
-            <SettingHelp title="현재 위치 따라가기" description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
+            <SettingHelp title="항공 경로 포함" description={"비행 구간을 경로에 포함합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
+            <SettingHelp title="현재 위치 따라가기" description={"켜면 이동 위치를 지도 중앙에 둡니다.\n끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다.\n바로 적용됩니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
           </div>
 
           <div className="settings-footer">
