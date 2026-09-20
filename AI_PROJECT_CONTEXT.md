@@ -86,7 +86,7 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 
 - 재생/일시정지는 아이콘만 표시하되 동적 aria-label/title과 44px 조작 영역을 유지합니다.
 - 설정 설명은 실제 이름의 화면 좌표를 매 프레임 추적합니다. 설정 진입 애니메이션·스크롤·글꼴 로딩 중에도 이름과 붙어 있고, 이름이 스크롤 영역 밖으로 나가거나 설정창이 닫히면 함께 닫습니다. 한 번에 설명 하나만 표시합니다.
-- route-progress에 최근 4초 선과 현재 위치 Point를 함께 담습니다. route-head 레이어도 같은 source를 geometry-type 필터로 사용합니다. 카메라와 경로는 같은 requestAnimationFrame에서 갱신하며 30Hz geometry 제한은 사용하지 않습니다. 사진 정지 중 변하지 않은 geometry 재전송은 생략합니다.
+- route-progress에 최근 4초 선과 현재 위치 Point를 함께 담습니다. route-head 레이어도 같은 source를 geometry-type 필터로 사용합니다. 이동 꼬리는 `trail` 속성으로 구분해 불투명도 60%로 표시하고, 현재 위치 원과 마지막 전체 경로의 진하기는 유지합니다. 카메라와 경로는 같은 requestAnimationFrame에서 갱신하며 30Hz geometry 제한은 사용하지 않습니다. 사진 정지 중 변하지 않은 geometry 재전송은 생략합니다.
 - 지도 미리 읽기의 기존 동시성/시간 제한은 유지하고 각 pass에서 getStyle 결과를 한 번만 읽습니다.
 - 60/120Hz 동기화 테스트는 렌더 제출 주기를 검사합니다. 실제 FPS는 GPU·타일·브라우저에 따라 달라지므로 자동 검사 통과를 모든 기기 60fps 보장으로 쓰지 않습니다.
 

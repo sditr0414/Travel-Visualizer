@@ -148,7 +148,7 @@ function ensureRouteLayers(map: Map): void {
     paint: {
       'line-color': ['coalesce', ['get', 'color'], '#ff6b55'],
       'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2.4, 12, 6],
-      'line-opacity': 0.94
+      'line-opacity': ['case', ['==', ['get', 'trail'], true], 0.6, 0.94]
     }
   });
   map.addLayer({

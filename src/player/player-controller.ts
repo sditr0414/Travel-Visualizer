@@ -786,7 +786,7 @@ function trailForFrame(plan: PlaybackPlan, index: number, current?: TravelFrame)
   }
   frames.reverse();
   if (current && frames.length) frames[frames.length - 1] = current;
-  return lineFeatures(frames, plan);
+  return lineFeatures(frames, plan, true);
 }
 
 function framesDisconnected(plan: PlaybackPlan, a: TravelFrame, b: TravelFrame): boolean {
@@ -794,7 +794,7 @@ function framesDisconnected(plan: PlaybackPlan, a: TravelFrame, b: TravelFrame):
   return a.segmentIndex !== b.segmentIndex && haversineMeters(plan.segments[a.segmentIndex].end, plan.segments[b.segmentIndex].start) > 30;
 }
 
-function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan): object {
+function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan, trail = false): object {
   if (!frames.length) return emptyCollection();
   if (frames.some(frame => plan.segments[frame.segmentIndex]?.hideRoute)) {
     const groups: TravelFrame[][] = [];
@@ -807,7 +807,7 @@ function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan): object {
     }
     if (group.length) groups.push(group);
     return { type: 'FeatureCollection', features: groups.flatMap(items =>
-      (lineFeatures(items, plan) as { features: object[] }).features) };
+      (lineFeatures(items, plan, trail) as { features: object[] }).features) };
   }
   const features: object[] = [];
   let mode = frames[0].mobilityClass;
@@ -818,7 +818,7 @@ function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan): object {
     if (coordinates.length === 1) coordinates.push([...coordinates[0]]);
     features.push({
       type: 'Feature',
-      properties: { mobilityClass: mode, color: COLORS[mode] },
+      properties: { mobilityClass: mode, color: COLORS[mode], trail },
       geometry: { type: 'LineString', coordinates }
     });
   };
