@@ -37,7 +37,7 @@ async function main() {
 
   console.log(`[Travel Camera] 서버를 시작합니다: ${url}`);
   run(process.execPath, [join(root, 'scripts', 'ensure-build.mjs')]);
-  const child = spawn(process.execPath, [join(root, 'server.mjs'), '--production', ...serverArgs], {
+  const child = spawn(process.execPath, [join(root, 'server', 'index.mjs'), '--production', ...serverArgs], {
     cwd: root,
     env: process.env,
     stdio: 'inherit'

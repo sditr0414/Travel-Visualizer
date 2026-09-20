@@ -8,5 +8,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "eslint.config.js"]
+  "include": ["vite.config.ts", "playwright.config.ts", "../eslint.config.js"]
 }

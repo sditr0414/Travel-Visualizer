@@ -1,8 +1,8 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install-windows-shortcut.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-windows-shortcut.ps1"
 set EXIT_CODE=%ERRORLEVEL%
 
 echo.

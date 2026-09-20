@@ -23,7 +23,7 @@ export default tseslint.config(
     languageOptions: { ecmaVersion: 2023, globals: { ...globals.browser } }
   },
   {
-    files: ['server.mjs', 'scripts/**/*.mjs'],
+    files: ['server/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: { ecmaVersion: 2023, globals: { ...globals.node } }
   }
 );

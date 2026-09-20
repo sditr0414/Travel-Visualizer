@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL('.', import.meta.url));
+const root = fileURLToPath(new URL('..', import.meta.url));
 const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 const localDataEnabled = !process.argv.includes('--no-local-data');
 const portArg = process.argv.findIndex(value => value === '--port');
@@ -31,7 +31,7 @@ const glyphDownloads = new Map();
 
 const vite = isProduction
   ? null
-  : await (await import('vite')).createServer({ root, server: { middlewareMode: true }, appType: 'spa' });
+  : await (await import('vite')).createServer({ root, configFile: join(root, 'config', 'vite.config.ts'), server: { middlewareMode: true }, appType: 'spa' });
 
 const server = createServer((request, response) => {
   void handleRequest(request, response).catch(error => {

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const hash = createHash('sha256');
-const inputs = ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json', 'tsconfig.app.json'];
+const inputs = ['src', 'public', 'config', 'index.html', 'package.json', 'package-lock.json', 'tsconfig.json'];
 function collect(path) {
   if (!existsSync(path)) return;
   const files = readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
@@ -19,7 +19,7 @@ function collect(path) {
 for (const input of inputs) {
   const path = join(root, input);
   if (!existsSync(path)) continue;
-  if (input === 'src' || input === 'public') collect(path);
+  if (input === 'src' || input === 'public' || input === 'config') collect(path);
   else hash.update(input).update(readFileSync(path));
 }
 const fingerprint = hash.digest('hex');
