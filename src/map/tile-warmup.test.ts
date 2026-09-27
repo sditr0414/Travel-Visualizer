@@ -65,13 +65,19 @@ it('warms both manual zoom directions, keeps the final destination, and ignores 
     onZoom({ originalEvent: new Event('wheel') });
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock.mock.calls.some(([url]) => url.includes('/13/'))).toBe(true);
+    zoom = 12.5;
+    onZoom({ originalEvent: new Event('wheel') });
+    await vi.advanceTimersByTimeAsync(320);
+    // Prepare z11 while the renderer still uses z12, before crossing z12.
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/11/'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/12/'))).toBe(false);
     zoom = 11.8;
     onZoom({ originalEvent: new Event('wheel') });
     zoom = 10.8;
     onZoom({ originalEvent: new Event('wheel') });
     await vi.advanceTimersByTimeAsync(320);
-    expect(fetchMock.mock.calls.some(([url]) => url.includes('/10/'))).toBe(true);
-    expect(fetchMock.mock.calls.some(([url]) => url.includes('/11/'))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/9/'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/10/'))).toBe(false);
     zoom = 9.8;
     onZoom({ originalEvent: new Event('wheel') });
     disposeMapTileWarmup(map);

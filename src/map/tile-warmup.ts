@@ -141,7 +141,7 @@ export function bindMapTileWarmupInteractions(map: MapLibreMap): () => void {
     previousZoom = zoom;
     // Playback has its own route prediction; only forecast direct user input here.
     if (!event.originalEvent || !direction) return;
-    const target = direction > 0 ? Math.floor(zoom) + 1 : Math.ceil(zoom) - 1;
+    const target = Math.floor(zoom) + direction;
     warmMapTilesAhead(map, map.getCenter(), Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target)));
   };
   map.on('zoom', onZoom);

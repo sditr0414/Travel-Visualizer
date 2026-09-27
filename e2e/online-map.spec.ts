@@ -32,7 +32,8 @@ test('online tiles are prefetched for manual zoom in and out without a map insta
   await expect.poll(warmCount).toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => (window as unknown as { warmedTiles: string[] }).warmedTiles.some(url => /\/test\/7\//.test(url)))).toBe(true);
   await page.getByRole('button', { name: '지도 축소', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { warmedTiles: string[] }).warmedTiles.some(url => /\/test\/5\//.test(url)))).toBe(true);
+  // The camera finishes at z5.4: z4 must already be ready for further zoom out.
+  await expect.poll(() => page.evaluate(() => (window as unknown as { warmedTiles: string[] }).warmedTiles.some(url => /\/test\/4\//.test(url)))).toBe(true);
   await loadLocalTimeline(page);
   await page.locator('.settings-panel summary').click();
   await expect(page.getByRole('combobox', { name: '배경 지도', exact: true })).toHaveCount(0);
