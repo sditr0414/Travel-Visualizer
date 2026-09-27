@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { loadLocalTimeline } from './helpers';
 
+// The filename-only photo fixture represents Korea local time, like the timeline fixture.
+test.use({ timezoneId: 'Asia/Seoul' });
+
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = resolve(root, 'dist');
 
