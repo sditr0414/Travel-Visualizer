@@ -1,3 +1,4 @@
+import { canUseLocalApi, isJsonResponse } from './services/local-api';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Camera, CircleHelp, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -78,6 +79,7 @@ export function App({ workerClient }: AppProps) {
   const [mediaLoading, setMediaLoading] = useState(false);
   const [mediaProgress, setMediaProgress] = useState<MediaImportProgress | null>(null);
   const [localMediaManifest, setLocalMediaManifest] = useState<LocalMediaManifest | null>(null);
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
   const [splitNarrow, setSplitNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 820);
   const [desktopMapShare, setDesktopMapShare] = useState(PHOTO_MAP_MIN_DESKTOP);
   const [mobileMapShare, setMobileMapShare] = useState(PHOTO_MAP_MIN_MOBILE);
@@ -297,10 +299,13 @@ export function App({ workerClient }: AppProps) {
     }
   }, [changeJourneyMode, pausePlayback]);
 
-  const mapShare = splitNarrow ? mobileMapShare : desktopMapShare;
+  // Reserve room for the toolbar, attribution, zoom buttons and playback controls.
+  const mobileMapMin = Math.min(0.72, Math.max(PHOTO_MAP_MIN_MOBILE, 260 / Math.max(1, viewportHeight)));
+  const mapShare = splitNarrow ? Math.max(mobileMapShare, mobileMapMin) : desktopMapShare;
   const mediaProgressValue = progressValue(mediaProgress);
 
   useEffect(() => {
+    if (!canUseLocalApi()) return;
     fetch('/api/map-status', { cache: 'no-store' })
       .then(response => response.json())
       .then(status => dispatch({ type: 'MAP_STATUS', status }))
@@ -312,10 +317,11 @@ export function App({ workerClient }: AppProps) {
   }, []);
 
   useEffect(() => {
+    if (!canUseLocalApi()) return;
     let cancelled = false;
     fetch('/api/local-timeline', { cache: 'no-store' })
       .then(async response => {
-        if (!response.ok || cancelled || manualTimelineSelectedRef.current) return;
+        if (!isJsonResponse(response) || cancelled || manualTimelineSelectedRef.current) return;
         const contents = await response.text();
         if (!cancelled && !manualTimelineSelectedRef.current) await scanSource({ kind: 'local-file', name: '타임라인.json' }, contents);
       })
@@ -324,10 +330,11 @@ export function App({ workerClient }: AppProps) {
   }, [scanSource]);
 
   useEffect(() => {
+    if (!canUseLocalApi()) return;
     let cancelled = false;
     fetch('/api/local-media-manifest', { cache: 'no-store' })
       .then(async response => {
-        if (!response.ok || cancelled) return;
+        if (!isJsonResponse(response) || cancelled) return;
         const manifest = await response.json() as LocalMediaManifest;
         if (!cancelled && !manualMediaSelectedRef.current && manifest.available && Array.isArray(manifest.items)) {
           setLocalMediaManifest(manifest);
@@ -499,7 +506,7 @@ export function App({ workerClient }: AppProps) {
   }, [map, state.phase]);
 
   useEffect(() => {
-    const onResize = () => setSplitNarrow(window.innerWidth <= 820);
+    const onResize = () => { setSplitNarrow(window.innerWidth <= 820); setViewportHeight(window.innerHeight); };
     window.addEventListener('resize', onResize, { passive: true });
     return () => window.removeEventListener('resize', onResize);
   }, []);
@@ -525,6 +532,7 @@ export function App({ workerClient }: AppProps) {
 
   const onFileSelected = async (file: File | undefined) => {
     if (!file) return;
+    pausePlayback();
     if (!file.name.toLowerCase().endsWith('.json')) {
       dispatch({ type: 'FAIL', message: 'Google 지도에서 내보낸 타임라인 JSON 파일을 선택해 주세요.' });
       return;
@@ -532,7 +540,6 @@ export function App({ workerClient }: AppProps) {
     if (file.size > 250 * 1024 * 1024) { dispatch({ type: 'FAIL', message: '파일이 너무 큽니다. 250 MB 이하의 타임라인 JSON 파일을 선택해 주세요.' }); return; }
     setSettingsOpen(false);
     manualTimelineSelectedRef.current = true;
-    pausePlayback();
     setActiveMediaId(null);
     try {
       await scanSource({ kind: 'local-file', name: file.name }, await file.text());
@@ -605,7 +612,7 @@ export function App({ workerClient }: AppProps) {
   };
 
   const setMapShare = (value: number) => {
-    const limits = splitNarrow ? { min: PHOTO_MAP_MIN_MOBILE, max: 0.72 } : { min: PHOTO_MAP_MIN_DESKTOP, max: 0.78 };
+    const limits = splitNarrow ? { min: mobileMapMin, max: 0.72 } : { min: PHOTO_MAP_MIN_DESKTOP, max: 0.78 };
     const next = Math.min(limits.max, Math.max(limits.min, value));
     if (splitNarrow) setMobileMapShare(next);
     else setDesktopMapShare(next);
@@ -623,7 +630,7 @@ export function App({ workerClient }: AppProps) {
     let next = mapShare;
     if ((!splitNarrow && event.key === 'ArrowLeft') || (splitNarrow && event.key === 'ArrowUp')) next -= step;
     else if ((!splitNarrow && event.key === 'ArrowRight') || (splitNarrow && event.key === 'ArrowDown')) next += step;
-    else if (event.key === 'Home') next = splitNarrow ? PHOTO_MAP_MIN_MOBILE : PHOTO_MAP_MIN_DESKTOP;
+    else if (event.key === 'Home') next = splitNarrow ? mobileMapMin : PHOTO_MAP_MIN_DESKTOP;
     else if (event.key === 'End') next = splitNarrow ? 0.72 : 0.78;
     else return;
     event.preventDefault();
@@ -736,7 +743,7 @@ export function App({ workerClient }: AppProps) {
           tabIndex={0}
           aria-label="경로와 사진 영역 크기 조절"
           aria-orientation={splitNarrow ? 'horizontal' : 'vertical'}
-          aria-valuemin={splitNarrow ? 34 : 38}
+          aria-valuemin={splitNarrow ? Math.round(mobileMapMin * 100) : 38}
           aria-valuemax={splitNarrow ? 72 : 78}
           aria-valuenow={Math.round(mapShare * 100)}
           aria-valuetext={`경로 ${Math.round(mapShare * 100)}%, 사진 ${100 - Math.round(mapShare * 100)}%`}

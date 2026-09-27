@@ -5,6 +5,12 @@ import { basename, dirname, extname, isAbsolute, join, normalize, relative, reso
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+// One policy file is shared by the local production server and static hosting.
+const productionHeaders = Object.fromEntries(readFileSync(join(root, 'public', '_headers'), 'utf8')
+  .split(/\r?\n/).flatMap(line => {
+    const match = /^ {2}([^:]+): (.+)$/.exec(line);
+    return match ? [[match[1], match[2]]] : [];
+  }));
 const isProduction = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 const localDataEnabled = !process.argv.includes('--no-local-data');
 const portArg = process.argv.findIndex(value => value === '--port');
@@ -135,6 +141,9 @@ async function handleRequest(request, response) {
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`Travel Camera Visualizer: http://127.0.0.1:${port}`);
+  process.send?.({ type: 'travel-camera-ready', port });
+  // Readiness has been delivered; the HTTP listener owns the child lifetime.
+  if (process.connected) process.disconnect();
 });
 
 function fileStatus(path) {
@@ -701,6 +710,10 @@ function mimeType(extension) {
 }
 
 function setSecurityHeaders(response) {
+  if (isProduction) {
+    for (const [name, value] of Object.entries(productionHeaders)) response.setHeader(name, value);
+    return;
+  }
   response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('X-Content-Type-Options', 'nosniff');

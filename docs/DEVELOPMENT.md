@@ -25,6 +25,7 @@ Travel-Visualizer/
 ├── tsconfig.json              # 편집기·TypeScript 프로젝트 참조
 ├── eslint.config.js           # 편집기·ESLint 자동 탐색
 ├── config/                    # Vite·Vitest·Playwright·TS 세부 설정
+├── public/_headers           # 정적 호스팅·프로덕션 서버의 공통 보안 정책
 ├── server/index.mjs           # loopback 파일·지도·캐시 API
 ├── scripts/                   # 빌드 준비·런처·Windows 바로가기·지도 설치
 ├── src/                       # 앱 소스와 단위 테스트
@@ -62,7 +63,8 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
-# 위 네 검사를 한 번에 실행
+npm run test:runtime
+# 위 다섯 검사를 한 번에 실행
 npm run verify
 
 npx playwright install chromium
@@ -71,12 +73,14 @@ npm run test:e2e -- --workers=3
 
 Vitest는 `config/vite.config.ts`, Playwright는 `config/playwright.config.ts`를 사용합니다. 개별 옵션은 npm 명령의 `--` 뒤에 전달합니다. TypeScript 프로젝트 참조는 최상위 `tsconfig.json`에서 연결합니다.
 
-E2E는 개인 데이터 자동 연결을 끈 5518번 서버를 준비하고 데스크톱·모바일 Chromium에서 검사합니다. CPU·GPU 여유가 작은 PC에서는 worker 수를 줄이세요. CI는 1 worker로 실행하고 결과를 `browser-regression-evidence` artifact에 3일간 보관합니다.
+E2E는 개인 데이터 자동 연결을 끈 5518번 서버를 준비하고 데스크톱·모바일 Chromium에서 검사합니다. CPU·GPU 여유가 작은 PC에서는 worker 수를 줄이세요. Linux CI는 1 worker로 실행하고 결과를 `browser-regression-evidence` artifact에 3일간 보관합니다. HTML 검사 보고서는 설정 파일 위치와 관계없이 저장소 최상위 `playwright-report/`에 저장합니다. Windows CI는 별도로 설치·빌드·서버 시작 신호·포트 충돌·특수문자 경로의 PowerShell 압축 해제를 검사합니다. `test:runtime`은 배포 빌드 후 실행하며 Windows 전용 항목은 다른 OS에서 건너뜁니다.
 
 현재 버전의 검증 기록은 아래와 같습니다.
 
-- 타입 검사, ESLint, 단위 테스트 196개, 배포 빌드 통과.
-- 데스크톱·모바일 Chromium 브라우저 회귀 검사 36개 통과, 환경별 중복·선택적 실제 파일 검사 6개 건너뜀.
+- 타입 검사, ESLint, 단위 테스트 199개, 배포 빌드 통과.
+- 데스크톱·모바일 Chromium 브라우저 회귀 검사 44개 통과, 환경별 중복·선택적 실제 파일 검사 6개 건너뜀.
+- 로컬 런타임 검사에서 서버 시작 신호·보안 헤더·포트 충돌을 확인합니다. Windows 압축 해제는 별도 Windows CI 대상이며 이 PC의 Linux 실행 결과와 구분합니다.
+- 공개 도메인의 정적 SPA에서 PC 전용 API를 호출하지 않는지, CSP 아래 지도·Worker·선택한 사진이 동작하는지, 잘못된 파일 선택 시 재생이 멈추는지 검사합니다. 320×568 사진 여정에서는 지도 버튼과 상단·재생 컨트롤이 겹치지 않는지 확인합니다.
 - 다른 작업 폴더에서 개발 서버 실행, Vite 소스 응답, 개인 데이터 비활성 API, 런처 dry-run을 확인했습니다. Windows 바로가기는 경로 참조를 확인했으며 Windows 실기기 실행은 포함하지 않습니다.
 - 문서 10개의 내부 파일 링크와 README의 이미지·GIF 렌더링을 확인했습니다. MP4 두 개는 1440×900·약 30초·60fps이며 브라우저 재생을 확인했습니다. 실제 캡처 프레임률은 [촬영 자료 안내](MEDIA.md)에 기록합니다.
 - 일시정지 시 전체 경로 옵션의 기본 꺼짐·기존 설정 호환·저장·즉시 적용, 명시적 전체 경로와 처음·마지막 요약의 유지를 두 모드에서 검증했습니다. 실제 설정 화면은 1440×900과 390×844에서 확인했습니다.
@@ -88,7 +92,13 @@ E2E는 개인 데이터 자동 연결을 끈 5518번 서버를 준비하고 데�
 
 `npm start`의 `prestart`와 런처는 `scripts/ensure-build.mjs`를 실행합니다. 소스·공개 자산·설정·패키지 파일의 fingerprint가 달라졌거나 `dist/index.html`이 없으면 빌드합니다. 결과 fingerprint는 `.cache/production-build.sha256`에 저장합니다.
 
-브라우저 배포 결과는 `dist/`에 생성됩니다. HTTPS 정적 호스팅의 루트에 올리면 각 기기에서 타임라인과 사진을 직접 선택할 수 있습니다. 로컬 파일 자동 연결과 설치형 지도 API를 제공하는 Node 서버는 포함되지 않습니다. 이 저장소의 CI는 검증만 수행하며 사이트를 배포하지 않습니다.
+브라우저 배포 결과는 `dist/`에 생성됩니다. HTTPS 정적 호스팅의 루트에 올리면 각 기기에서 타임라인과 사진을 직접 선택할 수 있습니다. 로컬 파일 자동 연결과 설치형 지도 API를 제공하는 Node 서버는 포함되지 않습니다. 공개 도메인에서는 PC 전용 API를 호출하지 않습니다. `localhost`·`127.0.0.1`에서만 로컬 API를 확인하며 타임라인·사진 목록·장소 응답은 JSON Content-Type을 확인합니다. 로컬 정적 미리보기의 SPA fallback HTML도 타임라인으로 읽지 않습니다.
+
+`public/_headers`는 빌드 시 `dist/_headers`로 복사되며 로컬 프로덕션 서버도 같은 파일을 읽습니다. [Cloudflare Pages의 정적 응답 헤더](https://developers.cloudflare.com/pages/configuration/headers/) 형식을 사용합니다. 다른 호스팅에서는 이 파일의 정책을 해당 서버 설정에 옮겨야 합니다. 현재 CSP는 자체 코드·폰트·Worker·선택한 파일의 blob URL과 OpenFreeMap 지도 요청을 허용합니다. 앱의 동적 배치 때문에 인라인 스타일은 허용하지만 인라인 스크립트·eval·프레임 삽입은 허용하지 않습니다. 지도 공급자를 바꾸면 허용 출처도 함께 갱신하세요. 개발 서버는 Vite HMR을 위해 별도의 기본 헤더만 적용합니다.
+
+런처는 HTTP 200 응답을 시작 확인으로 사용하지 않습니다. 실행한 자식 서버가 listen에 성공한 뒤 보낸 IPC 메시지를 받아야 브라우저를 열며, 다른 프로세스가 포트를 사용하면 오류로 종료합니다.
+
+이 저장소의 CI는 검증만 수행하며 사이트를 배포하지 않습니다.
 
 ## 브랜치와 문서 관리
 

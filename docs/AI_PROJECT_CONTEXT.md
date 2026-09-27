@@ -10,6 +10,12 @@ Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하�
 
 `npm start`/Windows 런처는 프로덕션 빌드를 사용합니다. `scripts/ensure-build.mjs`는 소스 fingerprint가 바뀌었을 때만 빌드합니다. `npm run dev`는 개발용입니다. 서버는 127.0.0.1에만 바인딩합니다. 모바일 UI는 직접 파일 선택을 지원하며, 다른 기기에서 접근하려면 별도의 HTTPS 정적 호스팅이 필요합니다. LAN 공개를 위해 로컬 개인 파일 API의 접근 제한을 완화하지 않습니다.
 
+공개 도메인에서 로컬 API를 호출하지 않는 경계는 `src/services/local-api.ts`가 담당합니다. 루프백 호스트에서도 타임라인·사진 목록·장소 응답의 JSON MIME을 검사해 정적 SPA의 HTML fallback을 무시합니다. 파일 검증 실패를 알리기 전에 활성 플레이어를 정지합니다.
+
+런처는 자식 서버의 listen 성공 IPC 메시지로 시작을 확인합니다. 다른 프로세스의 HTTP 응답으로 브라우저를 열지 않습니다. `public/_headers`는 정적 호스팅과 로컬 프로덕션 서버의 단일 보안 정책 원본입니다. Windows 지도 ZIP 압축 해제는 `scripts/expand-map-archive.ps1`의 매개변수로 경로를 전달하며 명령 문자열에 경로를 삽입하지 않습니다. ExecutionPolicy 우회는 해당 하위 PowerShell 프로세스에만 적용합니다.
+
+모바일 사진 지도는 컨트롤을 위한 260px 높이를 우선 확보하되 분할 상한 72%를 지킵니다. 실제 표시 비율과 분할선 ARIA·키보드 최소값을 일치시키며 화면 높이 변경에도 다시 계산합니다.
+
 ## Data flow
 
 Timeline → TimelineWorkerClient → timeline.worker → domain/planner → PlaybackPlan → ROUTE/PHOTOS PlayerController → MapLibre.

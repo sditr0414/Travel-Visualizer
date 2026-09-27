@@ -40,7 +40,7 @@ async function main() {
   const child = spawn(process.execPath, [join(root, 'server', 'index.mjs'), '--production', ...serverArgs], {
     cwd: root,
     env: process.env,
-    stdio: 'inherit'
+    stdio: ['inherit', 'inherit', 'inherit', 'ipc']
   });
   const exitPromise = new Promise(resolveExit => {
     child.once('exit', code => resolveExit(code ?? 1));
@@ -51,7 +51,7 @@ async function main() {
     console.error(`[Travel Camera] npm start 실행 실패: ${error.message}`);
   });
 
-  if (await waitForServer(url, child)) {
+  if (await waitForServer(child, port)) {
     openBrowser(url);
   } else if (child.exitCode == null) {
     console.warn(`[Travel Camera] 브라우저 자동 열기 전에 서버 응답을 확인하지 못했습니다. 직접 ${url} 을 열어 주세요.`);
@@ -127,22 +127,25 @@ function resolvePort(values, environmentPort) {
   return Number.isInteger(candidate) && candidate > 0 && candidate <= 65_535 ? candidate : 5517;
 }
 
-async function waitForServer(url, child) {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode != null || !child.pid) return false;
-    try {
-      const response = await fetch(url, {
-        method: 'HEAD',
-        signal: AbortSignal.timeout(800)
-      });
-      if (response.ok) return true;
-    } catch {
-      // Server startup is still in progress.
-    }
-    await delay(250);
-  }
-  return false;
+function waitForServer(child, port) {
+  if (child.exitCode != null || !child.pid) return Promise.resolve(false);
+  return new Promise(resolveReady => {
+    const finish = ready => {
+      clearTimeout(timer);
+      child.removeListener('message', onMessage);
+      child.removeListener('exit', onExit);
+      child.removeListener('error', onExit);
+      resolveReady(ready);
+    };
+    const onMessage = message => {
+      if (message?.type === 'travel-camera-ready' && message.port === port) finish(true);
+    };
+    const onExit = () => finish(false);
+    const timer = setTimeout(() => finish(false), 20_000);
+    child.on('message', onMessage);
+    child.once('exit', onExit);
+    child.once('error', onExit);
+  });
 }
 
 function openBrowser(url) {
@@ -204,8 +207,4 @@ function run(command, commandArgs, options = {}) {
     throw new Error(`${command} ${commandArgs.join(' ')} 명령이 종료 코드 ${result.status}로 실패했습니다.`);
   }
   return { status: result.status ?? 1 };
-}
-
-function delay(ms) {
-  return new Promise(resolveDelay => setTimeout(resolveDelay, ms));
 }

@@ -183,8 +183,10 @@ function extractArchiveFile(archive, targetDir) {
     run('powershell.exe', [
       '-NoProfile',
       '-NonInteractive',
-      '-Command',
-      `Expand-Archive -LiteralPath "${archive}" -DestinationPath "${targetDir}" -Force`
+      '-ExecutionPolicy', 'Bypass',
+      '-File', join(root, 'scripts', 'expand-map-archive.ps1'),
+      '-ArchivePath', archive,
+      '-DestinationPath', targetDir
     ]);
     return;
   }

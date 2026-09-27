@@ -1,3 +1,4 @@
+import { canUseLocalApi, isJsonResponse } from '../services/local-api';
 import { haversineMeters } from '../geo.js';
 import type { JourneyMedia, MobilityClass, PlaybackFrame, PlaybackPlan } from '../types';
 import { positionAtPlaybackSecond } from './media-library';
@@ -63,9 +64,10 @@ export function photoPlaceDecision(
 }
 
 export async function loadPhotoPlaceLookupStatus(): Promise<PhotoPlaceLookupStatus> {
+  if (!canUseLocalApi()) return { available: false, provider: null, cache: true };
   try {
     const response = await fetch('/api/photo-place-status', { cache: 'no-store', signal: AbortSignal.timeout(5_000) });
-    if (!response.ok) return { available: false, provider: null, cache: true };
+    if (!isJsonResponse(response)) return { available: false, provider: null, cache: true };
     const value = await response.json() as Partial<PhotoPlaceLookupStatus>;
     return {
       available: value.available === true,
@@ -78,6 +80,7 @@ export async function loadPhotoPlaceLookupStatus(): Promise<PhotoPlaceLookupStat
 }
 
 export async function lookupOnlinePhotoPlace(decision: Extract<PhotoPlaceDecision, { kind: 'lookup' }>): Promise<PhotoPlaceLookupResult | null> {
+  if (!canUseLocalApi()) return null;
   try {
     const response = await fetch('/api/photo-place', {
       method: 'POST',
@@ -85,7 +88,7 @@ export async function lookupOnlinePhotoPlace(decision: Extract<PhotoPlaceDecisio
       body: JSON.stringify({ lat: decision.lat, lng: decision.lng, gpsAccuracyM: decision.gpsAccuracyM }),
       signal: AbortSignal.timeout(12_000)
     });
-    if (!response.ok) return null;
+    if (!isJsonResponse(response)) return null;
     const value = await response.json() as PhotoPlaceLookupResult;
     return value && typeof value === 'object' ? value : null;
   } catch {

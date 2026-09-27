@@ -15,10 +15,11 @@
     "test": "vitest run --config config/vite.config.ts --coverage",
     "test:watch": "vitest --config config/vite.config.ts",
     "test:e2e": "playwright test --config config/playwright.config.ts",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:runtime",
     "map:setup": "node scripts/setup-local-map.mjs",
     "map:setup:force": "node scripts/setup-local-map.mjs --force",
-    "prestart": "node scripts/ensure-build.mjs"
+    "prestart": "node scripts/ensure-build.mjs",
+    "test:runtime": "node --test scripts/tests/*.test.mjs"
   },
   "engines": {
     "node": ">=24"

@@ -7,7 +7,7 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
-  reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: fileURLToPath(new URL('../playwright-report', import.meta.url)) }]],
   use: { baseURL: 'http://127.0.0.1:5518', trace: 'retain-on-failure' },
   webServer: {
     cwd: fileURLToPath(new URL('..', import.meta.url)),

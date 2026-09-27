@@ -25,6 +25,7 @@ describe('App integration', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+      headers: new Headers({ 'Content-Type': 'application/json' }),
       status: url.includes('/api/local-timeline') ? 404 : 200,
       ok: !url.includes('/api/local-timeline'),
       json: () => Promise.resolve({ ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
@@ -57,9 +58,23 @@ describe('App integration', () => {
     }
   });
 
+  it('keeps the welcome screen when a static host returns HTML for local API paths', async () => {
+    const request = vi.fn().mockImplementation(() => Promise.resolve(new Response('<html>SPA fallback</html>', {
+      headers: { 'Content-Type': 'text/html' }
+    })));
+    vi.stubGlobal('fetch', request);
+    const worker: TimelineWorkerPort = { scan: vi.fn(), plan: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
+    render(<App workerClient={worker} />);
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(4));
+    expect(screen.getByRole('heading', { name: '다녀온 여행을 다시 펼쳐보세요' })).toBeInTheDocument();
+    expect(worker.scan).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('automatically loads the configured local Timeline', async () => {
     const contents = '{"semanticSegments":[]}';
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+      headers: new Headers({ 'Content-Type': 'application/json' }),
       status: 200,
       ok: true,
       json: () => Promise.resolve({ ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
@@ -260,6 +275,7 @@ describe('App integration', () => {
 
   it('keeps exact online place lookup opt-in live and out of rebuild state', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve({
+      headers: new Headers({ 'Content-Type': 'application/json' }),
       status: url.includes('/api/local-timeline') ? 404 : 200,
       ok: !url.includes('/api/local-timeline'),
       json: () => Promise.resolve(url.includes('/api/photo-place-status')
