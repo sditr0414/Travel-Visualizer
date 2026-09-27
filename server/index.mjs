@@ -16,16 +16,11 @@ const localDataEnabled = !process.argv.includes('--no-local-data');
 const portArg = process.argv.findIndex(value => value === '--port');
 const configuredPort = Number(process.env.PORT || (portArg >= 0 ? process.argv[portArg + 1] : 5517));
 const port = Number.isInteger(configuredPort) && configuredPort > 0 && configuredPort <= 65_535 ? configuredPort : 5517;
-const mapsDir = join(root, 'maps');
 const distDir = join(root, 'dist');
-const worldMap = join(mapsDir, 'world-z5.pmtiles');
-const regionMap = join(mapsDir, 'korea-japan-z14.pmtiles');
 const localTimeline = configuredPreferredPath('TRAVEL_TIMELINE_PATH', [join(root, '타임라인.json'), resolve(root, '..', '타임라인.json')], 'file');
 const localMediaRoot = configuredPreferredPath('TRAVEL_MEDIA_DIR', [join(root, '여행 사진'), resolve(root, '..', '여행 사진')], 'directory');
 const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
 const photoPlaceCachePath = configuredPath('TRAVEL_PLACE_CACHE', join(root, '.cache', 'photo-places.json'));
-const mapGlyphCacheDir = configuredPath('TRAVEL_GLYPH_CACHE_DIR', join(root, '.cache', 'map-glyphs'));
-const glyphBaseUrl = process.env.TRAVEL_GLYPH_BASE_URL?.trim() || 'https://protomaps.github.io/basemaps-assets/fonts/';
 const placeProvider = resolvePlaceProvider();
 const MEDIA_CACHE_VERSION = 4;
 const PLACE_CACHE_VERSION = 1;
@@ -33,7 +28,6 @@ let localMediaCache = null;
 let photoPlaceCache = null;
 let placeLookupQueue = Promise.resolve();
 let lastPlaceLookupAt = 0;
-const glyphDownloads = new Map();
 
 const vite = isProduction
   ? null
@@ -61,18 +55,6 @@ async function handleRequest(request, response) {
   if (!isAllowedHost(request.headers.host)) return text(response, 403, 'Loopback access only');
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
 
-  if (url.pathname === '/api/map-status') {
-    const world = fileStatus(worldMap);
-    const region = fileStatus(regionMap);
-    return json(response, 200, {
-      ready: world.exists && region.exists,
-      world: world.exists,
-      region: region.exists,
-      worldBytes: world.bytes,
-      regionBytes: region.bytes
-    });
-  }
-
   if (url.pathname === '/api/photo-place-status') {
     if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
       response.setHeader('Allow', 'GET, HEAD');
@@ -89,10 +71,6 @@ async function handleRequest(request, response) {
 
   if (url.pathname === '/api/photo-place') {
     return servePhotoPlaceLookup(request, response);
-  }
-
-  if (url.pathname.startsWith('/api/map-glyphs/')) {
-    return serveMapGlyph(request, response, url.pathname.slice('/api/map-glyphs/'.length));
   }
 
   if (url.pathname === '/api/local-timeline') {
@@ -117,14 +95,6 @@ async function handleRequest(request, response) {
 
   if (url.pathname.startsWith('/api/')) {
     return json(response, 404, { error: 'API endpoint not found' });
-  }
-
-  if (url.pathname.startsWith('/maps/')) {
-    const fileName = url.pathname.slice('/maps/'.length);
-    if (!['world-z5.pmtiles', 'korea-japan-z14.pmtiles'].includes(fileName)) {
-      return text(response, 404, 'Not found');
-    }
-    return serveRangeFile(request, response, join(mapsDir, fileName));
   }
 
   if (vite) {
@@ -152,7 +122,7 @@ function fileStatus(path) {
   return { exists: stats.isFile(), bytes: stats.isFile() ? stats.size : 0 };
 }
 
-function serveRangeFile(request, response, path, contentType = 'application/vnd.pmtiles', cacheControl = 'public, max-age=3600') {
+function serveRangeFile(request, response, path, contentType = 'application/octet-stream', cacheControl = 'public, max-age=3600') {
   if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
     response.setHeader('Allow', 'GET, HEAD');
     return text(response, 405, 'Method not allowed');
@@ -200,64 +170,6 @@ function serveRangeFile(request, response, path, contentType = 'application/vnd.
   });
   if (request.method === 'HEAD') return response.end();
   return pipeFile(path, response, { start, end });
-}
-
-async function serveMapGlyph(request, response, rawPath) {
-  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
-    response.setHeader('Allow', 'GET, HEAD');
-    return text(response, 405, 'Method not allowed');
-  }
-  const slash = rawPath.lastIndexOf('/');
-  if (slash <= 0) return text(response, 404, 'Glyph not found');
-  let fontstack;
-  let range;
-  try {
-    fontstack = decodeURIComponent(rawPath.slice(0, slash));
-    range = decodeURIComponent(rawPath.slice(slash + 1));
-  } catch {
-    return text(response, 400, 'Invalid glyph path');
-  }
-  if (!fontstack || fontstack.length > 120 || /[\\/\0\r\n]/.test(fontstack) || !/^\d{1,6}-\d{1,6}\.pbf$/.test(range)) {
-    return text(response, 400, 'Invalid glyph path');
-  }
-
-  const fontKey = createHash('sha256').update(fontstack).digest('hex').slice(0, 24);
-  const cachedPath = join(mapGlyphCacheDir, fontKey, range);
-  if (!existsSync(cachedPath)) {
-    let pending = glyphDownloads.get(cachedPath);
-    if (!pending) {
-      pending = cacheMapGlyph(fontstack, range, cachedPath);
-      glyphDownloads.set(cachedPath, pending);
-      void pending.then(
-        () => glyphDownloads.delete(cachedPath),
-        () => glyphDownloads.delete(cachedPath)
-      );
-    }
-    try {
-      await pending;
-    } catch {
-      return text(response, 502, 'Glyph download failed');
-    }
-  }
-  return serveRangeFile(request, response, cachedPath, 'application/x-protobuf', 'private, max-age=31536000, immutable');
-}
-
-async function cacheMapGlyph(fontstack, range, cachedPath) {
-  const base = new URL(glyphBaseUrl.endsWith('/') ? glyphBaseUrl : `${glyphBaseUrl}/`);
-  if (!['http:', 'https:'].includes(base.protocol)) throw new Error('Invalid glyph base URL');
-  const upstream = new URL(`${encodeURIComponent(fontstack)}/${range}`, base);
-  const upstreamResponse = await fetch(upstream, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(15_000),
-    headers: { 'user-agent': 'travel-camera-visualizer/3.0' }
-  });
-  if (!upstreamResponse.ok) throw new Error(`Glyph HTTP ${upstreamResponse.status}`);
-  const bytes = Buffer.from(await upstreamResponse.arrayBuffer());
-  if (!bytes.length || bytes.length > 4_000_000) throw new Error('Invalid glyph response');
-  mkdirSync(dirname(cachedPath), { recursive: true });
-  const temporary = `${cachedPath}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(temporary, bytes);
-  renameSync(temporary, cachedPath);
 }
 
 async function servePhotoPlaceLookup(request, response) {

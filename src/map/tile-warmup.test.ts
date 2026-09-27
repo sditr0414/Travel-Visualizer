@@ -1,4 +1,4 @@
-import { renderTileTemplate, warmupTilesForViewport, warmupZoomLevels } from './tile-warmup';
+import { bindMapTileWarmupInteractions, disposeMapTileWarmup, renderTileTemplate, warmMapTilesAhead, warmupTilesForViewport, warmupZoomLevels } from './tile-warmup';
 
 describe('tile warmup', () => {
   it('prepares the current tile zoom and the next level before crossing the boundary', () => {
@@ -15,6 +15,15 @@ describe('tile warmup', () => {
     expect(tiles.every(tile => tile.x >= 0 && tile.x < 2 ** 13 && tile.y >= 0 && tile.y < 2 ** 13)).toBe(true);
   });
 
+  it('matches raster tile size and rounding at MapLibre zoom boundaries', () => {
+    expect(warmupZoomLevels(4.4, 0, 6, 256, true)).toEqual([5, 6]);
+    expect(warmupZoomLevels(4.5, 0, 6, 256, true)[0]).toBe(6);
+    expect(warmupZoomLevels(5.4, 0, 6, 256, true)).toEqual([6]);
+    // At camera z=4, raster z=5 tiles occupy 256px in the 512px world.
+    const tiles = warmupTilesForViewport({ lng: 0, lat: 0 }, 4, 5, 1024, 512);
+    expect(tiles).toHaveLength(24);
+  });
+
   it('renders XYZ, TMS and retina tile URL placeholders', () => {
     const tile = { z: 3, x: 2, y: 1 };
     expect(renderTileTemplate('https://tiles/{z}/{x}/{y}{ratio}.pbf', tile, 'xyz', 2))
@@ -24,6 +33,71 @@ describe('tile warmup', () => {
     expect(renderTileTemplate('https://tiles/{z}/{x}/{-y}.pbf', tile, 'xyz', 1))
       .toBe('https://tiles/3/2/6.pbf');
   });
+});
+
+function fakeTileMap(width = 1200, height = 800): import('maplibre-gl').Map {
+  return {
+    getCanvas: () => ({ clientWidth: width, clientHeight: height }),
+    getStyle: () => ({ sources: { tiles: {} }, layers: [{ source: 'tiles', type: 'line' }] }),
+    getSource: () => ({ type: 'vector', tiles: ['https://example.com/{z}/{x}/{y}.pbf'] }),
+    getPixelRatio: () => 1
+  } as unknown as import('maplibre-gl').Map;
+}
+
+it('warms both manual zoom directions, keeps the final destination, and ignores playback zoom events', async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) });
+  vi.stubGlobal('fetch', fetchMock);
+  let zoom = 12.4;
+  let onZoom: (event: { originalEvent?: Event }) => void = () => {};
+  const off = vi.fn();
+  const map = Object.assign(fakeTileMap(), {
+    getZoom: () => zoom, getCenter: () => ({ lng: 127, lat: 37 }),
+    getMinZoom: () => 0, getMaxZoom: () => 18,
+    on: (_type: string, handler: typeof onZoom) => { onZoom = handler; }, off
+  });
+  const unbind = bindMapTileWarmupInteractions(map);
+  try {
+    zoom = 12.5;
+    onZoom({});
+    expect(fetchMock).not.toHaveBeenCalled();
+    zoom = 12.6;
+    onZoom({ originalEvent: new Event('wheel') });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/13/'))).toBe(true);
+    zoom = 11.8;
+    onZoom({ originalEvent: new Event('wheel') });
+    zoom = 10.8;
+    onZoom({ originalEvent: new Event('wheel') });
+    await vi.advanceTimersByTimeAsync(320);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/10/'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/11/'))).toBe(false);
+    zoom = 9.8;
+    onZoom({ originalEvent: new Event('wheel') });
+    disposeMapTileWarmup(map);
+    const count = fetchMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(count);
+    unbind();
+    expect(off).toHaveBeenCalledWith('zoom', onZoom);
+  } finally { disposeMapTileWarmup(map); vi.useRealTimers(); vi.unstubAllGlobals(); }
+});
+
+it('reaches the next level on a large viewport after near tiles are already cached', async () => {
+  vi.useFakeTimers();
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) });
+  vi.stubGlobal('fetch', fetchMock);
+  const map = fakeTileMap(3840, 2160);
+  try {
+    warmMapTilesAhead(map, { lng: 127, lat: 37 }, 12.7);
+    await vi.advanceTimersByTimeAsync(0);
+    warmMapTilesAhead(map, { lng: 127, lat: 37 }, 12.7);
+    await vi.advanceTimersByTimeAsync(320);
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('/13/'))).toBe(true);
+    const urls = fetchMock.mock.calls.map(([url]) => url);
+    expect(new Set(urls).size).toBe(urls.length);
+    expect(urls.length).toBeLessThanOrEqual(72);
+  } finally { disposeMapTileWarmup(map); vi.useRealTimers(); vi.unstubAllGlobals(); }
 });
 
 it('keeps prefetch slots occupied until bodies finish and aborts requests when the map is removed', async () => {

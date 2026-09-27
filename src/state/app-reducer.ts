@@ -1,6 +1,5 @@
 import type {
   AppPhase,
-  MapStatus,
   PlaybackPlan,
   TimelineScanResult,
   TimelineSource
@@ -14,7 +13,6 @@ export interface AppState {
   progress: number;
   statusMessage: string;
   error: string | null;
-  mapStatus: MapStatus | null;
 }
 
 export type AppAction =
@@ -28,7 +26,6 @@ export type AppAction =
   | { type: 'RESET' }
   | { type: 'COMPLETE' }
   | { type: 'FAIL'; message: string }
-  | { type: 'MAP_STATUS'; status: MapStatus }
   | { type: 'NOTICE'; message: string };
 
 export const initialAppState: AppState = {
@@ -38,8 +35,7 @@ export const initialAppState: AppState = {
   plan: null,
   progress: 0,
   statusMessage: '타임라인 파일을 열어 여행을 시작하세요.',
-  error: null,
-  mapStatus: null
+  error: null
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -64,8 +60,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, phase: 'complete', statusMessage: '여행을 모두 감상했습니다.' };
     case 'FAIL':
       return { ...state, phase: 'error', progress: 0, error: action.message, statusMessage: action.message };
-    case 'MAP_STATUS':
-      return { ...state, mapStatus: action.status };
     case 'NOTICE':
       return { ...state, statusMessage: action.message };
   }

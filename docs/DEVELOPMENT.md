@@ -26,11 +26,10 @@ Travel-Visualizer/
 ├── eslint.config.js           # 편집기·ESLint 자동 탐색
 ├── config/                    # Vite·Vitest·Playwright·TS 세부 설정
 ├── public/_headers           # 정적 호스팅·프로덕션 서버의 공통 보안 정책
-├── server/index.mjs           # loopback 파일·지도·캐시 API
-├── scripts/                   # 빌드 준비·런처·Windows 바로가기·지도 설치
+├── server/index.mjs           # loopback 파일·장소·캐시 API
+├── scripts/                   # 빌드 준비·런처·Windows 바로가기
 ├── src/                       # 앱 소스와 단위 테스트
 ├── e2e/                       # 브라우저 회귀 검사
-├── maps/                      # 설치형 지도와 안내
 ├── docs/                      # 사용·개발 문서
 │   ├── assets/screenshots/    # 공개 스크린샷
 │   ├── assets/demos/          # 공개 MP4·GIF
@@ -40,7 +39,7 @@ Travel-Visualizer/
 
 `dist/`, `node_modules/`, `.cache/`, `coverage/`, `test-results/`, `playwright-report/`는 생성물이며 커밋하지 않습니다. 최상위 TypeScript와 ESLint 파일은 편집기가 프로젝트를 자동으로 인식하도록 남겨둡니다.
 
-서버·런처·빌드 준비 스크립트는 실행 위치가 아니라 자신의 파일 위치에서 저장소 루트를 찾습니다. 서버를 `server/`로 옮겨도 기본 개인 파일·지도·캐시 위치는 바뀌지 않습니다. Windows 바로가기 설치 스크립트는 `scripts/`에 있고 실제 실행 대상 `TravelCamera.cmd`는 최상위에 있습니다.
+서버·런처·빌드 준비 스크립트는 실행 위치가 아니라 자신의 파일 위치에서 저장소 루트를 찾습니다. 서버를 `server/`로 옮겨도 기본 개인 파일·캐시 위치는 바뀌지 않습니다. Windows 바로가기 설치 스크립트는 `scripts/`에 있고 실제 실행 대상 `TravelCamera.cmd`는 최상위에 있습니다.
 
 ## 소스 역할
 
@@ -52,7 +51,7 @@ Travel-Visualizer/
 | `src/media/` | 촬영 정보, 대표 장면, 사진 목록, 미디어 전환 |
 | `src/map/` | 지도 소스, MapLibre Worker, 경로 렌더링 |
 | `src/types.ts` | 모듈 간 데이터 계약 |
-| `server/index.mjs` | 로컬 원본 스트림·Range·메타데이터·장소·glyph API |
+| `server/index.mjs` | 로컬 원본 스트림·Range·메타데이터·장소 API |
 
 기존 색상 토큰과 UI 골조를 유지합니다. 카메라와 재생 시간, 공백 구간, 요약 거리 계산을 변경하기 전에 [구현 계약](AI_PROJECT_CONTEXT.md)을 확인하세요.
 
@@ -73,26 +72,39 @@ npm run test:e2e -- --workers=3
 
 Vitest는 `config/vite.config.ts`, Playwright는 `config/playwright.config.ts`를 사용합니다. 개별 옵션은 npm 명령의 `--` 뒤에 전달합니다. TypeScript 프로젝트 참조는 최상위 `tsconfig.json`에서 연결합니다.
 
-E2E는 개인 데이터 자동 연결을 끈 5518번 서버를 준비하고 데스크톱·모바일 Chromium에서 검사합니다. CPU·GPU 여유가 작은 PC에서는 worker 수를 줄이세요. Linux CI는 1 worker로 실행하고 결과를 `browser-regression-evidence` artifact에 3일간 보관합니다. HTML 검사 보고서는 설정 파일 위치와 관계없이 저장소 최상위 `playwright-report/`에 저장합니다. Windows CI는 별도로 설치·빌드·서버 시작 신호·포트 충돌·특수문자 경로의 PowerShell 압축 해제를 검사합니다. `test:runtime`은 배포 빌드 후 실행하며 Windows 전용 항목은 다른 OS에서 건너뜁니다.
+E2E는 개인 데이터 자동 연결을 끈 5518번 서버를 준비하고 데스크톱·모바일 Chromium에서 검사합니다. CPU·GPU 여유가 작은 PC에서는 worker 수를 줄이세요. Linux CI는 1 worker로 실행하고 결과를 `browser-regression-evidence` artifact에 3일간 보관합니다. HTML 검사 보고서는 설정 파일 위치와 관계없이 저장소 최상위 `playwright-report/`에 저장합니다. Windows CI는 별도로 설치·빌드·서버 시작 신호·보안 헤더·포트 충돌·폐기한 지도 API의 404 응답을 검사합니다. `test:runtime`은 배포 빌드 후 실행합니다.
 
 현재 버전의 검증 기록은 아래와 같습니다.
 
-- 타입 검사, ESLint, 단위 테스트 199개, 배포 빌드 통과.
-- 데스크톱·모바일 Chromium 브라우저 회귀 검사 44개 통과, 환경별 중복·선택적 실제 파일 검사 6개 건너뜀.
-- 로컬 런타임 검사에서 서버 시작 신호·보안 헤더·포트 충돌을 확인합니다. Windows 압축 해제는 별도 Windows CI 대상이며 이 PC의 Linux 실행 결과와 구분합니다.
+- 타입 검사, ESLint, 단위 테스트 202개, 배포 빌드 통과.
+- 데스크톱·모바일 Chromium 브라우저 회귀 검사 46개 통과, 환경별 중복·선택적 실제 파일 검사 6개 건너뜀.
+- 로컬 런타임 검사에서 서버 시작 신호·보안 헤더·포트 충돌을 확인합니다. 같은 검사를 별도 Windows CI에서도 수행하며 이 PC의 Linux 실행 결과와 구분합니다.
 - 공개 도메인의 정적 SPA에서 PC 전용 API를 호출하지 않는지, CSP 아래 지도·Worker·선택한 사진이 동작하는지, 잘못된 파일 선택 시 재생이 멈추는지 검사합니다. 320×568 사진 여정에서는 지도 버튼과 상단·재생 컨트롤이 겹치지 않는지 확인합니다.
 - 다른 작업 폴더에서 개발 서버 실행, Vite 소스 응답, 개인 데이터 비활성 API, 런처 dry-run을 확인했습니다. Windows 바로가기는 경로 참조를 확인했으며 Windows 실기기 실행은 포함하지 않습니다.
-- 문서 10개의 내부 파일 링크와 README의 이미지·GIF 렌더링을 확인했습니다. MP4 두 개는 1440×900·약 30초·60fps이며 브라우저 재생을 확인했습니다. 실제 캡처 프레임률은 [촬영 자료 안내](MEDIA.md)에 기록합니다.
+- 활성 문서와 보존 기록의 내부 파일 링크와 README의 이미지·GIF 렌더링을 확인했습니다. MP4 두 개는 1440×900·약 30초·60fps이며 브라우저 재생을 확인했습니다. 실제 캡처 프레임률은 [촬영 자료 안내](MEDIA.md)에 기록합니다.
 - 일시정지 시 전체 경로 옵션의 기본 꺼짐·기존 설정 호환·저장·즉시 적용, 명시적 전체 경로와 처음·마지막 요약의 유지를 두 모드에서 검증했습니다. 실제 설정 화면은 1440×900과 390×844에서 확인했습니다.
 - 로컬 PC의 실제 여행 기록·사진으로 두 감상 모드와 설정 화면을 촬영했습니다. 촬영은 전체 개인 파일의 호환성 검사와 구별합니다.
 
 검증 범위는 변경 위험에 맞춥니다. 기존 검사를 재사용하고, 통과한 뒤 새 변경이나 우려 없이 반복하지 않습니다. Windows·Android·iOS 실기기 동작이나 모든 장치의 고정 FPS를 자동 검사 결과로 보장하지 않습니다.
 
+## 온라인 지도와 미리 불러오기
+
+지도는 `src/map/map-style.ts`의 OpenFreeMap Positron 스타일만 사용합니다. PMTiles·설치 스크립트·지도 선택·지도 전용 로컬 API는 제거했습니다. 이전에 개인적으로 받은 지도 파일과 캐시는 자동으로 삭제하지 않습니다.
+
+`PlayerController`는 약 1.4초 뒤의 경로 위치와 확대 수준, 전환 목적지를 `src/map/tile-warmup.ts`에 전달합니다. `MapStage`는 사용자 입력에 따른 `zoom` 이벤트를 연결해 확대·축소 방향의 다음 정수 단계를 준비합니다. 재생에 의한 카메라 갱신은 이 입력 처리에서 제외합니다.
+
+- 320ms 간격, 동시에 2개, 한 번에 최대 36개를 낮은 우선순위로 요청합니다. 짧은 조작의 마지막 목적지도 예약해 처리합니다.
+- 벡터·래스터의 타일 크기와 반올림을 MapLibre의 확대 단계 계산에 맞춥니다. 화면 중앙부터 주변 여유 영역을 요청하고, 중복을 제외한 뒤 수량을 제한해 다음 단계가 계속 밀리지 않도록 합니다.
+- 본문 수신이 끝나야 완료로 취급합니다. 개별 요청은 4초 후 중단하고, 지도 제거 시 예약·진행 요청을 정리합니다. 완료한 요청은 45초 동안 중복 요청을 피하며 브라우저 HTTP 캐시의 보존 기간은 서버 응답 정책을 따릅니다.
+- MapLibre의 `cancelPendingTileRequestsWhileZooming: false`와 `maxTileCacheZoomLevels: 8`을 유지합니다. 미리 불러온 데이터는 HTTP 캐시이고, 파싱·글꼴 처리·GPU 렌더링은 실제 지도 표시 시 이루어집니다. 비공개 MapLibre API나 숨겨진 두 번째 지도를 사용하지 않습니다.
+
+실제 온라인 지도로 확대·축소 요청과 캐시 사용을 확인하고, 별도의 지연 응답 타일 서버에서는 확대·축소 목적지의 총 36개 타일을 미리 받은 후, 실제 MapLibre가 추가 네트워크 전송 없이 표시하는 것을 확인했습니다. 회귀 검사는 두 방향의 입력, 마지막 요청 보존, 큰 화면의 다음 단계 준비, 요청 중단을 포함합니다. 이 검증은 모든 회선에서 로딩 시간이 사라진다는 보장은 아닙니다.
+
 ## 빌드와 배포
 
 `npm start`의 `prestart`와 런처는 `scripts/ensure-build.mjs`를 실행합니다. 소스·공개 자산·설정·패키지 파일의 fingerprint가 달라졌거나 `dist/index.html`이 없으면 빌드합니다. 결과 fingerprint는 `.cache/production-build.sha256`에 저장합니다.
 
-브라우저 배포 결과는 `dist/`에 생성됩니다. HTTPS 정적 호스팅의 루트에 올리면 각 기기에서 타임라인과 사진을 직접 선택할 수 있습니다. 로컬 파일 자동 연결과 설치형 지도 API를 제공하는 Node 서버는 포함되지 않습니다. 공개 도메인에서는 PC 전용 API를 호출하지 않습니다. `localhost`·`127.0.0.1`에서만 로컬 API를 확인하며 타임라인·사진 목록·장소 응답은 JSON Content-Type을 확인합니다. 로컬 정적 미리보기의 SPA fallback HTML도 타임라인으로 읽지 않습니다.
+브라우저 배포 결과는 `dist/`에 생성됩니다. HTTPS 정적 호스팅의 루트에 올리면 각 기기에서 타임라인과 사진을 직접 선택할 수 있습니다. 로컬 파일 자동 연결 API를 제공하는 Node 서버는 포함되지 않습니다. 공개 도메인에서는 PC 전용 API를 호출하지 않습니다. `localhost`·`127.0.0.1`에서만 로컬 API를 확인하며 타임라인·사진 목록·장소 응답은 JSON Content-Type을 확인합니다. 로컬 정적 미리보기의 SPA fallback HTML도 타임라인으로 읽지 않습니다.
 
 `public/_headers`는 빌드 시 `dist/_headers`로 복사되며 로컬 프로덕션 서버도 같은 파일을 읽습니다. [Cloudflare Pages의 정적 응답 헤더](https://developers.cloudflare.com/pages/configuration/headers/) 형식을 사용합니다. 다른 호스팅에서는 이 파일의 정책을 해당 서버 설정에 옮겨야 합니다. 현재 CSP는 자체 코드·폰트·Worker·선택한 파일의 blob URL과 OpenFreeMap 지도 요청을 허용합니다. 앱의 동적 배치 때문에 인라인 스타일은 허용하지만 인라인 스크립트·eval·프레임 삽입은 허용하지 않습니다. 지도 공급자를 바꾸면 허용 출처도 함께 갱신하세요. 개발 서버는 Vite HMR을 위해 별도의 기본 헤더만 적용합니다.
 

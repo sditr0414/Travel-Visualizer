@@ -58,8 +58,8 @@ test('icon-only playback controls and familiar walking emoji remain accessible',
 });
 
 test('help follows the animated label and closes when its setting scrolls away', async ({ page, isMobile }, testInfo) => {
-  // Trip dates precede camera controls, so a tall panel can retain this label
-  // even at maximum scroll. Exercise actual clipping on both device layouts.
+  // The online-only panel has fewer controls; use a short viewport so the
+  // camera label can actually leave the scroll area on both device layouts.
   await page.setViewportSize({ width: isMobile ? 390 : 1440, height: 600 });
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -84,6 +84,8 @@ test('help follows the animated label and closes when its setting scrolls away',
   // Hover a second setting while the first is pinned: only one tooltip may exist.
   // Keep the real pointer outside the panel so scrolling cannot hover a different label.
   await page.mouse.move(5, 300);
+  await page.setViewportSize({ width: isMobile ? 390 : 1440, height: 480 });
+  await page.getByRole('button', { name: '지도 확대 설명', exact: true }).scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: '지도 확대 설명', exact: true }).dispatchEvent('mouseover');
   await expect(tip).toHaveCount(1);
   await expect(tip).toContainText('왼쪽은 넓게');

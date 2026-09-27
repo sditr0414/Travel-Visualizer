@@ -6,17 +6,15 @@ import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // MapLibre 6 resolves its default worker next to the original module. Vite moves
 // that module into a chunk, so bundle the worker explicitly for production too.
 maplibregl.setWorkerUrl(mapWorkerUrl);
-import type { MapSourceConfig } from '../types';
-import { disposeMapTileWarmup } from './tile-warmup';
-import { mapStyleFor } from './map-style';
+import { disposeMapTileWarmup, bindMapTileWarmupInteractions } from './tile-warmup';
+import { ONLINE_STYLE_URL } from './map-style';
 
 interface MapStageProps {
-  source: MapSourceConfig;
   onReady: (map: Map) => void;
   onError: (message: string | null) => void;
 }
 
-export function MapStage({ source, onReady, onError }: MapStageProps) {
+export function MapStage({ onReady, onError }: MapStageProps) {
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -25,23 +23,16 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
     let map: Map | null = null;
     let cancelled = false;
     let observer: ResizeObserver | null = null;
+    let unbindWarmup: (() => void) | undefined;
     let ready = false;
     let reportedError = false;
     let fallbackTimeout = 0;
-    const initTimeout = window.setTimeout(async () => {
-      if (cancelled || !containerRef.current) return;
-      let style;
-      try {
-        style = await mapStyleFor(source);
-      } catch {
-        onError('지도 구성을 준비하지 못해 기본 배경으로 전환했습니다.');
-        style = fallbackStyle();
-      }
+    const initTimeout = window.setTimeout(() => {
       if (cancelled || !containerRef.current) return;
       try {
         map = new maplibregl.Map({
           container: containerRef.current,
-          style,
+          style: ONLINE_STYLE_URL,
           center: [127.6, 36.2],
           zoom: 5.4,
           locale: {
@@ -61,6 +52,7 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
         onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.');
         return;
       }
+      unbindWarmup = bindMapTileWarmupInteractions(map);
       observer = new ResizeObserver(() => map?.resize());
       observer.observe(containerRef.current);
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
@@ -93,11 +85,12 @@ export function MapStage({ source, onReady, onError }: MapStageProps) {
     return () => {
       cancelled = true;
       observer?.disconnect();
+      unbindWarmup?.();
       window.clearTimeout(initTimeout);
       window.clearTimeout(fallbackTimeout);
       if (map) { disposeMapTileWarmup(map); map.remove(); }
     };
-  }, [source, onError, onReady]);
+  }, [onError, onReady]);
 
   return <><div ref={containerRef} className="map-canvas" aria-label="여행 경로 지도" data-testid="map-stage" />{loading && <div className="map-loading" role="status">지도를 불러오는 중…</div>}</>;
 }
@@ -114,14 +107,6 @@ function collapseAttribution(map: Map): void {
   if (attribution.dataset.userOpened) return;
   attribution.open = false;
   attribution.classList.remove('maplibregl-compact-show');
-}
-
-function fallbackStyle(): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    sources: {},
-    layers: [{ id: 'fallback-background', type: 'background', paint: { 'background-color': '#d8d9d4' } }]
-  };
 }
 
 function ensureRouteLayers(map: Map): void {

@@ -2,17 +2,17 @@
 
 현재 `main` 기준 · [문서 목록](README.md) · [개발 안내](DEVELOPMENT.md)
 
-서버는 `server/index.mjs`, 세부 도구 설정은 `config/`, 실행 보조 파일은 `scripts/`에 둡니다. 저장소 최상위 기준의 데이터·지도·캐시 경로는 유지합니다. README는 제품 소개이며 세부 사용법은 [USAGE.md](USAGE.md), 파일·환경변수·네트워크 범위는 [PRIVACY.md](PRIVACY.md)가 기준입니다.
+서버는 `server/index.mjs`, 세부 도구 설정은 `config/`, 실행 보조 파일은 `scripts/`에 둡니다. 저장소 최상위 기준의 데이터·캐시 경로는 유지합니다. README는 제품 소개이며 세부 사용법은 [USAGE.md](USAGE.md), 파일·환경변수·네트워크 범위는 [PRIVACY.md](PRIVACY.md)가 기준입니다.
 
 ## Product and runtime
 
-Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하는 반응형 앱입니다. Node.js 24+, React 19, TypeScript, Vite 8, MapLibre를 사용합니다. Timeline·사진 원본은 업로드하지 않습니다. 온라인 지도는 외부 타일을 사용하고 설치형 지도의 glyph는 최초 사용 후 로컬 서버 캐시에 보관합니다. 정확한 장소 온라인 확인은 기본 OFF이며 사용자가 설정한 역지오코딩 서비스가 있을 때만 신뢰 가능한 GPS 좌표를 보냅니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
+Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하는 반응형 앱입니다. Node.js 24+, React 19, TypeScript, Vite 8, MapLibre를 사용합니다. Timeline·사진 원본은 업로드하지 않습니다. 지도는 OpenFreeMap 온라인 스타일·타일·글꼴·아이콘만 사용하며 별도의 지도 설치는 없습니다. 정확한 장소 온라인 확인은 기본 OFF이며 사용자가 설정한 역지오코딩 서비스가 있을 때만 신뢰 가능한 GPS 좌표를 보냅니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
 
 `npm start`/Windows 런처는 프로덕션 빌드를 사용합니다. `scripts/ensure-build.mjs`는 소스 fingerprint가 바뀌었을 때만 빌드합니다. `npm run dev`는 개발용입니다. 서버는 127.0.0.1에만 바인딩합니다. 모바일 UI는 직접 파일 선택을 지원하며, 다른 기기에서 접근하려면 별도의 HTTPS 정적 호스팅이 필요합니다. LAN 공개를 위해 로컬 개인 파일 API의 접근 제한을 완화하지 않습니다.
 
 공개 도메인에서 로컬 API를 호출하지 않는 경계는 `src/services/local-api.ts`가 담당합니다. 루프백 호스트에서도 타임라인·사진 목록·장소 응답의 JSON MIME을 검사해 정적 SPA의 HTML fallback을 무시합니다. 파일 검증 실패를 알리기 전에 활성 플레이어를 정지합니다.
 
-런처는 자식 서버의 listen 성공 IPC 메시지로 시작을 확인합니다. 다른 프로세스의 HTTP 응답으로 브라우저를 열지 않습니다. `public/_headers`는 정적 호스팅과 로컬 프로덕션 서버의 단일 보안 정책 원본입니다. Windows 지도 ZIP 압축 해제는 `scripts/expand-map-archive.ps1`의 매개변수로 경로를 전달하며 명령 문자열에 경로를 삽입하지 않습니다. ExecutionPolicy 우회는 해당 하위 PowerShell 프로세스에만 적용합니다.
+런처는 자식 서버의 listen 성공 IPC 메시지로 시작을 확인합니다. 다른 프로세스의 HTTP 응답으로 브라우저를 열지 않습니다. `public/_headers`는 정적 호스팅과 로컬 프로덕션 서버의 단일 보안 정책 원본입니다.
 
 모바일 사진 지도는 컨트롤을 위한 260px 높이를 우선 확보하되 분할 상한 72%를 지킵니다. 실제 표시 비율과 분할선 ARIA·키보드 최소값을 일치시키며 화면 높이 변경에도 다시 계산합니다.
 
@@ -50,28 +50,25 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 - 사진 카메라의 smoothing/stop zoom은 route time이 멈춰도 진행되는 photo journey time을 사용합니다. seek/reset은 smoothing을 초기화합니다.
 - live 설정은 활성 controller만 다시 그립니다. 비활성 controller가 공유 지도의 카메라를 덮지 않아야 합니다.
 - `setStops`는 변경 시 route 진행 위치를 보존하고 같은 stop의 길이가 바뀌면 내부 진행 비율을 보존합니다.
-- 재생 중 지도 휠 확대를 막고 정지 중 허용합니다. tile warmup은 기존 제한된 동시성·ahead·dedupe를 유지합니다. MapLibre private API는 사용하지 않습니다.
+- 재생 중 지도 휠 확대를 막고 정지 중 허용합니다. tile warmup은 1.4초 ahead·동시 2개·320ms 간격·36개 상한·중복 제외를 유지하고 마지막 목적지를 예약해 놓치지 않습니다. 수동 zoom 입력은 진행 방향의 다음 단계도 준비합니다. 타일 크기·반올림은 MapLibre와 맞추며 제한은 중복 제외 후 적용합니다. HTTP 캐시 미리 받기이며 GPU 사전 렌더링은 아닙니다. 상세 검증은 [개발 안내](DEVELOPMENT.md#온라인-지도와-미리-불러오기)를 따릅니다. MapLibre private API는 사용하지 않습니다.
 - 기본 위치 라벨은 이미 로드된 타일에서 도시/구 수준까지만 얻습니다. 정확한 장소 온라인 확인은 planner가 아닌 live 설정이며 경로 다시 만들기 dirty-state에 포함하지 않습니다. GPS가 신뢰 가능한 사진만 사용하고, 10분/80m의 안정된 연속 사진 cluster는 중앙값 좌표를 사용합니다. 단일 GPS 오차가 크거나 Timeline 위치와 5km 이상 어긋나면 정확한 장소를 확정하지 않습니다. FLIGHT와 안정되지 않은 FAST_GROUND/FERRY, 빠른 ROAD/URBAN_TRANSIT/UNKNOWN은 주변 POI 대신 이동 중 라벨을 우선합니다. 원시 좌표는 UI에 노출하지 않습니다.
 
 ## Media and local API
 
 메타데이터 우선순위: Takeout sidecar → JPEG EXIF/QuickTime → 파일명 → 수정 시각. GPS와 촬영 시각은 서로 보완합니다. JPEG의 EXIF GPS IFD에 `GPSHPositioningError (0x001F)`가 있으면 미터 단위 수평 오차를 `gpsAccuracyM`으로 보존합니다. 표시한 시각 출처는 GPS만 포함된 내장 메타데이터로 잘못 덮어쓰지 않습니다.
 
-직접 선택한 동일 File[]는 WeakMap으로 분석을 재사용합니다. 로컬 manifest는 메모리 캐시와 `.cache/media-metadata.json`을 사용합니다. 장소 판정 결과는 `.cache/photo-places.json`, 설치형 지도 glyph는 `.cache/map-glyphs/`에 저장합니다. 일시적인 Range 읽기 실패를 영구적으로 분석 완료 처리하지 않습니다. 메타데이터 캐시 저장은 500개씩 제한하고 타임아웃을 둡니다. 서버 파일 ID는 상대 경로·크기·mtime fingerprint이므로 파일 추가로 다른 사진을 가리키지 않습니다.
+직접 선택한 동일 File[]는 WeakMap으로 분석을 재사용합니다. 로컬 manifest는 메모리 캐시와 `.cache/media-metadata.json`을 사용합니다. 장소 판정 결과는 `.cache/photo-places.json`에 저장합니다. 일시적인 Range 읽기 실패를 영구적으로 분석 완료 처리하지 않습니다. 메타데이터 캐시 저장은 500개씩 제한하고 타임아웃을 둡니다. 서버 파일 ID는 상대 경로·크기·mtime fingerprint이므로 파일 추가로 다른 사진을 가리키지 않습니다.
 
 정확한 장소 공급자는 코드에 공개 서비스를 하드코딩하지 않습니다. `TRAVEL_PLACE_REVERSE_URL`로 사용자가 선택한 Nominatim 호환 reverse endpoint를 설정해야 `/api/photo-place-status`가 available이 됩니다. 공개 OSMF Nominatim은 개인 사진 좌표 때문에 기본 차단하며, 해당 호스트를 명시한 경우에도 `TRAVEL_ALLOW_PUBLIC_NOMINATIM=1`이 추가로 필요합니다. 서버는 공급자 요구에 맞춰 `TRAVEL_PLACE_USER_AGENT`, `TRAVEL_PLACE_MIN_INTERVAL_MS`, `TRAVEL_PLACE_PROVIDER_LABEL`을 지원하고 동일 좌표 결과를 영구 로컬 캐시합니다. 공급자 약관이 결과 저장을 허용하는지 사용자가 확인해야 합니다.
 
 JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니다. WebM의 내장 촬영 정보는 분석하지 않습니다. preload는 현재 주변의 제한된 창만 소유하며 object URL을 해제합니다. 준비 중인 장면으로 즉시 전환해 빈 화면을 만들지 않습니다. 이전 장면 제거 타이머는 HUD 텍스트 갱신으로 취소되지 않아야 합니다.
 
-- GET `/api/map-status`
 - GET/HEAD `/api/photo-place-status`
 - POST `/api/photo-place` (same-origin, configured provider only)
-- GET/HEAD `/api/map-glyphs/{fontstack}/{range}.pbf` (first-use upstream fetch + local cache)
 - GET/HEAD `/api/local-timeline`, `/api/local-media-manifest`, `/api/local-media/:id`
 - POST `/api/local-media-metadata-cache` (same-origin)
-- GET/HEAD `/maps/*.pmtiles` (허용된 파일만)
 
-로컬 데이터 기본 경로·환경변수는 [PRIVACY.md](PRIVACY.md)를 따릅니다. v2처럼 저장소 루트의 `타임라인.json` / `여행 사진/`을 먼저 확인하고 없으면 상위 폴더를 확인하며, 환경변수 지정은 항상 이 자동 탐색보다 우선합니다. stream 오류·클라이언트 연결 종료를 처리합니다. 개인 데이터·캐시·지도는 커밋하지 않습니다.
+로컬 데이터 기본 경로·환경변수는 [PRIVACY.md](PRIVACY.md)를 따릅니다. v2처럼 저장소 루트의 `타임라인.json` / `여행 사진/`을 먼저 확인하고 없으면 상위 폴더를 확인하며, 환경변수 지정은 항상 이 자동 탐색보다 우선합니다. stream 오류·클라이언트 연결 종료를 처리합니다. 개인 데이터·캐시는 커밋하지 않습니다.
 
 ## Validation
 

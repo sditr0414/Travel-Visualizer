@@ -254,18 +254,6 @@ export interface PlaybackStop {
   durationSec: number;
 }
 
-export type MapSourceConfig =
-  | { kind: 'online'; styleUrl: string }
-  | { kind: 'local-pmtiles'; worldUrl: string; regionUrl: string };
-
-export interface MapStatus {
-  ready: boolean;
-  world: boolean;
-  region: boolean;
-  worldBytes: number;
-  regionBytes: number;
-}
-
 export type WorkerRequest =
   | { type: 'SCAN_TIMELINE'; requestId: number; source: TimelineSource; text: string }
   | { type: 'PLAN_TRIP'; requestId: number; options: AnalysisOptions }

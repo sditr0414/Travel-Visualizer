@@ -28,7 +28,7 @@ describe('App integration', () => {
       headers: new Headers({ 'Content-Type': 'application/json' }),
       status: url.includes('/api/local-timeline') ? 404 : 200,
       ok: !url.includes('/api/local-timeline'),
-      json: () => Promise.resolve({ ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
+      json: () => Promise.resolve({ available: false, items: [] }),
       text: () => Promise.resolve(url.includes('timeline') ? '{"semanticSegments":[]}' : '')
     })));
   });
@@ -65,7 +65,7 @@ describe('App integration', () => {
     vi.stubGlobal('fetch', request);
     const worker: TimelineWorkerPort = { scan: vi.fn(), plan: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
     render(<App workerClient={worker} />);
-    await waitFor(() => expect(request).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
     expect(screen.getByRole('heading', { name: '다녀온 여행을 다시 펼쳐보세요' })).toBeInTheDocument();
     expect(worker.scan).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -77,7 +77,7 @@ describe('App integration', () => {
       headers: new Headers({ 'Content-Type': 'application/json' }),
       status: 200,
       ok: true,
-      json: () => Promise.resolve({ ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
+      json: () => Promise.resolve({ available: false, items: [] }),
       text: () => Promise.resolve(url.includes('/api/local-timeline') ? contents : '')
     })));
     const worker: TimelineWorkerPort = {
@@ -280,7 +280,7 @@ describe('App integration', () => {
       ok: !url.includes('/api/local-timeline'),
       json: () => Promise.resolve(url.includes('/api/photo-place-status')
         ? { available: true, provider: '테스트 장소 서비스', cache: true }
-        : { ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 }),
+        : { available: false, items: [] }),
       text: () => Promise.resolve('')
     })));
     const worker: TimelineWorkerPort = {

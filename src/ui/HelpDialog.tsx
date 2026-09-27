@@ -37,7 +37,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
     <section className="help-section">
       <h3>파일과 개인정보</h3>
       <p>타임라인과 사진·영상 원본은 외부로 업로드하지 않습니다.</p>
-      <p>온라인 지도는 인터넷을 사용합니다.<br />설치형 지도도 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다.</p>
+      <p>지도는 인터넷에 연결해 불러옵니다.<br />별도의 지도 파일을 설치할 필요가 없습니다.</p>
       <p>감상 설정은 이 브라우저에 저장됩니다.<br />직접 선택한 파일은 새로고침하면 다시 선택해야 합니다.<br />‘사진 목록’에서 제외한 항목도 새로고침하면 다시 포함됩니다.</p>
       <p>‘정확한 장소 온라인 확인’은 기본으로 꺼져 있습니다.<br />장소 서비스를 연결하고 이 기능을 켜면, 위치 정보가 충분히 신뢰되는 사진의 GPS 좌표만 해당 서비스로 전송합니다.<br />원본 파일은 보내지 않으며 확인한 장소는 이 PC에 저장합니다.</p>
     </section>
@@ -45,7 +45,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
       <summary>파일 형식과 로컬 실행 안내</summary>
       <p>스마트폰에서 내보낸 <code>semanticSegments</code> 형식의 타임라인을 지원합니다.</p>
       <p>로컬 실행 시 앱 폴더 또는 상위 폴더의 <code>타임라인.json</code>과 <code>여행 사진</code>을 자동으로 불러옵니다.</p>
-      <p>장소 서비스와 설치형 지도는 저장소의 README에 따라 설정할 수 있습니다.</p>
+      <p>장소 서비스는 저장소의 README에 따라 설정할 수 있습니다.</p>
       <p>PC의 로컬 주소는 휴대폰에서 열 수 없습니다.<br />모바일에서는 별도로 호스팅된 앱에서 해당 기기의 파일을 선택해야 합니다.</p>
     </details>
     <section className="help-section"><h3>키보드 단축키</h3><dl className="shortcut-list"><div><dt><kbd>Space</kbd></dt><dd>재생 · 일시정지</dd></div><div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>5초 뒤로 · 앞으로</dd></div><div><dt><kbd>Home</kbd></dt><dd>처음으로 이동</dd></div><div><dt><kbd>Esc</kbd></dt><dd>열린 창 닫기</dd></div></dl><p>날짜나 설정을 입력하는 동안에는 입력란의 키보드 동작이 우선합니다.</p></section>

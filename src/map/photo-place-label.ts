@@ -17,7 +17,7 @@ const DISTRICT_DISTANCE_KM = 12;
  * sending the coordinate to an external reverse-geocoding service.
  *
  * The lookup uses already loaded vector-tile place data so it works with the
- * local PMTiles map as well as compatible online styles. Output is limited to
+ * online map style. Output is limited to
  * city and district/ward level. 읍/면/동/리/군, villages and smaller locality
  * labels are deliberately rejected even when a map style classifies them as
  * town, municipality or suburb. If a city-level feature is not close enough

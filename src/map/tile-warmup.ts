@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
+import type { Map as MapLibreMap, MapEventType, StyleSpecification } from 'maplibre-gl';
 import type { Coordinate } from '../types';
 
 const DEFAULT_TILE_SIZE = 512;
@@ -12,9 +12,9 @@ const MAX_MERCATOR_LAT = 85.05112878;
 interface RuntimeTileSource {
   type?: string;
   tiles?: string[];
-  url?: string;
   scheme?: 'xyz' | 'tms';
   tileSize?: number;
+  roundZoom?: boolean;
   minzoom?: number;
   maxzoom?: number;
 }
@@ -33,6 +33,8 @@ interface WarmupTask {
 class MapTileWarmup {
   private readonly abort = new AbortController();
   private lastWarmAt = -Infinity;
+  private pending: { center: Coordinate; zoom: number } | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private queue: WarmupTask[] = [];
   private queuedKeys = new Set<string>();
   private inFlightKeys = new Set<string>();
@@ -43,8 +45,22 @@ class MapTileWarmup {
   warm(center: Coordinate, zoom: number): void {
     if (this.abort.signal.aborted) return;
     if (!Number.isFinite(center.lng) || !Number.isFinite(center.lat) || !Number.isFinite(zoom)) return;
+    this.pending = { center: { ...center }, zoom };
+    if (this.timer !== null) return;
+    const delay = WARMUP_INTERVAL_MS - (nowMs() - this.lastWarmAt);
+    if (delay > 0) {
+      // Keep the latest destination even when a short zoom finishes between passes.
+      this.timer = setTimeout(() => { this.timer = null; this.flush(); }, delay);
+    } else {
+      this.flush();
+    }
+  }
+
+  private flush(): void {
+    if (this.abort.signal.aborted || !this.pending) return;
+    const { center, zoom } = this.pending;
+    this.pending = null;
     const now = nowMs();
-    if (now - this.lastWarmAt < WARMUP_INTERVAL_MS) return;
     this.lastWarmAt = now;
 
     const canvas = this.map.getCanvas();
@@ -69,6 +85,9 @@ class MapTileWarmup {
 
   dispose(): void {
     this.abort.abort();
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.pending = null;
     this.queue = [];
     this.queuedKeys.clear();
     this.recentlyWarmed.clear();
@@ -114,6 +133,21 @@ export function warmMapTilesAhead(map: MapLibreMap, center: Coordinate, zoom: nu
   warmup.warm(center, zoom);
 }
 
+export function bindMapTileWarmupInteractions(map: MapLibreMap): () => void {
+  let previousZoom = map.getZoom();
+  const onZoom = (event: MapEventType['zoom']) => {
+    const zoom = map.getZoom();
+    const direction = Math.sign(zoom - previousZoom);
+    previousZoom = zoom;
+    // Playback has its own route prediction; only forecast direct user input here.
+    if (!event.originalEvent || !direction) return;
+    const target = direction > 0 ? Math.floor(zoom) + 1 : Math.ceil(zoom) - 1;
+    warmMapTilesAhead(map, map.getCenter(), Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target)));
+  };
+  map.on('zoom', onZoom);
+  return () => { map.off('zoom', onZoom); };
+}
+
 function collectWarmupTasks(
   map: MapLibreMap,
   center: Coordinate,
@@ -133,25 +167,12 @@ function collectWarmupTasks(
     const minzoom = clampInteger(source.minzoom ?? 0, 0, 24);
     const maxzoom = clampInteger(source.maxzoom ?? 22, minzoom, 24);
     const tileSize = Math.max(128, Number(source.tileSize) || DEFAULT_TILE_SIZE);
-    const levels = warmupZoomLevels(zoom, minzoom, maxzoom);
-    const pmtilesUrl = source.url?.startsWith('pmtiles://') ? source.url.slice('pmtiles://'.length) : null;
+    const levels = warmupZoomLevels(zoom, minzoom, maxzoom, tileSize, source.roundZoom ?? source.type === 'raster');
     const templates = Array.isArray(source.tiles) ? source.tiles.filter(Boolean) : [];
 
     for (const tileZoom of levels) {
-      const tiles = warmupTilesForViewport(center, zoom, tileZoom, width, height, tileSize);
+      const tiles = warmupTilesForViewport(center, zoom, tileZoom, width, height);
       for (const tile of tiles) {
-        if (pmtilesUrl) {
-          const key = `pmtiles:${pmtilesUrl}:${tile.z}/${tile.x}/${tile.y}`;
-          tasks.push({
-            key,
-            run: async () => {
-              const { warmLocalPmtilesTile } = await import('./map-style-local');
-              await warmLocalPmtilesTile(pmtilesUrl, tile.z, tile.x, tile.y);
-            }
-          });
-          continue;
-        }
-
         for (const template of templates) {
           if (!/^https?:\/\//i.test(template)) continue;
           const url = renderTileTemplate(template, tile, source.scheme ?? 'xyz', map.getPixelRatio());
@@ -180,7 +201,9 @@ function collectWarmupTasks(
     }
   }
 
-  return tasks.slice(0, MAX_TASKS_PER_PASS);
+  // Apply the pass limit after deduplication so cached near tiles cannot starve
+  // the upcoming zoom level at the end of this list.
+  return tasks;
 }
 
 function sourceHasVisibleLayer(layers: StyleSpecification['layers'], sourceId: string, zoom: number): boolean {
@@ -193,13 +216,15 @@ function sourceHasVisibleLayer(layers: StyleSpecification['layers'], sourceId: s
   });
 }
 
-export function warmupZoomLevels(zoom: number, minzoom: number, maxzoom: number): number[] {
+export function warmupZoomLevels(zoom: number, minzoom: number, maxzoom: number, tileSize = DEFAULT_TILE_SIZE, roundZoom = false): number[] {
   const safeMin = clampInteger(minzoom, 0, 24);
   const safeMax = clampInteger(maxzoom, safeMin, 24);
-  const rawFloor = Math.floor(Number(zoom) || 0);
+  // Match MapLibre's coveringZoomLevel: raster tiles may be 256px and round.
+  const sourceZoom = (Number(zoom) || 0) + Math.log2(DEFAULT_TILE_SIZE / tileSize) + (roundZoom ? 0.5 : 0);
+  const rawFloor = Math.floor(sourceZoom);
   const base = clampInteger(rawFloor, safeMin, safeMax);
   const result = [base];
-  const fraction = (Number(zoom) || 0) - rawFloor;
+  const fraction = sourceZoom - rawFloor;
   if (fraction >= NEXT_TILE_LEVEL_THRESHOLD && base < safeMax) result.push(base + 1);
   return result;
 }
@@ -209,8 +234,7 @@ export function warmupTilesForViewport(
   cameraZoom: number,
   tileZoom: number,
   width: number,
-  height: number,
-  tileSize = DEFAULT_TILE_SIZE
+  height: number
 ): WarmupTile[] {
   const z = clampInteger(tileZoom, 0, 24);
   const scale = 2 ** z;
@@ -219,7 +243,7 @@ export function warmupTilesForViewport(
   const centerX = ((lng + 180) / 360) * scale;
   const latRad = lat * Math.PI / 180;
   const centerY = (1 - Math.asinh(Math.tan(latRad)) / Math.PI) / 2 * scale;
-  const tilePixels = Math.max(1, tileSize * 2 ** (cameraZoom - z));
+  const tilePixels = Math.max(1, DEFAULT_TILE_SIZE * 2 ** (cameraZoom - z));
   const halfTilesX = Math.max(0.5, width / (2 * tilePixels)) + 0.75;
   const halfTilesY = Math.max(0.5, height / (2 * tilePixels)) + 0.75;
   const minX = Math.floor(centerX - halfTilesX);

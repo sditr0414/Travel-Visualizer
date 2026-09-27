@@ -2,7 +2,6 @@ import { canUseLocalApi, isJsonResponse } from './services/local-api';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Camera, CircleHelp, ChevronDown, FileJson, FolderOpen, Images, Layers3, MapPinned, Pause, Play, RotateCcw, Route, ShieldCheck, Upload } from 'lucide-react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { ONLINE_STYLE_URL } from './map/map-style';
 import { resolveCityLabel } from './map/city-label';
 import { resolvePhotoPlaceLabel } from './map/photo-place-label';
 import { PlayerController } from './player/player-controller';
@@ -20,7 +19,7 @@ import { usePreferences } from './settings/preferences';
 import { usePlaybackChrome } from './ui/playback-chrome';
 import { JourneySummary } from './ui/JourneySummary';
 import { buildJourneySummary } from './domain/journey-summary';
-import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MapSourceConfig, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
+import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
 import { MOVEMENT_VISUALS, movementDistances, movementPresentation, movementSpeed } from './domain/movement-presentation';
 
 interface AppProps {
@@ -69,7 +68,6 @@ export function App({ workerClient }: AppProps) {
   const lastLoadedPlanRef = useRef<PlaybackPlan | null>(null);
   const [map, setMap] = useState<MapLibreMap | null>(null);
   const [mapRevision, setMapRevision] = useState(0);
-  const [mapKind, setMapKind] = useState<'online' | 'local-pmtiles'>('online');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [targetDurationSec, setTargetDurationSec] = useState(0);
@@ -116,14 +114,6 @@ export function App({ workerClient }: AppProps) {
   const playbackChrome = usePlaybackChrome({ playing: state.phase === 'playing', keepVisible: settingsOpen });
   const journeySummary = useMemo(() => state.plan ? buildJourneySummary(state.plan) : null, [state.plan]);
   const showJourneySummary = hud.overview || (hud.timeSec === 0 && state.phase !== 'playing');
-
-  const mapSource = useMemo<MapSourceConfig>(() => mapKind === 'online'
-    ? { kind: 'online', styleUrl: ONLINE_STYLE_URL }
-    : {
-        kind: 'local-pmtiles',
-        worldUrl: `${location.origin}/maps/world-z5.pmtiles`,
-        regionUrl: `${location.origin}/maps/korea-japan-z14.pmtiles`
-      }, [mapKind]);
 
   const reportProgress = useCallback((progress: number, message: string) => {
     dispatch({ type: 'PROGRESS', progress, message });
@@ -303,14 +293,6 @@ export function App({ workerClient }: AppProps) {
   const mobileMapMin = Math.min(0.72, Math.max(PHOTO_MAP_MIN_MOBILE, 260 / Math.max(1, viewportHeight)));
   const mapShare = splitNarrow ? Math.max(mobileMapShare, mobileMapMin) : desktopMapShare;
   const mediaProgressValue = progressValue(mediaProgress);
-
-  useEffect(() => {
-    if (!canUseLocalApi()) return;
-    fetch('/api/map-status', { cache: 'no-store' })
-      .then(response => response.json())
-      .then(status => dispatch({ type: 'MAP_STATUS', status }))
-      .catch(() => dispatch({ type: 'MAP_STATUS', status: { ready: false, world: false, region: false, worldBytes: 0, regionBytes: 0 } }));
-  }, []);
 
   useEffect(() => {
     void loadPhotoPlaceLookupStatus().then(setPlaceLookupStatus);
@@ -596,21 +578,6 @@ export function App({ workerClient }: AppProps) {
     dispatch({ type: 'RESET' });
   };
 
-  const changeMapKind = (kind: 'online' | 'local-pmtiles') => {
-    if (kind === 'local-pmtiles' && !state.mapStatus?.ready) {
-      dispatch({ type: 'NOTICE', message: '로컬 지도 파일이 없습니다. npm run map:setup 후 다시 선택해 주세요.' });
-      return;
-    }
-    pausePlayback();
-    dispatch({ type: 'PAUSE' });
-    setMapNotice(null);
-    playersRef.current.ROUTE?.dispose();
-    playersRef.current.PHOTOS?.dispose();
-    playersRef.current = { ROUTE: null, PHOTOS: null };
-    setMap(null);
-    setMapKind(kind);
-  };
-
   const setMapShare = (value: number) => {
     const limits = splitNarrow ? { min: mobileMapMin, max: 0.72 } : { min: PHOTO_MAP_MIN_DESKTOP, max: 0.78 };
     const next = Math.min(limits.max, Math.max(limits.min, value));
@@ -708,7 +675,7 @@ export function App({ workerClient }: AppProps) {
       style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}
     >
       <Suspense fallback={<div className="map-canvas map-loading" aria-label="지도 불러오는 중" />}>
-        <MapStage key={`${mapRevision}-${mapKind}`} source={mapSource} onReady={onMapReady} onError={onMapError} />
+        <MapStage key={mapRevision} onReady={onMapReady} onError={onMapError} />
       </Suspense>
       {journeyMode === 'PHOTOS' && <>
         <MediaJourneyPane
@@ -956,13 +923,6 @@ export function App({ workerClient }: AppProps) {
                 setTargetDurationSec(Number(event.target.value));
               }}
             />
-          </label></SettingHelp>
-
-          <SettingHelp title="배경 지도" description={"온라인 지도는 인터넷을 사용합니다.\n설치형 지도는 설치한 지역을 자세히 보여줍니다.\n아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다."}><label className="select-field">배경 지도
-            <select aria-description="온라인 지도는 인터넷을 사용합니다. 설치형 지도는 설치한 지역을 자세히 보여줍니다. 아직 저장되지 않은 지명 글꼴을 처음 표시할 때는 인터넷이 필요할 수 있습니다." value={mapKind} onChange={event => changeMapKind(event.target.value as 'online' | 'local-pmtiles')}>
-              <option value="online">온라인 지도</option>
-              <option value="local-pmtiles" disabled={!state.mapStatus?.ready}>설치형 지도{!state.mapStatus?.ready ? " · 설치 필요" : ""}</option>
-            </select>
           </label></SettingHelp>
 
           <div className="toggle-list">

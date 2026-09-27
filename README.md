@@ -50,7 +50,7 @@ GIF는 각 영상의 8초·12fps 미리보기입니다. 부드러운 60fps 전�
 
 ## 빠른 시작
 
-Node.js **24 이상**과 Git이 필요합니다.
+Node.js **24 이상**과 Git, 인터넷 연결이 필요합니다. 지도는 온라인으로 불러오므로 별도의 지도 파일을 받을 필요가 없습니다.
 
 ```sh
 git clone https://github.com/sditr0414/Travel-Visualizer.git Travel-Visualizer
@@ -77,7 +77,6 @@ Windows에서는 설치 후 [TravelCamera.cmd](TravelCamera.cmd)를 더블클릭
 ## 더 알아보기
 
 - [사용 안내](docs/USAGE.md): 설치, 파일 연결, 감상 설정, 단축키, 문제 해결
-- [설치형 지도](maps/README.md): PMTiles 준비와 오프라인 사용 범위
 - [개발 안내](docs/DEVELOPMENT.md): 폴더 구조, 실행 명령, 테스트
 - [문서 전체](docs/README.md): 구현 계약과 이전 버전 기록
 
