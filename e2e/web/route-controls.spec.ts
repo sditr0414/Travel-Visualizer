@@ -56,11 +56,13 @@ test('desktop bottom scene fits the player, persists and restores with a saved t
   await expect(panel).toBeVisible();
   await toggleSettings(page);
   await page.getByRole('button', { name: '경로 재생 설정', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: '현재 장면 하단에도 표시' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: '현재 장면 하단에 표시' })).toBeChecked();
   await expect(page.getByRole('button', { name: '경로 다시 만들기', exact: true })).toBeDisabled();
   await toggleSettings(page);
   await page.getByLabel('재생 위치', { exact: true }).fill('10');
   await expect(panel).toBeVisible();
+  await expect(page.locator('.route-persistent-hud')).toBeHidden();
+  await expect(page.getByRole('region', { name: '현재 이동 정보', exact: true })).toHaveCount(0);
   await expect(panel).toContainText('이동 지역'); await expect(panel).toContainText('한국 시간');
   await expect(panel.locator('time')).toHaveAttribute('datetime', /^2026-/);
   for (const width of [1920, 1440, 821]) {
@@ -92,7 +94,8 @@ test('desktop bottom scene fits the player, persists and restores with a saved t
   await expect(page.locator('main')).toHaveAttribute('data-playing-mode', 'NONE');
   await expect.poll(() => panel.evaluate(node => Math.round(innerHeight - node.getBoundingClientRect().bottom))).toBe(96);
   await page.setViewportSize({ width: 390, height: 844 }); await expect(panel).toHaveCount(0);
-  await toggleSettings(page); await expect(page.getByRole('checkbox', { name: '현재 장면 하단에도 표시' })).toHaveCount(0); await toggleSettings(page);
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  await toggleSettings(page); await expect(page.getByRole('checkbox', { name: '현재 장면 하단에 표시' })).toHaveCount(0); await toggleSettings(page);
   await page.setViewportSize({ width: 1440, height: 900 }); await expect(panel).toBeVisible();
   await toggleSettings(page); await page.getByRole('button', { name: '여행 저장·열기', exact: true }).click();
   const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: '프로젝트 파일 저장', exact: true }).click();
@@ -101,7 +104,8 @@ test('desktop bottom scene fits the player, persists and restores with a saved t
   await page.reload(); await loadLocalTimeline(page);
   await page.getByLabel('재생 위치', { exact: true }).fill('10'); await expect(panel).toBeVisible();
   await toggleSettings(page); await page.getByRole('button', { name: '경로 재생 설정', exact: true }).click();
-  await page.getByRole('checkbox', { name: '현재 장면 하단에도 표시' }).uncheck();
+  await page.getByRole('checkbox', { name: '현재 장면 하단에 표시' }).uncheck();
+  await expect(page.locator('.route-persistent-hud')).toBeVisible();
   await page.getByRole('button', { name: '여행 저장·열기', exact: true }).click();
   await page.getByLabel('여행 프로젝트 파일 열기').setInputFiles(path);
   await page.getByRole('button', { name: '이 여행 복원', exact: true }).click();

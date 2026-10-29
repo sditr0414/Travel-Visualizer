@@ -23,7 +23,7 @@ test('local trip can be planned, played, paused and reset', async ({ page }) => 
   await expect(position).toHaveValue('0');
 });
 
-test('desktop playback chrome hides and reveals while route HUD stays persistent', async ({ page, isMobile }) => {
+test('desktop playback chrome reveals from generous edge zones while scene details stay visible', async ({ page, isMobile }) => {
   test.skip(isMobile, 'Desktop hover chrome behavior is not applicable to touch layout.');
   await page.goto('/');
   await loadLocalTimeline(page);
@@ -33,12 +33,14 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   const play = page.getByRole('button', { name: '재생', exact: true });
   await play.click();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
-  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  await expect(page.locator('.route-bottom-scene')).toBeVisible();
+  await expect(page.locator('.route-persistent-hud')).toBeHidden();
   // Pointer and keyboard focus intentionally keep chrome visible; clear both before testing auto-hide.
   await page.mouse.move(outsideChrome.x, outsideChrome.y);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 3000 });
-  await expect(page.locator('.route-persistent-hud')).toBeVisible();
+  await expect(page.locator('.route-bottom-scene')).toBeVisible();
+  await expect(page.locator('.route-persistent-hud')).toBeHidden();
 
   const reveal = page.locator('.player-reveal-zone');
   const player = page.getByLabel('재생 컨트롤');
@@ -46,36 +48,31 @@ test('desktop playback chrome hides and reveals while route HUD stays persistent
   expect(revealBox).not.toBeNull();
   await reveal.hover();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 1200 });
-  await expect(page.locator('.route-persistent-hud')).toBeVisible();
-  // The visible state flips before the 480–540ms CSS transition fully settles. Keep the exact
-  // footprint contract, but wait until the rendered geometry has converged before measuring it.
+  await expect(page.locator('.route-bottom-scene')).toBeVisible();
+  await expect(page.locator('.route-persistent-hud')).toBeHidden();
   await expect.poll(async () => {
-    const currentPlayerBox = await player.boundingBox();
-    if (!currentPlayerBox || !revealBox) return Number.POSITIVE_INFINITY;
-    return Math.max(
-      Math.abs(revealBox.x - currentPlayerBox.x),
-      Math.abs(revealBox.y - currentPlayerBox.y),
-      Math.abs(revealBox.width - currentPlayerBox.width),
-      Math.abs(revealBox.height - currentPlayerBox.height)
-    );
-  }, { timeout: 1600 }).toBeLessThan(2);
-  const playerBox = await player.boundingBox();
-  expect(playerBox).not.toBeNull();
-  expect(Math.abs(revealBox!.x - playerBox!.x)).toBeLessThan(2);
-  expect(Math.abs(revealBox!.y - playerBox!.y)).toBeLessThan(2);
-  expect(Math.abs(revealBox!.width - playerBox!.width)).toBeLessThan(2);
-  expect(Math.abs(revealBox!.height - playerBox!.height)).toBeLessThan(2);
+    const box = await player.boundingBox();
+    return box && revealBox ? box.x >= revealBox.x && box.y >= revealBox.y && box.x + box.width <= revealBox.x + revealBox.width + 1 && box.y + box.height <= revealBox.y + revealBox.height + 1 : false;
+  }).toBe(true);
+  const playerBox = (await player.boundingBox())!;
+  expect(revealBox!.width).toBeGreaterThan(playerBox.width);
+  expect(revealBox!.height).toBeGreaterThan(playerBox.height + 80);
 
   await page.mouse.move(outsideChrome.x, outsideChrome.y);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden', { timeout: 1800 });
-  await expect(page.locator('.route-persistent-hud')).toBeVisible();
-  const inside = { x: revealBox!.x + revealBox!.width / 2, y: revealBox!.y + revealBox!.height / 2 };
+  await expect(page.locator('.route-bottom-scene')).toBeVisible();
+  await expect(page.locator('.route-persistent-hud')).toBeHidden();
+  const inside = { x: revealBox!.x + 12, y: revealBox!.y + 12 };
   await page.mouse.move(inside.x, inside.y);
   await page.waitForTimeout(90);
   await page.mouse.move(inside.x + 3, inside.y + 2);
   await page.waitForTimeout(90);
   await page.mouse.move(inside.x - 2, inside.y - 2);
   await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible', { timeout: 900 });
+  await page.mouse.move(outsideChrome.x, outsideChrome.y);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'hidden');
+  await page.mouse.move(500, 95); // Below the old 68px target and outside toolbar buttons.
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-playback-chrome', 'visible');
 });
 
 test('route and photo journeys keep playback state and cursors separate', async ({ page }) => {

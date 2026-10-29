@@ -141,6 +141,7 @@ export function App({ workerClient }: AppProps) {
   const playbackChrome = usePlaybackChrome({ playing: state.phase === 'playing', keepVisible: settingsOpen });
   const journeySummary = useMemo(() => state.plan ? buildJourneySummary(state.plan) : null, [state.plan]);
   const showJourneySummary = hud.overview || (hud.timeSec === 0 && state.phase !== 'playing');
+  const showBottomSceneDetails = Boolean(state.plan && journeyMode === 'ROUTE' && showBottomScene && !splitNarrow && !showJourneySummary);
 
   const reportProgress = useCallback((progress: number, message: string) => {
     dispatch({ type: 'PROGRESS', progress, message });
@@ -1021,7 +1022,7 @@ export function App({ workerClient }: AppProps) {
         </section>
       )}
 
-      {state.plan && journeyMode === 'ROUTE' && <section className={`journey-hud route-persistent-hud${showJourneySummary ? ' is-overview' : ''}`} aria-label={showJourneySummary ? '여행 전체' : '현재 이동 정보'}>
+      {state.plan && journeyMode === 'ROUTE' && <section className={`journey-hud route-persistent-hud${showJourneySummary ? ' is-overview' : ''}${showBottomSceneDetails ? ' is-suppressed' : ''}`} aria-hidden={showBottomSceneDetails || undefined} aria-label={showJourneySummary ? '여행 전체' : '현재 이동 정보'}>
         {showJourneySummary && journeySummary ? <JourneySummary summary={journeySummary} /> : <>
         <div className="eyebrow"><MapPinned size={14} /> 현재 장면</div>
         <strong className="hud-mobility"><span className="hud-mobility-icon" aria-hidden="true">{MOVEMENT_VISUALS[hud.mobilityClass].icon}</span><span className="hud-mobility-label">{hud.mobility}</span></strong>
@@ -1029,7 +1030,7 @@ export function App({ workerClient }: AppProps) {
         </>}
       </section>}
 
-      {state.plan && journeyMode === 'ROUTE' && showBottomScene && !splitNarrow && !showJourneySummary && <RouteSceneDetails {...hud} />}
+      {showBottomSceneDetails && <RouteSceneDetails {...hud} />}
 
       {state.scan && <details
         className="settings-panel"
@@ -1186,7 +1187,7 @@ export function App({ workerClient }: AppProps) {
           </label></SettingHelp>
 
           <div className="toggle-list">
-            {!splitNarrow && <SettingHelp title="현재 장면 하단에도 표시" description="PC에서 재생바 위에 이동 지역·여행 시각·구간 정보를 함께 표시합니다. 바로 적용되며 다음 실행에도 유지됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 장면 하단에도 표시" checked={showBottomScene} onChange={event => updatePreference('showBottomScene', event.target.checked)} /><span>현재 장면 하단에도 표시</span></div></SettingHelp>}
+            {!splitNarrow && <SettingHelp title="현재 장면 하단에 표시" description="PC에서 현재 장면을 하단으로 옮겨 이동 지역·여행 시각·구간 정보를 표시합니다. 바로 적용되며 다음 실행에도 유지됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 장면 하단에 표시" checked={showBottomScene} onChange={event => updatePreference('showBottomScene', event.target.checked)} /><span>현재 장면 하단에 표시</span></div></SettingHelp>}
             <SettingHelp title="항공 경로 포함" description={"비행 구간을 경로에 포함합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
             <SettingHelp title="현재 위치 따라가기" description={"켜면 이동 위치를 지도 중앙에 둡니다.\n끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다.\n바로 적용됩니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
             <SettingHelp title="일시정지 시 전체 경로 표시" description={"일시정지한 장면에 전체 경로를 함께 표시합니다.\n기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다.\n전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="일시정지 시 전체 경로 표시" aria-description="일시정지한 장면에 전체 경로를 함께 표시합니다. 기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다. 전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다." checked={showFullRouteWhenPaused} onChange={event => updatePreference('showFullRouteWhenPaused', event.target.checked)} /><span>일시정지 시 전체 경로 표시</span></div></SettingHelp>

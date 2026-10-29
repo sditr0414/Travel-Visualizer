@@ -107,8 +107,7 @@
     transform: translateY(2px);
   }
 
-  .photo-mode .player-dock,
-  .photo-mode .player-reveal-zone {
+  .photo-mode .player-dock {
     bottom: max(22px, env(safe-area-inset-bottom));
   }
 }
