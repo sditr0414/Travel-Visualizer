@@ -37,7 +37,7 @@ test('search and date filters preserve exclusions, jump to a photo and restore c
   await library.getByRole('checkbox').uncheck();
   await page.getByLabel('사진 포함 상태').selectOption('EXCLUDED');
   await expect(library.locator('.library-row')).toHaveCount(1);
-  await page.getByLabel('사진 파일명 검색').fill('missing'); await expect(library).toContainText('검색 조건에 맞는 사진이 없습니다.');
+  await page.getByLabel('사진 파일명 검색').fill('missing'); await expect(library).toContainText('검색 결과가 없습니다.');
   await page.getByRole('button', { name: '검색 조건 지우기' }).click();
   await page.getByLabel('사진 파일명 검색').fill('CAFE2'); await expect(library.locator('.library-row')).toHaveCount(1);
   await library.getByRole('button', { name: /장면 보기/ }).click();

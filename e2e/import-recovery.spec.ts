@@ -39,7 +39,9 @@ test('local photo import can be aborted and retried without leaving playback bus
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
   await page.getByRole('button', { name: '사진 다시 연결', exact: true }).click();
-  await expect(page.getByText('1개의 사진·영상을 연결했습니다.', { exact: true })).toBeAttached();
+  await expect(page.locator('.photo-settings-group .settings-group-title output')).toHaveText('1개');
+  await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
+  await expect(page.locator('.media-progress')).toBeHidden();
   await expect(page.getByRole('button', { name: '사진 연결 취소', exact: true })).toBeHidden();
 });
 
