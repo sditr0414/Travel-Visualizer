@@ -18,6 +18,10 @@ Google Timeline의 semanticSegments JSON과 사용자가 선택한 사진·영�
 
 모바일 사진 지도는 컨트롤을 위한 260px 높이를 우선 확보하되 분할 상한 72%를 지킵니다. 실제 표시 비율과 분할선 ARIA·키보드 최소값을 일치시키며 화면 높이 변경에도 다시 계산합니다.
 
+지도 캔버스의 단일 pointer 탭은 현재 모드의 재생·일시정지를 전환합니다. 500ms 이내의 연속 탭·드래그·다중 터치·취소·보조키·휠·외부 컨트롤·키보드 입력을 제외하고, 준비 중·오류·설정/대화상자 상태에서는 실행하지 않습니다. 지도 생성 효과와 재생 콜백 갱신을 분리해 HUD 갱신 중에도 지도와 탭 대기 상태를 유지합니다.
+
+`showBottomScene`은 기본 false이며 PC 경로 모드에서 재생바 폭의 하단 상세 정보를 추가합니다. 모바일과 처음/마지막 여행 전체 요약에서는 숨깁니다. 시간은 구간 진행률에 대응하는 한국 시간, 지역은 기존 지도 도시 조회 결과를 재사용하며 추가 외부 조회를 하지 않습니다. 이전 v1 프로젝트에 이 설정이 없으면 false로 복원합니다.
+
 ## Data flow
 
 Timeline → TimelineWorkerClient → timeline.worker → domain/planner → PlaybackPlan → ROUTE/PHOTOS PlayerController → MapLibre.

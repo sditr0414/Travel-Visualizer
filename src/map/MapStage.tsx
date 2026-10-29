@@ -7,16 +7,24 @@ import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // that module into a chunk, so bundle the worker explicitly for production too.
 maplibregl.setWorkerUrl(mapWorkerUrl);
 import { disposeMapTileWarmup, bindMapTileWarmupInteractions } from './tile-warmup';
+import { bindPlaybackTap } from './playback-tap';
 import { ONLINE_STYLE_URL } from './map-style';
 
 interface MapStageProps {
+  onTogglePlayback?: () => void;
   onReady: (map: Map) => void;
   onError: (message: string | null, unavailable?: boolean) => void;
 }
 
-export function MapStage({ onReady, onError }: MapStageProps) {
+export function MapStage({ onReady, onError, onTogglePlayback }: MapStageProps) {
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const toggleRef = useRef(onTogglePlayback);
+  useEffect(() => { toggleRef.current = onTogglePlayback; }, [onTogglePlayback]);
+  useEffect(() => {
+    if (containerRef.current) return bindPlaybackTap(containerRef.current, () => toggleRef.current?.(), () => Boolean(toggleRef.current));
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;

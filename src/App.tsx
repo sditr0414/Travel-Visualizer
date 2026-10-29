@@ -22,6 +22,7 @@ import { identifyTimeline, parseProject, projectMedia, reconnectMedia, type Sour
 import { MediaLibraryDialog } from './ui/MediaLibraryDialog';
 import { DEFAULT_PREFERENCES, usePreferences } from './settings/preferences';
 import { usePlaybackChrome } from './ui/playback-chrome';
+import { RouteSceneDetails } from './ui/RouteSceneDetails';
 import { JourneySummary } from './ui/JourneySummary';
 import { buildJourneySummary } from './domain/journey-summary';
 import type { CameraMode, PacingMode, JourneyMedia, LocalMediaManifest, MediaImportProgress, MobilityClass, PhotoViewMode, PlaybackFrame, PlaybackPlan, PlaybackStop, TimelineSource, TravelFrame } from './types';
@@ -32,6 +33,9 @@ interface AppProps {
 }
 
 interface HudState {
+  sourceMs: number | null;
+  segmentStartMs: number | null;
+  segmentEndMs: number | null;
   timeSec: number;
   overview: boolean;
   date: string;
@@ -63,7 +67,7 @@ export function App({ workerClient }: AppProps) {
   const [client] = useState<TimelineWorkerPort>(() => workerClient ?? new TimelineWorkerClient());
 
   const { preferences, update: updatePreference, reset: resetPreferences, replace: replacePreferences } = usePreferences();
-  const { captureTimeZone, includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, showFullRouteWhenPaused, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, onlinePlaceLookup, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
+  const { captureTimeZone, includeFlights, cameraMode, zoomOffset, pacingMode, lockToPosition, showFullRouteWhenPaused, showBottomScene, photoViewMode, photoDisplaySec, photoDetailZoomMode, photoDetailZoomStrength, onlinePlaceLookup, showDayMarkers, dayMarkerSec, videoMode, videoMuted, videoMaxSec } = preferences;
   const clientRef = useRef(client);
   const timelineAbortRef = useRef<AbortController | null>(null);
   const activeTimelineRef = useRef<{ text: string; identity: SourceIdentity } | null>(null);
@@ -110,7 +114,7 @@ export function App({ workerClient }: AppProps) {
   const [photoSettingsOpen, setPhotoSettingsOpen] = useState(false);
   const [routeOverviewRequested, setRouteOverviewRequested] = useState(false);
   const [appliedPlanSettings, setAppliedPlanSettings] = useState<AppliedPlanSettings | null>(null);
-  const [hud, setHud] = useState<HudState>({ timeSec: 0, overview: false, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
+  const [hud, setHud] = useState<HudState>({ sourceMs: null, segmentStartMs: null, segmentEndMs: null, timeSec: 0, overview: false, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
   const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
   const journeyModeRef = useRef<JourneyMode>('ROUTE');
   const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
@@ -856,7 +860,7 @@ export function App({ workerClient }: AppProps) {
     || pacingMode !== appliedPlanSettings.pacingMode
     || targetDurationSec !== appliedPlanSettings.durationSec
   )));
-  const routeSettingsChanged = (['cameraMode', 'pacingMode', 'includeFlights', 'lockToPosition', 'showFullRouteWhenPaused'] as const)
+  const routeSettingsChanged = (['cameraMode', 'pacingMode', 'includeFlights', 'lockToPosition', 'showFullRouteWhenPaused', 'showBottomScene'] as const)
     .filter(key => preferences[key] !== DEFAULT_PREFERENCES[key]).length;
   const photoSettingsChanged = (['photoViewMode', 'photoDisplaySec', 'photoDetailZoomMode', 'photoDetailZoomStrength', 'showDayMarkers', 'dayMarkerSec', 'videoMode', 'videoMuted', 'videoMaxSec'] as const)
     .filter(key => preferences[key] !== DEFAULT_PREFERENCES[key]).length + Number(localFeatures && onlinePlaceLookup);
@@ -914,7 +918,7 @@ export function App({ workerClient }: AppProps) {
       style={{ '--photo-map-share': `${mapShare * 100}%` } as CSSProperties}
     >
       {mapRequested ? <Suspense fallback={<div className="map-canvas map-loading" role="status">지도를 준비하고 있습니다…</div>}>
-        <MapStage key={mapRevision} onReady={onMapReady} onError={onMapError} />
+        <MapStage key={mapRevision} onReady={onMapReady} onError={onMapError} onTogglePlayback={canPlay && !helpOpen && !libraryOpen && !copyVideo && state.phase !== 'error' ? togglePlayback : undefined} />
       </Suspense> : <div className="map-canvas welcome-background" aria-hidden="true" />}
       {journeyMode === 'PHOTOS' && <>
         <MediaJourneyPane
@@ -1024,6 +1028,8 @@ export function App({ workerClient }: AppProps) {
         <div className="hud-meta"><span>{hud.date}</span>{(hud.speed || hud.distance !== null) && <span className="hud-movement-metrics">{hud.speed && <span>{hud.speed}</span>}{hud.distance !== null && <span className="movement-distance" title="이동거리">{hud.distance}</span>}</span>}</div>
         </>}
       </section>}
+
+      {state.plan && journeyMode === 'ROUTE' && showBottomScene && !splitNarrow && !showJourneySummary && <RouteSceneDetails {...hud} />}
 
       {state.scan && <details
         className="settings-panel"
@@ -1180,6 +1186,7 @@ export function App({ workerClient }: AppProps) {
           </label></SettingHelp>
 
           <div className="toggle-list">
+            {!splitNarrow && <SettingHelp title="현재 장면 하단에도 표시" description="PC에서 재생바 위에 이동 지역·여행 시각·구간 정보를 함께 표시합니다. 바로 적용되며 다음 실행에도 유지됩니다."><div className="setting-checkbox"><input type="checkbox" aria-label="현재 장면 하단에도 표시" checked={showBottomScene} onChange={event => updatePreference('showBottomScene', event.target.checked)} /><span>현재 장면 하단에도 표시</span></div></SettingHelp>}
             <SettingHelp title="항공 경로 포함" description={"비행 구간을 경로에 포함합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><div className="setting-checkbox"><input type="checkbox" aria-label="항공 경로 포함" aria-description="비행 구간을 경로에 포함합니다. 변경 후 경로 다시 만들기를 눌러 적용하세요." checked={includeFlights} onChange={event => updatePreference('includeFlights', event.target.checked)} /><span>항공 경로 포함</span></div></SettingHelp>
             <SettingHelp title="현재 위치 따라가기" description={"켜면 이동 위치를 지도 중앙에 둡니다.\n끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다.\n바로 적용됩니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="현재 위치 따라가기" aria-description="켜면 이동 위치를 지도 중앙에 둡니다. 끄면 진행 방향과 주변 경로가 보이도록 카메라가 이동합니다. 바로 적용됩니다." checked={lockToPosition} onChange={event => updatePreference('lockToPosition', event.target.checked)} /><span>현재 위치 따라가기</span></div></SettingHelp>
             <SettingHelp title="일시정지 시 전체 경로 표시" description={"일시정지한 장면에 전체 경로를 함께 표시합니다.\n기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다.\n전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다."}><div className="setting-checkbox"><input type="checkbox" aria-label="일시정지 시 전체 경로 표시" aria-description="일시정지한 장면에 전체 경로를 함께 표시합니다. 기본값은 꺼짐이며, 두 감상 모드에 바로 적용됩니다. 전체 경로 버튼과 여행 전체 화면은 이 설정과 관계없이 경로를 보여줍니다." checked={showFullRouteWhenPaused} onChange={event => updatePreference('showFullRouteWhenPaused', event.target.checked)} /><span>일시정지 시 전체 경로 표시</span></div></SettingHelp>
@@ -1257,7 +1264,7 @@ export function App({ workerClient }: AppProps) {
 }
 
 function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, distances: Array<string | null>): HudState {
-  if (frame.kind === 'OUTRO') return { timeSec, overview: true, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '', distance: null, originCity: null, destinationCity: null };
+  if (frame.kind === 'OUTRO') return { sourceMs: null, segmentStartMs: null, segmentEndMs: null, timeSec, overview: true, date: '여행 전체', mobilityClass: 'UNKNOWN', mobility: '전체 경로', speed: '', distance: null, originCity: null, destinationCity: null };
   const travel = frame as TravelFrame;
   const segment = plan.segments[travel.segmentIndex];
   const movement = movementPresentation(plan.segments, travel.segmentIndex);
@@ -1265,6 +1272,7 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, 
   return {
     timeSec,
     overview: false,
+    sourceMs, segmentStartMs: segment.startMs, segmentEndMs: segment.endMs,
     date: new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Seoul' }).format(sourceMs),
     mobilityClass: movement.mobilityClass,
     mobility: movement.label,

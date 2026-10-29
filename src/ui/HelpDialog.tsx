@@ -42,6 +42,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
       <summary>감상 조작과 단축키</summary>
       <p>사진 여정은 사진과 영상을 감상하는 동안 이동을 잠시 멈춥니다. 감상 모드를 바꿔도 각각 보던 위치를 기억하며, 지도와 사진 사이의 분할선으로 화면 비율을 조절할 수 있습니다.</p>
       <dl className="shortcut-list"><div><dt><kbd>Space</kbd></dt><dd>재생 · 일시정지</dd></div><div><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>5초 뒤로 · 앞으로</dd></div><div><dt><kbd>Home</kbd></dt><dd>처음으로</dd></div><div><dt><kbd>Esc</kbd></dt><dd>열린 창 닫기</dd></div></dl>
+      <p>지도를 한 번 누르면 재생·일시정지가 전환됩니다. PC의 하단 장면 정보는 ‘경로 재생 설정’에서 켤 수 있습니다.</p>
       <p>입력란에서는 해당 입력란의 키보드 동작이 우선합니다.</p>
     </details>
   </Dialog>;

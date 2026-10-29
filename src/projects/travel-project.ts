@@ -47,7 +47,7 @@ export function parseProject(contents: string): TravelProject {
   const source = record(value.timeline), range = record(value.range), view = record(value.view), cursors = record(view.cursors);
   const prefs = record(value.preferences), preferences = normalizePreferences(prefs);
   for (const key of Object.keys(DEFAULT_PREFERENCES) as Array<keyof Preferences>) {
-    if (key === 'captureTimeZone' && prefs[key] === undefined) continue;
+    if ((key === 'captureTimeZone' || key === 'showBottomScene') && prefs[key] === undefined) continue;
     if (prefs[key] !== preferences[key]) return fail('프로젝트의 감상 설정이 올바르지 않습니다.');
   }
   // Importing a file must never silently enable transmission of photo coordinates.

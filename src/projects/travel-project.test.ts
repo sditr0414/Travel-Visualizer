@@ -71,3 +71,13 @@ it('restores older v1 projects using their recorded capture zone', () => {
   expect(parsed.preferences.captureTimeZone).toBe('Asia/Seoul');
   expect(() => parseProject(JSON.stringify({ ...old, preferences: { ...preferences, captureTimeZone: 'Invalid/Zone' } }))).toThrow();
 });
+
+
+it('restores older projects without bottom scene settings and preserves explicit choices', () => {
+  const original = project();
+  const preferences: Record<string, unknown> = { ...original.preferences };
+  delete preferences.showBottomScene;
+  expect(parseProject(JSON.stringify({ ...original, preferences })).preferences.showBottomScene).toBe(false);
+  expect(parseProject(JSON.stringify({ ...original, preferences: { ...preferences, showBottomScene: true } })).preferences.showBottomScene).toBe(true);
+  expect(() => parseProject(JSON.stringify({ ...original, preferences: { ...preferences, showBottomScene: 'true' } }))).toThrow();
+});

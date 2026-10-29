@@ -9,6 +9,7 @@ export interface Preferences {
   zoomOffset: number;
   lockToPosition: boolean;
   showFullRouteWhenPaused: boolean;
+  showBottomScene: boolean;
   includeFlights: boolean;
   photoViewMode: PhotoViewMode;
   photoDisplaySec: number;
@@ -23,7 +24,7 @@ export interface Preferences {
 }
 export const DEFAULT_PREFERENCES: Preferences = {
   captureTimeZone: 'DEVICE',
-  cameraMode: 'AUTO', pacingMode: 'LOCAL_DAYS', zoomOffset: 0, lockToPosition: true, showFullRouteWhenPaused: false,
+  cameraMode: 'AUTO', pacingMode: 'LOCAL_DAYS', zoomOffset: 0, lockToPosition: true, showFullRouteWhenPaused: false, showBottomScene: false,
   includeFlights: true, photoViewMode: 'PREVIEW', photoDisplaySec: 3,
   photoDetailZoomMode: 'AUTO', photoDetailZoomStrength: 1, onlinePlaceLookup: false, showDayMarkers: true,
   dayMarkerSec: 2.5, videoMode: 'PLAY', videoMuted: true, videoMaxSec: 5
