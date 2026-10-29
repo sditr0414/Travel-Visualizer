@@ -18,6 +18,7 @@ test('individual movements keep separate distances and include their assigned es
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   for (const [mode, selector] of [['경로 보기', '.journey-hud'], ['사진 여정', '.is-current .media-transit']]) {
@@ -57,6 +58,7 @@ test('estimated transport appears consistently in the map and photo journey', as
   await expect(page.locator('.journey-hud .movement-distance')).toHaveText('8 km');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();
@@ -73,6 +75,8 @@ test('checkbox whitespace and help never toggle values; the visible box and Spac
   await loadLocalTimeline(page);
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
+  await page.getByRole('button', { name: '경로 재생 설정', exact: true }).click();
   await page.getByRole('combobox', { name: '영상 재생', exact: true }).selectOption('PLAY');
   for (const name of ['정확한 장소 온라인 확인', '날짜 변경 표시', '영상 소리 재생', '항공 경로 포함', '현재 위치 따라가기']) {
     const box = page.getByRole('checkbox', { name, exact: true });
@@ -104,6 +108,7 @@ test('transport names retain the original column and natural emoji text box', as
   await loadLocalTimeline(page);
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();

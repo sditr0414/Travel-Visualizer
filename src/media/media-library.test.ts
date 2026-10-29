@@ -167,3 +167,24 @@ describe('local media matching', () => {
     expect(all.every(item => item.groupCount === 5 && item.sourceCount === 5)).toBe(true);
   });
 });
+
+
+describe('local media cancellation', () => {
+  it('aborts network reads and does not persist incomplete metadata', async () => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    const request = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+      requestSignal = init?.signal ?? undefined;
+      requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason), { once: true });
+    }));
+    try {
+      const pending = loadLocalMediaManifest({ available: true, rootName: 'test', count: 1, totalBytes: 100,
+        items: [{ id: 'slow', name: '20260410_090000.jpg', size: 100, lastModified: Date.now(), kind: 'image' }]
+      }, simplePlan(), undefined, controller.signal);
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(requestSignal?.aborted).toBe(true);
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally { request.mockRestore(); }
+  });
+});

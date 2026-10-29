@@ -23,6 +23,7 @@ test('hover help closes when the mouse moves onto its bubble', async ({ page, is
   await page.goto('/');
   await loadLocalTimeline(page);
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '경로 재생 설정', exact: true }).click();
   const title = page.getByRole('button', { name: '지도 보기 방식 설명', exact: true });
   await title.hover();
   const tip = page.getByRole('tooltip');
@@ -44,6 +45,7 @@ test('icon-only playback controls and familiar walking emoji remain accessible',
   await page.getByRole('button', { name: '일시정지', exact: true }).click();
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('처음부터 보기', { exact: true }).click();
@@ -64,7 +66,12 @@ test('help follows the animated label and closes when its setting scrolls away',
   await page.goto('/');
   await loadLocalTimeline(page);
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '경로 재생 설정', exact: true }).click();
   const title = page.getByRole('button', { name: '지도 보기 방식 설명', exact: true });
+  await title.scrollIntoViewIfNeeded();
+  // Reopen with the detailed section expanded so its label follows the panel entrance.
+  await page.locator('.settings-panel summary').click();
+  await page.locator('.settings-panel summary').click();
   // Trigger during the real entrance animation; locator.hover waits for stability
   // and would conceal the original stale-coordinate bug.
   await title.dispatchEvent('mouseover');

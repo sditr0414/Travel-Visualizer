@@ -6,13 +6,15 @@
 
 ## Product and runtime
 
-Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하는 반응형 앱입니다. Node.js 24+, React 19, TypeScript, Vite 8, MapLibre를 사용합니다. Timeline·사진 원본은 업로드하지 않습니다. 지도는 OpenFreeMap 온라인 스타일·타일·글꼴·아이콘만 사용하며 별도의 지도 설치는 없습니다. 정확한 장소 온라인 확인은 기본 OFF이며 사용자가 설정한 역지오코딩 서비스가 있을 때만 신뢰 가능한 GPS 좌표를 보냅니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
+Google Timeline의 semanticSegments JSON과 사용자가 선택한 사진·영상을 재생하는 반응형 웹앱입니다. 기본 이용 주소는 `https://sditr0414.github.io/Travel-Visualizer/`이며 설치 없이 PC·휴대폰에서 사용합니다. React 19, TypeScript, Vite 8, MapLibre 기반이고 개발·로컬 실행에 Node.js 24+를 사용합니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
 
-`npm start`/Windows 런처는 프로덕션 빌드를 사용합니다. `scripts/ensure-build.mjs`는 소스 fingerprint가 바뀌었을 때만 빌드합니다. `npm run dev`는 개발용입니다. 서버는 127.0.0.1에만 바인딩합니다. 모바일 UI는 직접 파일 선택을 지원하며, 다른 기기에서 접근하려면 별도의 HTTPS 정적 호스팅이 필요합니다. LAN 공개를 위해 로컬 개인 파일 API의 접근 제한을 완화하지 않습니다.
+원본은 File API·Worker·blob URL로 기기 안에서 처리하며 업로드하지 않습니다. 지도는 OpenFreeMap의 온라인 스타일·타일·글꼴·아이콘을 사용합니다. 초기 화면에는 사진·타임라인 샘플과 미리보기를 넣지 않습니다. 지도 모듈과 타임라인 Worker는 실제 사용 시 준비하고 첫 화면에서 미리 불러오지 않습니다.
 
-공개 도메인에서 로컬 API를 호출하지 않는 경계는 `src/services/local-api.ts`가 담당합니다. 루프백 호스트에서도 타임라인·사진 목록·장소 응답의 JSON MIME을 검사해 정적 SPA의 HTML fallback을 무시합니다. 파일 검증 실패를 알리기 전에 활성 플레이어를 정지합니다.
+`npm run build:web`는 Vite `pages` 모드로 `dist-web/`을 만들고 `/Travel-Visualizer/`를 base로 사용합니다. `src/services/local-api.ts`는 Pages 모드에서 loopback을 포함한 모든 호스트의 로컬 API 호출을 차단합니다. 기본 폴더 자동 연결·영상 변환·온라인 장소 조회는 웹 UI에서 숨깁니다. 배포 파일 허용 목록과 세 CI 검증 후 main 게시 절차는 [개발 안내](DEVELOPMENT.md#웹-빌드와-배포)를 따릅니다.
 
-런처는 자식 서버의 listen 성공 IPC 메시지로 시작을 확인합니다. 다른 프로세스의 HTTP 응답으로 브라우저를 열지 않습니다. `public/_headers`는 정적 호스팅과 로컬 프로덕션 서버의 단일 보안 정책 원본입니다.
+`npm start`/Windows 런처는 별도의 로컬 빌드 `dist/`를 사용합니다. `scripts/ensure-build.mjs`는 소스 fingerprint가 바뀌었을 때만 빌드하며 `npm run dev`는 개발용입니다. 서버는 127.0.0.1에만 바인딩합니다. LAN 공개를 위해 로컬 개인 파일 API의 접근 제한을 완화하지 않습니다. 로컬 빌드도 loopback에서만 파일·장소 API를 쓰고 JSON MIME을 확인해 정적 SPA의 HTML fallback을 무시합니다. 파일 검증 실패를 알리기 전에 활성 플레이어를 정지합니다.
+
+런처는 자식 서버의 listen 성공 IPC 메시지로 시작을 확인하며 다른 프로세스의 HTTP 응답으로 브라우저를 열지 않습니다. `public/_headers`가 보안 정책 원본입니다. 로컬 서버는 HTTP 헤더로 적용하고 Pages는 지원되는 CSP만 HTML meta로 삽입합니다. `frame-ancestors`와 HTTP 전용 헤더의 Pages 제한은 [보안 정책](DEVELOPMENT.md#보안-정책)에 정리합니다.
 
 모바일 사진 지도는 컨트롤을 위한 260px 높이를 우선 확보하되 분할 상한 72%를 지킵니다. 실제 표시 비율과 분할선 ARIA·키보드 최소값을 일치시키며 화면 높이 변경에도 다시 계산합니다.
 
@@ -20,28 +22,31 @@ Google Timeline의 semanticSegments JSON과 로컬 사진·영상을 재생하�
 
 Timeline → TimelineWorkerClient → timeline.worker → domain/planner → PlaybackPlan → ROUTE/PHOTOS PlayerController → MapLibre.
 
+사진 가져오기는 AbortSignal로 Worker·로컬 Range 읽기를 취소하고 기존 목록을 유지합니다. 취소된 분석 결과는 UI에 반영하지 않으며 재시도할 수 있습니다. 지원 사진·영상이 없는 선택은 기존 목록을 대체하지 않습니다.
+
 사진 File[] 또는 local manifest → bounded metadata scan/sidecar → GPS·Timeline matching → media library → 제외 필터·대표 장면 재선정 → 사진·날짜 stops → preload buffer → MediaJourneyPane.
 
-`src/types.ts`가 계약의 기준입니다. `PlaybackPlan`은 원래 viewport 크기와 선택한 날짜 범위를 메타데이터로 보관합니다. 날짜는 Asia/Seoul 기준이며 시간대가 없는 EXIF는 기기 시간대를 따릅니다. 자정을 넘는 이동은 선택 기간의 경계에서 보간해 잘라냅니다. 날짜 변경선을 지나는 경로는 연속된 경도로 unwrap합니다.
+`src/types.ts`가 계약의 기준입니다. `PlaybackPlan`은 원래 viewport 크기와 선택한 날짜 범위를 메타데이터로 보관합니다. 날짜는 Asia/Seoul 기준이며 시간대가 없는 EXIF는 촬영 시간대 설정을 따릅니다. 기본값은 기기 시간대입니다. 자정을 넘는 이동은 선택 기간의 경계에서 보간해 잘라냅니다. 날짜 변경선을 지나는 경로는 연속된 경도로 unwrap합니다.
 
 ## UI and accessibility
 
 - 사용자 승인에 따라 기존 UI 골조를 유지하면서 레퍼런스를 참고해 개선합니다. 전체 화면 지도, 반투명 topbar/HUD/player, 접히는 details 설정 패널과 지도·사진 분할을 유지하되 정보 순서·타이포그래피·간격·문구는 개선할 수 있습니다. 색상 기준도 v2 토큰(`--ink #171a1d`, `--surface rgba(24,27,30,.92)`, `--paper #f7f3ed`, `--muted #aaa7a2`, `--accent #ff725d`)을 따르며 새 UI가 별도 청회색 팔레트를 만들지 않습니다. 지도 중심의 감상 경험과 기존 재생 동작을 보존합니다.
-- `styles.css`의 토큰과 기존 CSS를 기준으로 하며 제품 UI 개선은 `usability-fixes.css`에 둡니다. 첫 화면은 타임라인 열기를 주 행동으로 제시하고, 설정은 여행 기간을 먼저 보여줍니다. 하단 적용 영역은 고정하고 재계산이 필요한 변경과 즉시 적용되는 변경을 구분합니다.
+- `styles.css`의 토큰과 기존 CSS를 기준으로 하며 제품 UI 개선은 `usability-fixes.css`에 둡니다. 첫 화면은 타임라인 열기를 주 행동으로 제시하고 사진·영상 선택, 저장한 여행 열기, 타임라인 준비 방법을 제공합니다. 설정은 여행 기간·추천 여행·지도 확대와 파일 연결을 먼저 보여줍니다. 세부 옵션은 ‘사진·영상 설정’, ‘경로 재생 설정’ 버튼으로 펼칩니다. 하단 적용 영역은 고정하고 재계산이 필요한 변경과 즉시 적용되는 변경을 구분합니다.
 - 설정 이름의 hover·키보드 포커스·탭으로 설명을 표시하고 입력과 aria-describedby로 연결합니다. 추천 여행은 native select로 고릅니다. 설정을 열면 일시정지하고 Esc로 닫아 summary에 포커스를 돌립니다.
 - 상단 설정·가져오기·모드 선택은 외곽 높이 48px와 같은 상단 위치를 사용합니다. 설정 그룹 전체에는 hover 배경 강조를 넣지 않습니다. 마우스로 연 설명은 이름에서 벗어나면 닫히며 설명 자체에 hover해도 유지하지 않습니다. 탭·키보드로 고정하는 동작은 유지합니다.
-- 도움말·사진 목록은 공통 native Dialog를 사용합니다. 개인 파일·날짜는 저장하지 않고 검증한 감상 설정만 저장합니다.
-- 사진 목록은 촬영 정보 출처·GPS/Timeline 위치 추정·가능한 경우 GPS 수평 오차·감상 제외 기능을 유지합니다. 사진 여정 설정에서 엽니다.
+- 도움말·사진 목록은 공통 native Dialog를 사용합니다. 브라우저 자동 저장에는 검증한 감상 설정만 넣습니다. 사용자가 다운로드한 프로젝트는 날짜·원본 식별 정보를 포함하며 별도로 다룹니다.
+- 사진 목록은 촬영 정보 출처·GPS/Timeline 위치 추정·가능한 경우 GPS 수평 오차·감상 제외 기능을 유지합니다. 사진 연결과 목록 관리는 두 감상 모드의 여행 설정에서 항상 접근할 수 있습니다.
 - PC 좌우/모바일 상하 분할과 모드별 커서는 유지합니다. 전체 경로 버튼은 커서 변경 없이 bounds를 맞춥니다. `showFullRouteWhenPaused`는 기본 false이며 기존 저장 설정에도 꺼짐으로 추가됩니다. 일반 일시정지·탐색·설정 열기에서는 최근 경로만 남고, 옵션을 켜면 `route-all`을 함께 표시합니다. 처음·마지막의 요약과 명시적 전체 경로 요청은 그대로 유지하며, 다시 재생하거나 장면을 탐색하면 명시적 전체 경로 요청을 해제합니다. 두 모드에서 즉시 적용하며 경로 재생성은 필요하지 않습니다.
+- 초기 지도 스타일 연결 실패 또는 12초 지연 시 단색 배경 스타일로 경로 레이어를 준비합니다. 로컬 감상은 계속 가능하며 지도 다시 연결로 온라인 스타일을 재시도합니다.
 - MapLibre 6의 기본 Worker 경로는 Vite 배포 청크 옆에 존재하지 않습니다. `MapStage.tsx`에서 `maplibre-gl-worker.mjs?worker&url`을 import하고 setWorkerUrl을 호출해야 합니다. 스타일 로드 성공만으로 실제 지도 표시를 보장하지 않습니다.
-- 배포 Worker 누락 시 지도·GeoJSON 경로가 모두 비어 보일 수 있습니다. 첫 E2E에 Worker가 실제로 시작하는지 확인을 포함합니다. 존재하지 않는 정적 asset 요청을 index.html로 바꾸지 않습니다.
+- 배포 Worker 누락 시 지도·GeoJSON 경로가 모두 비어 보일 수 있습니다. 파일을 선택해 지도를 연 뒤에는 Worker가 실제로 시작하는지 확인하고, 빈 첫 화면에서는 아직 내려받지 않는지 별도로 검사합니다. 존재하지 않는 정적 asset 요청을 index.html로 바꾸지 않습니다.
 - 키보드 단축키, 입력 중 기본 키 동작, 탭 숨김 일시정지, 터치 환경 컨트롤 유지, 모션 줄이기 지원을 보존합니다.
 
 ## Playback and camera invariants
 
 - ROUTE/PHOTOS는 같은 지도에 독립된 controller와 커서를 갖습니다. 모드 변경 시 현재를 멈추고 대상의 커서를 복원합니다. 새 계획은 둘 다 초기화하고 지도만 교체하면 커서를 보존합니다.
 - `PlayerController`가 재생·탐색의 시간 기준입니다. 사진 stop과 날짜 stop 시간을 총 길이에 포함합니다. 날짜 marker가 같은 route time이면 사진보다 먼저 표시합니다.
-- 영상 currentTime/play/pause를 활성 stop의 elapsed time과 맞춥니다. 이전 전환 장면은 정지합니다. 브라우저가 play를 거부하면 사용자가 직접 재생할 수 있습니다. 짧은 영상은 남은 stop 시간 동안 마지막 프레임을 유지합니다.
+- 영상 currentTime/play/pause를 활성 stop의 elapsed time과 맞춥니다. 이전 전환 장면은 정지합니다. 브라우저가 play를 거부하면 사용자가 직접 재생할 수 있습니다. 짧은 영상은 남은 stop 시간 동안 마지막 프레임을 유지합니다. loadeddata가 발생해도 영상 너비·높이가 0이면 오디오만 해독된 파일로 보고 재생을 멈추고 변환 안내를 표시합니다.
 - 프레임은 React 밖에서 갱신하고 HUD 갱신은 약 90ms로 제한합니다. 날짜/사진 stop 중에도 HUD 시간을 갱신합니다.
 - 검증된 AUTO/DAY/SEGMENT 경로·카메라 계산을 임의로 단순화하지 않습니다. 기본 모드는 AUTO입니다.
 - 경로 길이는 여행 기간·활동일·이동 거리·지리 범위·구간 수에서 최소/추천/최대를 계산합니다. 자동 기본값은 최소·최대의 중앙값을 5초 간격으로 반올림한 값입니다. 수동 길이는 재계획 범위 안에서 유지합니다.
@@ -51,7 +56,7 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 - live 설정은 활성 controller만 다시 그립니다. 비활성 controller가 공유 지도의 카메라를 덮지 않아야 합니다.
 - `setStops`는 변경 시 route 진행 위치를 보존하고 같은 stop의 길이가 바뀌면 내부 진행 비율을 보존합니다.
 - 재생 중 지도 휠 확대를 막고 정지 중 허용합니다. tile warmup은 1.4초 ahead·동시 2개·320ms 간격·36개 상한·중복 제외를 유지하고 마지막 목적지를 예약해 놓치지 않습니다. 수동 zoom 입력은 진행 방향의 다음 단계도 준비합니다. 타일 크기·반올림은 MapLibre와 맞추며 제한은 중복 제외 후 적용합니다. HTTP 캐시 미리 받기이며 GPU 사전 렌더링은 아닙니다. 상세 검증은 [개발 안내](DEVELOPMENT.md#온라인-지도와-미리-불러오기)를 따릅니다. MapLibre private API는 사용하지 않습니다.
-- 기본 위치 라벨은 이미 로드된 타일에서 도시/구 수준까지만 얻습니다. 정확한 장소 온라인 확인은 planner가 아닌 live 설정이며 경로 다시 만들기 dirty-state에 포함하지 않습니다. GPS가 신뢰 가능한 사진만 사용하고, 10분/80m의 안정된 연속 사진 cluster는 중앙값 좌표를 사용합니다. 단일 GPS 오차가 크거나 Timeline 위치와 5km 이상 어긋나면 정확한 장소를 확정하지 않습니다. FLIGHT와 안정되지 않은 FAST_GROUND/FERRY, 빠른 ROAD/URBAN_TRANSIT/UNKNOWN은 주변 POI 대신 이동 중 라벨을 우선합니다. 원시 좌표는 UI에 노출하지 않습니다.
+- 기본 위치 라벨은 이미 로드된 타일에서 도시/구 수준까지만 얻습니다. 로컬 전용인 정확한 장소 온라인 확인은 planner가 아닌 live 설정이며 경로 다시 만들기 dirty-state에 포함하지 않습니다. GPS가 신뢰 가능한 사진만 사용하고, 10분/80m의 안정된 연속 사진 cluster는 중앙값 좌표를 사용합니다. 단일 GPS 오차가 크거나 Timeline 위치와 5km 이상 어긋나면 정확한 장소를 확정하지 않습니다. FLIGHT와 안정되지 않은 FAST_GROUND/FERRY, 빠른 ROAD/URBAN_TRANSIT/UNKNOWN은 주변 POI 대신 이동 중 라벨을 우선합니다. 원시 좌표는 UI에 노출하지 않습니다.
 
 ## Media and local API
 
@@ -59,7 +64,7 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 
 직접 선택한 동일 File[]는 WeakMap으로 분석을 재사용합니다. 로컬 manifest는 메모리 캐시와 `.cache/media-metadata.json`을 사용합니다. 장소 판정 결과는 `.cache/photo-places.json`에 저장합니다. 일시적인 Range 읽기 실패를 영구적으로 분석 완료 처리하지 않습니다. 메타데이터 캐시 저장은 500개씩 제한하고 타임아웃을 둡니다. 서버 파일 ID는 상대 경로·크기·mtime fingerprint이므로 파일 추가로 다른 사진을 가리키지 않습니다.
 
-정확한 장소 공급자는 코드에 공개 서비스를 하드코딩하지 않습니다. `TRAVEL_PLACE_REVERSE_URL`로 사용자가 선택한 Nominatim 호환 reverse endpoint를 설정해야 `/api/photo-place-status`가 available이 됩니다. 공개 OSMF Nominatim은 개인 사진 좌표 때문에 기본 차단하며, 해당 호스트를 명시한 경우에도 `TRAVEL_ALLOW_PUBLIC_NOMINATIM=1`이 추가로 필요합니다. 서버는 공급자 요구에 맞춰 `TRAVEL_PLACE_USER_AGENT`, `TRAVEL_PLACE_MIN_INTERVAL_MS`, `TRAVEL_PLACE_PROVIDER_LABEL`을 지원하고 동일 좌표 결과를 영구 로컬 캐시합니다. 공급자 약관이 결과 저장을 허용하는지 사용자가 확인해야 합니다.
+웹에서는 온라인 장소 조회를 제공하지 않습니다. 로컬의 정확한 장소 공급자는 코드에 공개 서비스를 하드코딩하지 않습니다. `TRAVEL_PLACE_REVERSE_URL`로 사용자가 선택한 Nominatim 호환 reverse endpoint를 설정해야 `/api/photo-place-status`가 available이 됩니다. 공개 OSMF Nominatim은 개인 사진 좌표 때문에 기본 차단하며, 해당 호스트를 명시한 경우에도 `TRAVEL_ALLOW_PUBLIC_NOMINATIM=1`이 추가로 필요합니다. 서버는 공급자 요구에 맞춰 `TRAVEL_PLACE_USER_AGENT`, `TRAVEL_PLACE_MIN_INTERVAL_MS`, `TRAVEL_PLACE_PROVIDER_LABEL`을 지원하고 동일 좌표 결과를 영구 로컬 캐시합니다. 공급자 약관이 결과 저장을 허용하는지 사용자가 확인해야 합니다.
 
 JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니다. WebM의 내장 촬영 정보는 분석하지 않습니다. preload는 현재 주변의 제한된 창만 소유하며 object URL을 해제합니다. 준비 중인 장면으로 즉시 전환해 빈 화면을 만들지 않습니다. 이전 장면 제거 타이머는 HUD 텍스트 갱신으로 취소되지 않아야 합니다.
 
@@ -72,7 +77,7 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 
 ## Validation
 
-사용자가 지정한 범위가 우선입니다. 수정 후 App 핵심 검사와 lint/build를 확인하고, 배포 화면에서 초기 지도의 실제 렌더링을 확인했습니다. 390px 모바일 viewport의 가로 넘침도 확인했으며 실기기 검증과는 구별합니다. [v3 릴리스 기록](archive/V3_RELEASE_NOTES.md)은 보존 버전의 기록으로 유지합니다. main의 기능은 README·사용 안내에, 개발·검증 정보는 DEVELOPMENT.md에 정리합니다. 브라우저·Windows·접근성 실기기 검증 없이 완벽 또는 무결함이라고 표현하지 않습니다.
+사용자가 지정한 범위가 우선입니다. 타입·lint·단위·로컬 런타임과 위험에 맞는 브라우저 검사를 수행하며, 웹 공개는 같은 커밋의 세 CI job 성공이 필요합니다. 웹 E2E는 실제 `/Travel-Visualizer/` 경로와 웹 빌드를 사용합니다. 현재 명령과 범위는 [DEVELOPMENT.md](DEVELOPMENT.md)를 기준으로 하며 테스트 수를 이 문서에 중복 기록하지 않습니다. 브라우저 자동 검사와 Windows·Android·iOS 실기기 검증을 구분합니다. [v3 릴리스 기록](archive/V3_RELEASE_NOTES.md)은 보존 버전의 기록으로 유지합니다.
 
 ## 이동 정보와 여정 요약
 
@@ -111,8 +116,23 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 - 안내 문구는 한국어 단어를 보존하며 화면 폭에 맞게 줄바꿈합니다. 행동 안내와 보충 설명은 문단으로 나누고, 짧은 버튼 이름·숫자와 단위는 조사까지 함께 묶습니다. 설정 설명 문자열의 `\n`은 문단 구분으로 렌더링합니다.
 - 21st.dev의 [settings](https://21st.dev/@ln-dev7/components/settings)와 [upload](https://21st.dev/@ephraimduncan/components/upload-1) 공개 미리보기를 참고했습니다. 제목·설명 계층과 파일 선택 정보 배치를 직접 구현했으며 외부 컴포넌트 코드나 의존성을 가져오지 않았습니다.
 
-## 소개 자산과 저장소 구성
+## 공개 자산과 저장소 구성
 
-공개용 실제 화면·영상은 `docs/assets/`에만 두고 `dist/`에 포함하지 않습니다. 촬영 조건과 허용 범위는 [MEDIA.md](MEDIA.md)를 따릅니다. 원본 타임라인·사진·촬영 프레임·캐시는 공개 자산과 구분합니다.
+웹앱과 README에 사진·타임라인 샘플이나 미리보기를 넣지 않습니다. 기존 `docs/assets/`와 [MEDIA.md](MEDIA.md)는 과거 촬영 기록으로 보존하며 `dist-web/`에 포함하지 않습니다. 개인 원본·촬영 프레임·캐시를 공개 자산에 복사하지 않습니다. 웹 빌드에는 허용된 앱 자산만 넣고 `scripts/check-web-build.mjs`를 통과해야 합니다.
 
-`config/vite.config.ts`는 저장소 루트를 명시하며 Vitest도 같은 설정을 사용합니다. `config/playwright.config.ts`는 루트의 `e2e/`와 5518번 테스트 서버를 사용합니다. 최상위 `tsconfig.json`·`eslint.config.js`는 편집기 자동 탐색용으로 유지합니다. 빌드 fingerprint는 `config/` 변경도 포함합니다.
+`config/vite.config.ts`는 저장소 루트를 명시하며 Vitest도 같은 설정을 사용합니다. 로컬 Playwright는 `config/playwright.config.ts`와 5518번 서버, 웹 Playwright는 `config/playwright.web.config.ts`와 5521번 하위 경로를 사용합니다. 최상위 `tsconfig.json`·`eslint.config.js`는 편집기 자동 탐색용으로 유지합니다. 빌드 fingerprint는 `config/` 변경도 포함합니다.
+
+## 프로젝트 저장과 안전한 교체
+
+`src/projects/travel-project.ts`는 v1 프로젝트의 엄격한 검증·원본 식별·사진 재연결을 담당합니다. `ProjectDialog`는 웹과 로컬에서 프로젝트 JSON 다운로드와 원본 재선택을 제공합니다. 새로고침 후 선택한 원본을 자동 복원하지 않습니다. 원본 본문·좌표·절대 경로는 프로젝트에 넣지 않습니다. 타임라인은 SHA-256, 사진은 상대 이름·크기·수정 시각으로 식별하며 중복·누락은 전체 복원을 거부합니다. 온라인 장소 확인은 가져온 설정으로 활성화하지 않습니다.
+
+일반 타임라인 가져오기와 프로젝트 복원은 후보 Worker에서 scan/plan을 끝낸 뒤 활성 Worker와 상태를 함께 교체합니다. 실패·취소 시 기존 Worker·계획·사진·재생 위치를 보존합니다. 복원 사진은 새 계획에 붙인 상태이므로 일반 사진 자동 연결 effect가 다시 덮어쓰지 않게 합니다. 두 모드별 cursor를 새 PlayerController에 복원하고 일시정지 상태로 시작합니다.
+
+
+## 촬영 해석·사진 탐색·영상 사본
+
+`capture-time.ts`는 offset 없는 wall clock만 지정 IANA 또는 고정 offset으로 변환합니다. 파일 수정 시각·숫자 epoch·명시 offset은 그대로 둡니다. DST overlap은 앞선 instant, gap은 null이며 다음 metadata fallback이 처리합니다. 클라이언트 파일 집합 캐시와 로컬 metadata cache는 해석 시간대를 구분해야 합니다. v1 프로젝트의 새 preferences.captureTimeZone이 없으면 기존 root.captureTimeZone을 사용합니다. 새로운 저장 파일은 DEVICE 대신 해석한 실제 zone을 기록합니다.
+
+사진 목록 검색·날짜·포함 상태는 목록 조회만 바꾸며 제외 ID를 삭제하지 않습니다. 장면 이동은 모든 사진 모드의 PlayerController.seekToStop을 통해 실제 stop schedule의 시각으로 이동합니다. 날짜 필터는 기존 한국 시간 표시와 일치합니다.
+
+`server/video-conversion.mjs`는 기본 폴더 영상 한 개만 로컬 ffmpeg/ffprobe로 처리합니다. API는 동일 출처 검사를 거치며 임의 경로를 받지 않습니다. unique mkdtemp 출력, 원본 stat 재검사, cancel signal, 미완성 폴더 정리, H.264/길이 검증과 metadata sidecar를 유지합니다. HDR tone mapping과 일괄 변환은 지원하지 않습니다. 브라우저 수동 파일을 서버에 업로드하지 않습니다.

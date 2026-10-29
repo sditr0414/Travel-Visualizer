@@ -1,3 +1,4 @@
+import { parseCaptureDateText } from './capture-time';
 import { parseFilenameTimestamp, readEmbeddedMetadata } from './media-metadata';
 import type { MediaImportProgress, MediaMetadataRecord, MediaMetadataSource } from '../types';
 
@@ -6,34 +7,41 @@ const SIDECAR_PATTERN = /(?:\.supplemental-metadata)?\.json$/i;
 
 export async function analyzeMediaFiles(
   files: File[],
-  onProgress?: (progress: MediaImportProgress) => void
+  onProgress?: (progress: MediaImportProgress) => void,
+  signal?: AbortSignal,
+  timeZone = 'DEVICE'
 ): Promise<MediaMetadataRecord[]> {
+  signal?.throwIfAborted();
   const mediaCount = files.filter(isMediaFile).length;
   onProgress?.({ phase: 'PREPARE', processed: files.length, total: files.length, message: `${mediaCount.toLocaleString()}개의 사진·영상을 확인했습니다.` });
   if (!mediaCount) return [];
 
   if (typeof Worker === 'function') {
     try {
-      return await analyzeInWorker(files, onProgress);
+      return await analyzeInWorker(files, onProgress, signal, timeZone);
     } catch {
+      signal?.throwIfAborted();
       // File/Worker support varies by browser. The same bounded parser is used as a fallback.
     }
   }
-  return analyzeMediaFilesInline(files, onProgress);
+  return analyzeMediaFilesInline(files, onProgress, signal, timeZone);
 }
 
 export async function analyzeMediaFilesInline(
   files: File[],
-  onProgress?: (progress: MediaImportProgress) => void
+  onProgress?: (progress: MediaImportProgress) => void,
+  signal?: AbortSignal,
+  timeZone = 'DEVICE'
 ): Promise<MediaMetadataRecord[]> {
   const mediaEntries = files.map((file, fileIndex) => ({ file, fileIndex })).filter(entry => isMediaFile(entry.file));
   const sidecars = files.filter(file => SIDECAR_PATTERN.test(file.name) && file.size <= 3_000_000);
   const records: MediaMetadataRecord[] = [];
 
   for (let index = 0; index < mediaEntries.length; index += 1) {
+    signal?.throwIfAborted();
     const { file, fileIndex } = mediaEntries[index];
-    const embedded = await readEmbeddedMetadata(file);
-    const filenameTime = parseFilenameTimestamp(file.name);
+    const embedded = await readEmbeddedMetadata(file, timeZone);
+    const filenameTime = parseFilenameTimestamp(file.name, timeZone);
     const source: MediaMetadataSource = embedded?.takenMs != null ? 'embedded-exif' : filenameTime != null ? 'filename-time' : 'file-time';
     records.push({
       fileIndex,
@@ -53,9 +61,10 @@ export async function analyzeMediaFilesInline(
   const recordByFile = new Map(records.map(record => [files[record.fileIndex], record]));
   const mediaIndex = buildMediaIndex(mediaEntries.map(entry => entry.file));
   for (let index = 0; index < sidecars.length; index += 1) {
+    signal?.throwIfAborted();
     const sidecar = sidecars[index];
     try {
-      const parsed = parseTakeoutSidecar(JSON.parse(await sidecar.text()), sidecar.name);
+      const parsed = parseTakeoutSidecar(JSON.parse(await sidecar.text()), sidecar.name, timeZone);
       if (parsed) {
         const mediaFile = findMatchingMedia(sidecar, parsed.title, mediaIndex);
         const record = mediaFile ? recordByFile.get(mediaFile) : null;
@@ -69,16 +78,17 @@ export async function analyzeMediaFilesInline(
       await yieldToBrowser();
     }
   }
+  signal?.throwIfAborted();
   return records.filter(record => Number.isFinite(record.takenMs) && record.takenMs > Date.UTC(2000, 0, 1));
 }
 
-export function parseTakeoutSidecar(data: unknown, sidecarName = ''): { title: string; takenMs: number; lat: number | null; lng: number | null; gpsAccuracyM: number | null } | null {
+export function parseTakeoutSidecar(data: unknown, sidecarName = '', timeZone = 'DEVICE'): { title: string; takenMs: number; lat: number | null; lng: number | null; gpsAccuracyM: number | null } | null {
   if (!data || typeof data !== 'object') return null;
   const value = data as Record<string, unknown>;
   const photoTakenTime = value.photoTakenTime as Record<string, unknown> | undefined;
   const creationTime = value.creationTime as Record<string, unknown> | string | undefined;
   const timestamp = photoTakenTime?.timestamp ?? (typeof creationTime === 'object' ? creationTime?.timestamp : creationTime);
-  const takenMs = parseTimestamp(timestamp);
+  const takenMs = parseTimestamp(timestamp, timeZone);
   if (!Number.isFinite(takenMs)) return null;
   const gps = validGps(value.geoDataExif) ?? validGps(value.geoData);
   return {
@@ -104,10 +114,13 @@ export function mergeSidecarMetadata(
   };
 }
 
-function analyzeInWorker(files: File[], onProgress?: (progress: MediaImportProgress) => void): Promise<MediaMetadataRecord[]> {
+function analyzeInWorker(files: File[], onProgress?: (progress: MediaImportProgress) => void, signal?: AbortSignal, timeZone = 'DEVICE'): Promise<MediaMetadataRecord[]> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./media.worker.ts', import.meta.url), { type: 'module' });
-    const cleanup = () => worker.terminate();
+    const onAbort = () => { cleanup(); reject(signal?.reason ?? new DOMException('작업을 취소했습니다.', 'AbortError')); };
+    const cleanup = () => { worker.terminate(); signal?.removeEventListener('abort', onAbort); };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) { onAbort(); return; }
     worker.addEventListener('message', event => {
       const message = event.data as { type: 'PROGRESS'; progress: MediaImportProgress } | { type: 'RESULT'; records: MediaMetadataRecord[] } | { type: 'ERROR'; message: string };
       if (message.type === 'PROGRESS') return onProgress?.(message.progress);
@@ -116,7 +129,7 @@ function analyzeInWorker(files: File[], onProgress?: (progress: MediaImportProgr
       else resolve(message.records);
     });
     worker.addEventListener('error', event => { cleanup(); reject(event.error || new Error('사진 분석을 시작하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.')); }, { once: true });
-    worker.postMessage({ files });
+    worker.postMessage({ files, timeZone });
   });
 }
 
@@ -158,16 +171,16 @@ function validGps(value: unknown): { lat: number; lng: number } | null {
   return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (Math.abs(lat) > 1e-7 || Math.abs(lng) > 1e-7) ? { lat, lng } : null;
 }
 
-function parseTimestamp(value: unknown): number {
+function parseTimestamp(value: unknown, timeZone: string): number {
   if (value == null || value === '') return NaN;
   if (/^\d+(?:\.\d+)?$/.test(String(value))) {
     const numeric = Number(value);
     return numeric > 10_000_000_000 ? numeric : numeric * 1000;
   }
-  return Date.parse(String(value));
+  return parseCaptureDateText(String(value), timeZone) ?? NaN;
 }
 
-function isMediaFile(file: File): boolean { return /^(image|video)\//i.test(file.type) || MEDIA_PATTERN.test(file.name); }
+export function isMediaFile(file: File): boolean { return /^(image|video)\//i.test(file.type) || MEDIA_PATTERN.test(file.name); }
 function stripSidecarName(name: string): string { return name.replace(SIDECAR_PATTERN, ''); }
 function normalizePath(value: string): string { return value.replace(/\\/g, '/').replace(/^\.\//, ''); }
 function cleanTitle(name: string): string { return name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || '여행 미디어'; }

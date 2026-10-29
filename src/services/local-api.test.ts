@@ -1,6 +1,14 @@
 import { canUseLocalApi, isJsonResponse } from './local-api';
 
 describe('local server API boundary', () => {
+  it('never probes local files from a Pages build, including a loopback preview', () => {
+    vi.stubEnv('MODE', 'pages');
+    try {
+      expect(canUseLocalApi('localhost')).toBe(false);
+      expect(canUseLocalApi('127.0.0.1')).toBe(false);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('only probes the loopback hostnames supported by the local server', () => {
     expect(canUseLocalApi('localhost')).toBe(true);
     expect(canUseLocalApi('127.0.0.1')).toBe(true);

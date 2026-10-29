@@ -190,6 +190,14 @@ export class PlayerController {
     this.renderForTime(true);
   }
 
+  seekToStop(id: string): boolean {
+    const stop = this.stopById.get(id);
+    if (!stop || stop.durationSec <= 0) return false;
+    this.pause();
+    this.seek(stop.journeyStartSec + Math.min(0.01, stop.durationSec / 2));
+    return true;
+  }
+
   reset(): void {
     this.pause();
     this.cancelTransition();

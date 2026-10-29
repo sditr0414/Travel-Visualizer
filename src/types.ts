@@ -187,6 +187,7 @@ export interface JourneyMedia {
   id: string;
   file: File | null;
   sourceUrl?: string;
+  sourceName?: string;
   kind: 'image' | 'video';
   title: string;
   takenMs: number;
@@ -217,6 +218,8 @@ export interface LocalMediaManifestItem {
     gpsAccuracyM?: number | null;
     source: MediaMetadataSource;
     embeddedScanned?: boolean;
+    captureTimeZone?: string;
+    captureDateText?: string;
   } | null;
 }
 

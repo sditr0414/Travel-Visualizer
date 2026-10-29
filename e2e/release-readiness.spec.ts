@@ -40,6 +40,7 @@ test('public static hosting starts cleanly without probing private local APIs', 
   });
   await expect(page.getByRole('button', { name: '재생', exact: true })).toBeEnabled();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.locator('.settings-panel summary').click();
   await page.getByLabel('재생 위치').press('ArrowRight');

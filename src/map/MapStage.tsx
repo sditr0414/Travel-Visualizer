@@ -11,7 +11,7 @@ import { ONLINE_STYLE_URL } from './map-style';
 
 interface MapStageProps {
   onReady: (map: Map) => void;
-  onError: (message: string | null) => void;
+  onError: (message: string | null, unavailable?: boolean) => void;
 }
 
 export function MapStage({ onReady, onError }: MapStageProps) {
@@ -30,6 +30,11 @@ export function MapStage({ onReady, onError }: MapStageProps) {
     const initTimeout = window.setTimeout(() => {
       if (cancelled || !containerRef.current) return;
       try {
+        // MapLibre can return a partially initialized Map instead of throwing
+        // when WebGL2 is unavailable. Detect that before creating its listeners.
+        const probe = document.createElement('canvas').getContext('webgl2', { alpha: true, depth: true, stencil: true, premultipliedAlpha: true });
+        if (!probe) throw new Error('WebGL2 is unavailable');
+        probe.getExtension('WEBGL_lose_context')?.loseContext();
         map = new maplibregl.Map({
           container: containerRef.current,
           style: ONLINE_STYLE_URL,
@@ -49,7 +54,7 @@ export function MapStage({ onReady, onError }: MapStageProps) {
 
       } catch {
         setLoading(false);
-        onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.');
+        onError('이 브라우저에서 지도를 시작하지 못했습니다. 최신 브라우저와 하드웨어 가속 설정을 확인해 주세요.', true);
         return;
       }
       unbindWarmup = bindMapTileWarmupInteractions(map);
@@ -66,6 +71,14 @@ export function MapStage({ onReady, onError }: MapStageProps) {
         collapseAttribution(map);
         onReady(map);
       };
+      const showLocalBackground = () => {
+        if (!map || ready || cancelled) return;
+        reportedError = true;
+        window.clearTimeout(fallbackTimeout);
+        setLoading(false);
+        onError('배경 지도에 연결하지 못해 경로와 사진만 표시합니다. 인터넷 연결 후 지도 다시 연결을 눌러 주세요.');
+        map.setStyle({ version: 8, sources: {}, layers: [{ id: 'local-background', type: 'background', paint: { 'background-color': '#edeae2' } }] });
+      };
       map.once('load', () => { window.clearTimeout(fallbackTimeout); setLoading(false); if (!reportedError) onError(null); });
       map.once('style.load', markReady);
       map.on('error', event => {
@@ -73,11 +86,13 @@ export function MapStage({ onReady, onError }: MapStageProps) {
         if (message && !reportedError) {
           reportedError = true;
           console.warn('[Travel Camera 지도]', message);
+          if (!ready) { showLocalBackground(); return; }
           onError('배경 지도 요청에 실패했습니다. 인터넷 연결을 확인한 뒤 지도 다시 연결을 눌러 주세요.');
         }
       });
       fallbackTimeout = window.setTimeout(() => {
         if (!map || map.loaded()) return;
+        if (!ready) { showLocalBackground(); return; }
         onError('지도 로딩이 지연되고 있습니다. 계속 불러오는 중이며, 연결 상태를 확인하거나 다시 연결할 수 있습니다.');
       }, 12_000);
     }, 0);

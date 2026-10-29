@@ -163,7 +163,7 @@ function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedS
       <span><ImagePlus size={24} /></span>
       <strong>{onOpenLibrary ? '감상할 사진을 선택해 주세요' : '여행에 사진을 더해보세요'}</strong>
       <p>{emptyDescription ?? '사진과 영상을 선택하면 촬영 시각에 맞춰 여행 경로에 연결합니다.'}</p>
-      {onOpenLibrary ? <button type="button" className="media-import-action" onClick={onOpenLibrary}>사진 목록 열기</button> : <label className="media-import-action">사진·영상 선택<input type="file" accept="image/*,video/*,.heic,.heif" multiple onChange={event => event.currentTarget.files && onFiles(event.currentTarget.files)} /></label>}
+      {onOpenLibrary ? <button type="button" className="media-import-action" onClick={onOpenLibrary}>사진 목록 열기</button> : <label className="media-import-action">사진·영상 선택<input type="file" accept="image/*,video/*,.heic,.heif" multiple onChange={event => { if (event.currentTarget.files) onFiles(event.currentTarget.files); event.currentTarget.value = ''; }} /></label>}
     </div>
   );
 }
@@ -232,10 +232,17 @@ function MediaAsset({ item, url, videoMode, videoMuted, playing, elapsedSec }: {
     };
   }, [item.kind, url, videoMode, videoMuted, playRequested, elapsedSec, blocked]);
 
-  if (failed) return <div className="media-load-error" role="status"><ImageOff size={24} /><strong>이 파일을 표시할 수 없어요</strong><span>지원되지 않는 형식이거나 파일을 읽을 수 없습니다. JPEG·PNG 또는 브라우저에서 재생되는 영상으로 바꿔 주세요.</span></div>;
+  if (failed) return <div className="media-load-error" role="status"><ImageOff size={24} /><strong>이 파일을 표시할 수 없어요</strong><span>지원되지 않는 형식이거나 파일을 읽을 수 없습니다. 사진은 JPEG·PNG, 영상은 H.264 MP4 등 브라우저에서 재생되는 형식으로 변환한 사본을 선택해 주세요. HEVC 영상은 브라우저에 따라 소리만 나오거나 화면이 없을 수 있습니다.</span></div>;
   return item.kind === 'image'
     ? <img src={url} alt={item.title} decoding="async" onError={() => setFailed(true)} />
-    : <><video ref={videoRef} src={url} aria-label={item.title} muted={videoMuted} playsInline preload="auto" onError={() => setFailed(true)} />
+    : <><video ref={videoRef} src={url} aria-label={item.title} muted={videoMuted} playsInline preload="auto" onLoadedData={event => {
+        // Some browsers decode the audio track of HEVC MP4s without reporting a
+        // media error, even though no video frame can be displayed.
+        if (!event.currentTarget.videoWidth || !event.currentTarget.videoHeight) {
+          event.currentTarget.pause();
+          setFailed(true);
+        }
+      }} onError={() => setFailed(true)} />
       {blocked && playRequested && <button className="video-play-prompt" type="button" onClick={() => {
         const video = videoRef.current;
         if (video) void video.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
@@ -363,7 +370,7 @@ function preloadMediaAsset(
   const video = document.createElement('video');
   const readyState = 2;
   const readyEvent = 'loadeddata';
-  const ready = () => settle('ready');
+  const ready = () => settle(video.videoWidth > 0 && video.videoHeight > 0 ? 'ready' : 'error');
   const failed = () => settle('error');
   video.muted = true;
   video.playsInline = true;

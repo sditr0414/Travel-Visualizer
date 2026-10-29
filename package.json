@@ -10,6 +10,9 @@
     "launch": "node scripts/launch-local.mjs",
     "launch:no-update": "node scripts/launch-local.mjs --no-update",
     "build": "tsc -b && vite build --config config/vite.config.ts",
+    "build:web": "tsc -b && vite build --config config/vite.config.ts --mode pages && node scripts/check-web-build.mjs",
+    "preview:web": "vite preview --config config/vite.config.ts --mode pages --host 127.0.0.1 --port 5521 --strictPort",
+    "test:web": "playwright test --config config/playwright.web.config.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint src e2e server scripts config --max-warnings=0",
     "test": "vitest run --config config/vite.config.ts --coverage",
@@ -39,7 +42,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "^6.1.1",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "eslint": "^10.9.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.5",
@@ -47,7 +50,7 @@
     "jsdom": "26.1.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.68.0",
-    "vite": "8.2.2",
-    "vitest": "4.1.11"
+    "vite": "8.2.4",
+    "vitest": "4.1.12"
   }
 }

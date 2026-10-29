@@ -116,6 +116,7 @@ test('a real decoded short video pauses, seeks backward and holds its final fram
   });
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
   await page.locator('.settings-panel summary').click();
+  await page.getByRole('button', { name: '사진·영상 설정', exact: true }).click();
   await page.getByLabel('날짜 변경 표시', { exact: true }).uncheck();
   await page.getByRole('combobox', { name: '영상 재생', exact: true }).selectOption('PLAY');
   await setRange(page, '.settings-content input[type="range"][max="15"]', 5);

@@ -17,6 +17,8 @@ export interface AppState {
 
 export type AppAction =
   | { type: 'LOAD_START'; source: TimelineSource }
+  | { type: 'IMPORT_CANCEL' }
+  | { type: 'IMPORT_SUCCESS'; source: TimelineSource; scan: TimelineScanResult; plan: PlaybackPlan; paused?: boolean }
   | { type: 'PROGRESS'; progress: number; message: string }
   | { type: 'SCAN_SUCCESS'; scan: TimelineScanResult }
   | { type: 'PLAN_START' }
@@ -41,7 +43,11 @@ export const initialAppState: AppState = {
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'LOAD_START':
-      return { ...state, phase: 'loading', source: action.source, scan: null, plan: null, progress: 0, error: null, statusMessage: '타임라인을 읽고 있습니다.' };
+      return { ...state, phase: 'loading', source: state.source ?? action.source, progress: 0, error: null, statusMessage: '타임라인을 읽고 있습니다.' };
+    case 'IMPORT_CANCEL':
+      return { ...state, phase: state.plan ? 'paused' : state.scan ? 'ready' : 'idle', error: null, statusMessage: '가져오기를 취소했습니다.' };
+    case 'IMPORT_SUCCESS':
+      return { ...state, phase: action.paused ? 'paused' : 'ready', source: action.source, scan: action.scan, plan: action.plan, progress: 1, error: null, statusMessage: '여행을 준비했습니다.' };
     case 'PROGRESS':
       return { ...state, progress: action.progress, statusMessage: action.message };
     case 'SCAN_SUCCESS':
@@ -53,7 +59,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'PLAY':
       return { ...state, phase: 'playing', statusMessage: '여행 재생 중' };
     case 'PAUSE':
-      return { ...state, phase: 'paused', statusMessage: '일시정지' };
+      return { ...state, phase: 'paused', error: null, statusMessage: '일시정지' };
     case 'RESET':
       return { ...state, phase: 'ready', statusMessage: '처음부터 재생할 수 있습니다.' };
     case 'COMPLETE':

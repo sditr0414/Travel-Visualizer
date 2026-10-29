@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { MediaJourneyPane } from './MediaJourneyPane';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
@@ -39,6 +39,35 @@ const baseProps = {
 };
 
 describe('MediaJourneyPane', () => {
+  it('waits for loaded data before rejecting a video whose metadata is still loading', () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    try {
+      const videoMedia = { ...media, kind: 'video' as const };
+      const { container } = render(<MediaJourneyPane media={[videoMedia]} activeId={videoMedia.id} {...baseProps} />);
+      const video = container.querySelector('video')!;
+      fireEvent.loadedMetadata(video);
+      expect(container.querySelector('.media-load-error')).toBeNull();
+      Object.defineProperties(video, { videoWidth: { value: 1280 }, videoHeight: { value: 720 }, readyState: { value: 2 } });
+      fireEvent.loadedData(video);
+      expect(container.querySelector('.media-load-error')).toBeNull();
+      expect(container.querySelector('video')).toBe(video);
+    } finally { pause.mockRestore(); }
+  });
+
+  it('explains audio-only decoding instead of showing a blank video scene', () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    try {
+      const videoMedia = { ...media, kind: 'video' as const };
+      const { container } = render(<MediaJourneyPane media={[videoMedia]} activeId={videoMedia.id} {...baseProps} />);
+      const video = container.querySelector('video')!;
+      Object.defineProperty(video, 'readyState', { value: 4 });
+      fireEvent.loadedData(video);
+      expect(container.querySelector('.media-load-error')).toHaveTextContent('H.264 MP4');
+      expect(container.querySelector('video')).toBeNull();
+      expect(pause).toHaveBeenCalled();
+    } finally { pause.mockRestore(); }
+  });
+
   it('shows coarse place before a Korean-unit timestamp without a place icon', () => {
     const { container } = render(<MediaJourneyPane media={[media]} activeId={media.id} {...baseProps} />);
 

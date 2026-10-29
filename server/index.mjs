@@ -1,3 +1,4 @@
+import { createVideoConverter } from './video-conversion.mjs';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -22,6 +23,8 @@ const localMediaRoot = configuredPreferredPath('TRAVEL_MEDIA_DIR', [join(root, '
 const mediaMetadataCachePath = configuredPath('TRAVEL_METADATA_CACHE', join(root, '.cache', 'media-metadata.json'));
 const photoPlaceCachePath = configuredPath('TRAVEL_PLACE_CACHE', join(root, '.cache', 'photo-places.json'));
 const placeProvider = resolvePlaceProvider();
+const videoConverter = createVideoConverter(configuredPath('TRAVEL_COMPATIBLE_DIR', join(root, '.cache', 'compatible-media')));
+for (const signal of ['SIGINT','SIGTERM']) process.once(signal, async () => { await videoConverter.stop(); await vite?.close(); server.closeAllConnections(); server.close(); });
 const MEDIA_CACHE_VERSION = 4;
 const PLACE_CACHE_VERSION = 1;
 let localMediaCache = null;
@@ -54,6 +57,10 @@ async function handleRequest(request, response) {
   setSecurityHeaders(response);
   if (!isAllowedHost(request.headers.host)) return text(response, 403, 'Loopback access only');
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+
+  if (url.pathname.startsWith('/api/') && !isSameOriginRequest(request)) return text(response, 403, 'Same-origin request required');
+
+  if (url.pathname.startsWith('/api/video-copy')) return serveVideoCopy(request, response, url);
 
   if (url.pathname === '/api/photo-place-status') {
     if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
@@ -536,16 +543,18 @@ function validMediaMetadata(value) {
   if ((lat == null) !== (lng == null)) return null;
   if (lat != null && (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return null;
   if (gpsAccuracyM != null && (!Number.isFinite(gpsAccuracyM) || gpsAccuracyM < 0 || gpsAccuracyM > 100_000)) return null;
-  return { takenMs, lat, lng, gpsAccuracyM, source: value.source, embeddedScanned: value?.embeddedScanned === true };
+  return { takenMs, lat, lng, gpsAccuracyM, source: value.source, embeddedScanned: value?.embeddedScanned === true, captureTimeZone: typeof value?.captureTimeZone === 'string' && value.captureTimeZone.length <= 100 ? value.captureTimeZone : undefined, captureDateText: typeof value?.captureDateText === 'string' && value.captureDateText.length <= 60 ? value.captureDateText : undefined };
 }
 
 function parseTakeoutSidecar(value) {
   if (!value || typeof value !== 'object') return null;
   const timestamp = value.photoTakenTime?.timestamp ?? value.creationTime?.timestamp ?? value.creationTime;
   const numeric = /^\d+(?:\.\d+)?$/.test(String(timestamp ?? '')) ? Number(timestamp) : NaN;
-  const takenMs = Number.isFinite(numeric) ? (numeric > 10_000_000_000 ? numeric : numeric * 1000) : Date.parse(String(timestamp ?? ''));
+  const captureDateText = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(String(timestamp ?? '')) ? String(timestamp) : undefined;
+  // Unzoned text is interpreted by the browser's selected capture zone, never the server timezone.
+  const takenMs = Number.isFinite(numeric) ? (numeric > 10_000_000_000 ? numeric : numeric * 1000) : Date.parse(captureDateText ? captureDateText + 'Z' : String(timestamp ?? ''));
   const gps = validSidecarGps(value.geoDataExif) ?? validSidecarGps(value.geoData);
-  const metadata = validMediaMetadata({ takenMs, lat: gps?.lat ?? null, lng: gps?.lng ?? null, gpsAccuracyM: null, source: 'takeout-sidecar' });
+  const metadata = validMediaMetadata({ takenMs, lat: gps?.lat ?? null, lng: gps?.lng ?? null, gpsAccuracyM: null, source: 'takeout-sidecar', captureDateText });
   return metadata ? { title: String(value.title || ''), metadata } : null;
 }
 
@@ -645,7 +654,7 @@ function isSameOriginRequest(request) {
   const origin = request.headers.origin;
   if (!origin) return !request.headers['sec-fetch-site'] || request.headers['sec-fetch-site'] === 'same-origin';
   try {
-    return new URL(origin).host === request.headers.host && isAllowedHost(request.headers.host);
+    return new URL(origin).origin === `http://${request.headers.host}` && isAllowedHost(request.headers.host);
   } catch {
     return false;
   }
@@ -700,4 +709,27 @@ function pipeFile(path, response, options) {
   stream.on('error', () => response.destroy());
   response.on('close', () => stream.destroy());
   stream.pipe(response);
+}
+
+async function serveVideoCopy(request, response, url) {
+  if (!localDataEnabled) return json(response, 404, { available: false });
+  const parts = url.pathname.split('/').filter(Boolean);
+  if (parts.length === 2 && request.method === 'GET') return json(response, 200, { available: await videoConverter.available() });
+  if (parts.length === 2 && request.method === 'POST') {
+    try {
+      const body = await readJsonBody(request, 4096);
+      const item = buildLocalMediaCache()?.byId.get(String(body.id ?? ''));
+      return json(response, 202, videoConverter.start(item, { takenMs: body.takenMs, lat: body.lat, lng: body.lng }, body.preview !== false));
+    } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : '사본을 시작하지 못했습니다.' }); }
+  }
+  const id = parts[2];
+  if (parts.length === 3 && request.method === 'GET') return json(response, videoConverter.get(id) ? 200 : 404, videoConverter.get(id) ?? { error: '작업을 찾지 못했습니다.' });
+  if (parts.length === 3 && request.method === 'DELETE') return json(response, 200, videoConverter.cancel(id));
+  if (parts.length === 4 && ['video','sidecar'].includes(parts[3]) && ['GET','HEAD'].includes(request.method)) {
+    const artifact = videoConverter.artifact(id, parts[3]);
+    if (!artifact) return text(response, 404, 'Copy unavailable');
+    if (url.searchParams.has('download')) response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(artifact.name)}`);
+    return serveRangeFile(request, response, artifact.path, parts[3] === 'video' ? 'video/mp4' : 'application/json', 'private, no-store');
+  }
+  return text(response, 405, 'Method not allowed');
 }

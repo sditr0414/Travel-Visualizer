@@ -1,9 +1,10 @@
+import { resolvedCaptureTimeZone } from './capture-time';
 import { haversineMeters } from '../geo.js';
 import { analyzeMediaFiles } from './media-analysis';
 export { parseFilenameTimestamp, readEmbeddedMetadata } from './media-metadata';
 import type { MediaMetadataRecord, JourneyMedia, MediaImportProgress, PhotoViewMode, PlaybackPlan, PlaybackSegment, TravelFrame } from '../types';
 
-const analyzedFileSets = new WeakMap<object, Promise<MediaMetadataRecord[]>>();
+const analyzedFileSets = new WeakMap<object, Map<string, Promise<MediaMetadataRecord[]>>>();
 
 export interface JourneyMediaLibrary {
   preview: JourneyMedia[];
@@ -13,16 +14,31 @@ export interface JourneyMediaLibrary {
 export async function loadJourneyMedia(
   files: FileList | File[],
   plan: PlaybackPlan,
-  onProgress?: (progress: MediaImportProgress) => void
+  onProgress?: (progress: MediaImportProgress) => void,
+  signal?: AbortSignal,
+  timeZone = 'DEVICE'
 ): Promise<JourneyMediaLibrary> {
+  signal?.throwIfAborted();
   const allFiles = Array.from(files);
-  let analysis = analyzedFileSets.get(files);
+  const zone = resolvedCaptureTimeZone(timeZone);
+  const zones = analyzedFileSets.get(files) ?? new Map<string, Promise<MediaMetadataRecord[]>>();
+  analyzedFileSets.set(files, zones);
+  let analysis = zones.get(zone);
   if (!analysis) {
-    analysis = analyzeMediaFiles(allFiles, onProgress);
-    analyzedFileSets.set(files, analysis);
-    void analysis.catch(() => analyzedFileSets.delete(files));
+    analysis = analyzeMediaFiles(allFiles, onProgress, signal, zone);
+    zones.set(zone, analysis);
+    const cachedAnalysis = analysis;
+    const evict = () => {
+      if (zones.get(zone) === cachedAnalysis) zones.delete(zone);
+    };
+    signal?.addEventListener('abort', evict, { once: true });
+    void analysis.then(() => signal?.removeEventListener('abort', evict), () => {
+      signal?.removeEventListener('abort', evict);
+      evict();
+    });
   }
   const records = await analysis;
+  signal?.throwIfAborted();
   onProgress?.({ phase: 'MATCH', processed: 0, total: records.length, message: '촬영 시각과 여행 경로를 맞추고 있습니다.' });
   const mapped = records.map(record => {
     const file = allFiles[record.fileIndex];
@@ -32,6 +48,7 @@ export async function loadJourneyMedia(
     return {
       id: `${file.name}-${file.size}-${file.lastModified}-${record.fileIndex}`,
       file,
+      sourceName: file.webkitRelativePath || file.name,
       kind: isVideo(file) ? 'video' as const : 'image' as const,
       title: record.title || cleanTitle(file.name),
       takenMs: record.takenMs,

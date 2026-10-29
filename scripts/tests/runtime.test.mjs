@@ -55,6 +55,14 @@ test('server readiness comes from its own listener and production headers match 
     }).on('error', reject);
   });
   assert.equal(denied, 403);
+  for (const path of ['/api/local-timeline', '/api/local-media-manifest', '/api/local-media/example', '/api/photo-place-status', '/api/video-copy']) {
+    for (const method of ['GET', 'HEAD']) {
+      for (const headers of [{ Origin: 'https://attacker.invalid' }, { 'Sec-Fetch-Site': 'cross-site' }, { Origin: `https://127.0.0.1:${port}` }]) {
+        assert.equal((await fetch(`http://127.0.0.1:${port}${path}`, { method, headers })).status, 403);
+      }
+    }
+  }
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/photo-place-status`, { headers: { Origin: `http://127.0.0.1:${port}` } })).status, 200);
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/local-timeline`)).status, 404);
   for (const retired of ['/api/map-status', '/api/map-glyphs/fonts/0-255.pbf', '/maps/world-z5.pmtiles']) {
     assert.equal((await fetch(`http://127.0.0.1:${port}${retired}`)).status, 404);

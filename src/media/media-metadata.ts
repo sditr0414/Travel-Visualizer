@@ -1,3 +1,4 @@
+import { captureTimestamp, parseCaptureDateText } from './capture-time';
 const JPEG_SCAN_BYTES = 256 * 1024;
 const QUICKTIME_SCAN_BYTES = 1024 * 1024;
 const QUICKTIME_EPOCH_MS = Date.UTC(1904, 0, 1);
@@ -9,24 +10,24 @@ export interface EmbeddedMetadata {
   gpsAccuracyM: number | null;
 }
 
-export function parseFilenameTimestamp(name: string): number | null {
+export function parseFilenameTimestamp(name: string, timeZone = 'DEVICE'): number | null {
   const text = String(name || '');
   let match = text.match(/((?:19|20)\d{2})(\d{2})(\d{2})[_-]?(\d{2})(\d{2})(\d{2})/)
     ?? text.match(/((?:19|20)\d{2})[-_.](\d{2})[-_.](\d{2})[ T_-](\d{2})[.:_-](\d{2})[.:_-](\d{2})/);
-  if (match) return localTimestamp(match.slice(1, 7).map(Number));
+  if (match) return captureTimestamp(match.slice(1, 7).map(Number), timeZone);
   match = text.match(/((?:19|20)\d{2})[-_.]?(\d{2})[-_.]?(\d{2})/);
-  return match ? localTimestamp([Number(match[1]), Number(match[2]), Number(match[3]), 12, 0, 0]) : null;
+  return match ? captureTimestamp([Number(match[1]), Number(match[2]), Number(match[3]), 12, 0, 0], timeZone) : null;
 }
 
-export async function readEmbeddedMetadata(file: File): Promise<EmbeddedMetadata | null> {
+export async function readEmbeddedMetadata(file: File, timeZone = 'DEVICE'): Promise<EmbeddedMetadata | null> {
   try {
     if (file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name)) {
       const buffer = await file.slice(0, Math.min(file.size, JPEG_SCAN_BYTES)).arrayBuffer();
-      return parseJpegExif(buffer);
+      return parseJpegExif(buffer, timeZone);
     }
     if (isQuickTimeVideo(file)) {
       const chunks = await readQuickTimeChunks(file);
-      return parseQuickTimeMetadataChunks(chunks);
+      return parseQuickTimeMetadataChunks(chunks, timeZone);
     }
     return null;
   } catch {
@@ -34,7 +35,7 @@ export async function readEmbeddedMetadata(file: File): Promise<EmbeddedMetadata
   }
 }
 
-export function parseQuickTimeMetadataChunks(chunks: ArrayBuffer[]): EmbeddedMetadata | null {
+export function parseQuickTimeMetadataChunks(chunks: ArrayBuffer[], timeZone = 'DEVICE'): EmbeddedMetadata | null {
   if (!chunks.length) return null;
   const texts = chunks.map(decodeMetadataText);
   const hasLocationKey = texts.some(text => /(?:com\.apple\.quicktime\.location\.ISO6709|©xyz)/i.test(text));
@@ -51,7 +52,7 @@ export function parseQuickTimeMetadataChunks(chunks: ArrayBuffer[]): EmbeddedMet
   let takenMs: number | null = null;
   if (hasCreationDateKey) {
     for (const text of texts) {
-      takenMs = parseQuickTimeDateText(text);
+      takenMs = parseQuickTimeDateText(text, timeZone);
       if (takenMs != null) break;
     }
   }
@@ -92,11 +93,11 @@ function parseIso6709(text: string): { lat: number; lng: number } | null {
     : null;
 }
 
-function parseQuickTimeDateText(text: string): number | null {
+function parseQuickTimeDateText(text: string, timeZone: string): number | null {
   const match = text.match(/\b((?:19|20)\d{2}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/);
   if (!match) return null;
   const normalized = match[1].replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
-  const value = Date.parse(normalized);
+  const value = parseCaptureDateText(normalized, timeZone) ?? NaN;
   return validEmbeddedTimestamp(value) ? value : null;
 }
 
@@ -127,7 +128,7 @@ function validEmbeddedTimestamp(value: number): boolean {
   return Number.isFinite(value) && value > Date.UTC(2000, 0, 1) && value < Date.UTC(2101, 0, 1);
 }
 
-export function parseJpegExif(buffer: ArrayBuffer): EmbeddedMetadata | null {
+export function parseJpegExif(buffer: ArrayBuffer, timeZone = 'DEVICE'): EmbeddedMetadata | null {
   if (buffer.byteLength < 16) return null;
   const view = new DataView(buffer);
   if (view.getUint16(0, false) !== 0xffd8) return null;
@@ -140,13 +141,13 @@ export function parseJpegExif(buffer: ArrayBuffer): EmbeddedMetadata | null {
     const start = offset + 4;
     const end = offset + 2 + length;
     if (end > view.byteLength || length < 2) break;
-    if (marker === 0xe1 && String.fromCharCode(...new Uint8Array(buffer, start, 4)) === 'Exif') return parseTiff(view, start + 6, end);
+    if (marker === 0xe1 && String.fromCharCode(...new Uint8Array(buffer, start, 4)) === 'Exif') return parseTiff(view, start + 6, end, timeZone);
     offset = end;
   }
   return null;
 }
 
-function parseTiff(view: DataView, base: number, end: number): EmbeddedMetadata | null {
+function parseTiff(view: DataView, base: number, end: number, timeZone: string): EmbeddedMetadata | null {
   if (base + 8 > end) return null;
   const order = String.fromCharCode(view.getUint8(base), view.getUint8(base + 1));
   if (order !== 'II' && order !== 'MM') return null;
@@ -158,8 +159,9 @@ function parseTiff(view: DataView, base: number, end: number): EmbeddedMetadata 
   const exif = exifOffset != null ? readIfd(view, base, end, exifOffset, little) : null;
   const gps = gpsOffset != null ? readIfd(view, base, end, gpsOffset, little) : null;
   const dateText = readAscii(view, base, end, exif?.get(0x9003) ?? exif?.get(0x9004) ?? ifd0.get(0x0132), little);
-  const zone = readAscii(view, base, end, exif?.get(0x9011) ?? exif?.get(0x9012), little);
-  const takenMs = parseExifDate(dateText, zone);
+  const zoneTag = exif?.has(0x9003) ? 0x9011 : exif?.has(0x9004) ? 0x9012 : 0x9010;
+  const zone = readAscii(view, base, end, exif?.get(zoneTag), little);
+  const takenMs = parseExifDate(dateText, zone, timeZone);
   const coordinate = readGps(view, base, end, gps, little);
   const gpsAccuracyM = readRationals(view, base, end, gps?.get(0x001f), little)?.[0] ?? null;
   if (takenMs == null && !coordinate) return null;
@@ -231,28 +233,11 @@ function readGps(view: DataView, base: number, end: number, gps: Map<number, Ifd
   return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
 }
 
-function parseExifDate(value: string | null, zoneValue: string | null): number | null {
+function parseExifDate(value: string | null, zoneValue: string | null, timeZone: string): number | null {
   const match = String(value || '').match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
   if (!match) return null;
   const parts = match.slice(1, 7).map(Number);
   const zone = String(zoneValue || '').match(/^([+-])(\d{2}):?(\d{2})$/);
-  if (!zone) return localTimestamp(parts);
-  const offset = (Number(zone[2]) * 60 + Number(zone[3])) * (zone[1] === '-' ? -1 : 1);
-  return Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]) - offset * 60_000;
-}
-
-function localTimestamp(parts: number[]): number | null {
-  const [year, month, day, hour, minute, second] = parts;
-  if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) return null;
-  const value = new Date(year, month - 1, day, hour, minute, second).getTime();
-  if (!Number.isFinite(value)) return null;
-  const date = new Date(value);
-  return date.getFullYear() === year
-    && date.getMonth() === month - 1
-    && date.getDate() === day
-    && date.getHours() === hour
-    && date.getMinutes() === minute
-    && date.getSeconds() === second
-    ? value
-    : null;
+  if (!zone) return captureTimestamp(parts, timeZone);
+  return captureTimestamp(parts, `${zone[1]}${zone[2]}:${zone[3]}`);
 }

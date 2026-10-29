@@ -24,14 +24,11 @@ export interface TimelineWorkerPort {
 }
 
 export class TimelineWorkerClient implements TimelineWorkerPort {
-  private worker: Worker;
+  private worker: Worker | null = null;
+  private disposed = false;
   private nextRequestId = 1;
   private currentRequestId: number | null = null;
   private pending = new Map<number, PendingRequest>();
-
-  constructor() {
-    this.worker = this.createWorker();
-  }
 
   scan(source: TimelineSource, text: string, onProgress?: ProgressHandler): Promise<TimelineScanResult> {
     return this.send<TimelineScanResult>({ type: 'SCAN_TIMELINE', source, text }, onProgress);
@@ -43,19 +40,16 @@ export class TimelineWorkerClient implements TimelineWorkerPort {
 
   cancel(): void {
     if (this.currentRequestId === null) return;
-    const requestId = this.currentRequestId;
-    this.worker.postMessage({ type: 'CANCEL', requestId } satisfies WorkerRequest);
-    this.pending.get(requestId)?.reject(new Error('작업을 취소했습니다.'));
-    this.pending.delete(requestId);
-    this.currentRequestId = null;
-    this.worker.terminate();
-    this.worker = this.createWorker();
+    this.rejectPending(new Error('작업을 취소했습니다.'));
+    this.worker?.terminate();
+    this.worker = null;
   }
 
   dispose(): void {
-    for (const request of this.pending.values()) request.reject(new Error('타임라인 분석이 종료되었습니다.'));
-    this.pending.clear();
-    this.worker.terminate();
+    this.disposed = true;
+    this.rejectPending(new Error('타임라인 분석이 종료되었습니다.'));
+    this.worker?.terminate();
+    this.worker = null;
   }
 
   private send<T>(
@@ -63,11 +57,19 @@ export class TimelineWorkerClient implements TimelineWorkerPort {
       | Omit<Extract<WorkerRequest, { type: 'PLAN_TRIP' }>, 'requestId'>,
     onProgress?: ProgressHandler
   ): Promise<T> {
+    if (this.disposed) return Promise.reject(new Error('타임라인 분석이 종료되었습니다.'));
     const requestId = this.nextRequestId++;
     this.currentRequestId = requestId;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(requestId, { resolve: value => resolve(value as T), reject, onProgress });
-      this.worker.postMessage({ ...request, requestId } as WorkerRequest);
+      try {
+        this.worker ??= this.createWorker();
+        this.worker.postMessage({ ...request, requestId } as WorkerRequest);
+      } catch {
+        this.rejectPending(new Error('타임라인 분석을 시작하지 못했습니다. 브라우저를 새로고침한 뒤 다시 시도해 주세요.'));
+        this.worker?.terminate();
+        this.worker = null;
+      }
     });
   }
 
@@ -75,12 +77,18 @@ export class TimelineWorkerClient implements TimelineWorkerPort {
     const worker = new Worker(new URL('../workers/timeline.worker.ts', import.meta.url), { type: 'module' });
     worker.addEventListener('message', event => this.handleMessage(event.data as WorkerResponse));
     worker.addEventListener('error', () => {
-      if (this.currentRequestId === null) return;
-      this.pending.get(this.currentRequestId)?.reject(new Error('타임라인 분석을 시작하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.'));
-      this.pending.delete(this.currentRequestId);
-      this.currentRequestId = null;
+      if (this.worker !== worker) return;
+      this.rejectPending(new Error('타임라인 분석을 시작하지 못했습니다. 다시 파일을 선택해 주세요.'));
+      worker.terminate();
+      if (this.worker === worker) this.worker = null;
     });
     return worker;
+  }
+
+  private rejectPending(error: Error): void {
+    for (const request of this.pending.values()) request.reject(error);
+    this.pending.clear();
+    this.currentRequestId = null;
   }
 
   private handleMessage(message: WorkerResponse): void {

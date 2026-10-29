@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   testDir: '../e2e',
+  testIgnore: '**/web/**',
   outputDir: '../test-results',
   timeout: 30_000,
   expect: { timeout: 10_000 },

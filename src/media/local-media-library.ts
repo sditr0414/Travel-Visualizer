@@ -1,3 +1,4 @@
+import { parseCaptureDateText, resolvedCaptureTimeZone } from './capture-time';
 import type { JourneyMedia, LocalMediaManifest, LocalMediaManifestItem, MediaImportProgress, MediaMetadataSource, PlaybackPlan } from '../types';
 import { organizeJourneyMedia, parseFilenameTimestamp, playbackSecondFor, positionAtPlaybackSecond, type JourneyMediaLibrary } from './media-library';
 import { parseQuickTimeMetadataChunks, readEmbeddedMetadata } from './media-metadata';
@@ -10,6 +11,8 @@ interface CachedMetadataUpdate {
   gpsAccuracyM: number | null;
   source: MediaMetadataSource;
   embeddedScanned: boolean;
+  captureTimeZone?: string;
+  captureDateText?: string;
 }
 type AnalyzedMetadata = Omit<CachedMetadataUpdate, 'id'>;
 const LOCAL_EXIF_FAST_BYTES = 128 * 1024;
@@ -19,14 +22,18 @@ const LOCAL_VIDEO_SCAN_BYTES = 1024 * 1024;
 export async function loadLocalMediaManifest(
   manifest: LocalMediaManifest,
   plan: PlaybackPlan,
-  onProgress?: (progress: MediaImportProgress) => void
+  onProgress?: (progress: MediaImportProgress) => void,
+  signal?: AbortSignal,
+  timeZone = 'DEVICE'
 ): Promise<JourneyMediaLibrary> {
   const mapped: JourneyMedia[] = [];
   const updates: CachedMetadataUpdate[] = [];
   const concurrency = 8;
   for (let offset = 0; offset < manifest.items.length; offset += concurrency) {
+    signal?.throwIfAborted();
     const batch = manifest.items.slice(offset, offset + concurrency);
-    const analyzed = await Promise.all(batch.map(analyzeLocalItem));
+    const analyzed = await Promise.all(batch.map(item => analyzeLocalItem(item, signal, resolvedCaptureTimeZone(timeZone))));
+    signal?.throwIfAborted();
     for (const { item, metadata, shouldCache } of analyzed) {
       if (!Number.isFinite(metadata.takenMs)) continue;
       const position = metadata.lat != null && metadata.lng != null ? { lat: metadata.lat, lng: metadata.lng } : null;
@@ -35,6 +42,7 @@ export async function loadLocalMediaManifest(
       mapped.push({
       id: `local-${item.id}`,
       file: null,
+      sourceName: item.name,
       sourceUrl: `/api/local-media/${encodeURIComponent(item.id)}`,
       kind: item.kind,
       title: cleanTitle(item.name),
@@ -60,19 +68,24 @@ export async function loadLocalMediaManifest(
     const processed = Math.min(offset + batch.length, manifest.items.length);
     onProgress?.({ phase: 'METADATA', processed, total: manifest.items.length, message: `${processed} / ${manifest.items.length} 촬영 정보 확인` });
   }
-  if (updates.length) await saveMetadataCache(updates);
+  if (updates.length) await saveMetadataCache(updates, signal);
+  signal?.throwIfAborted();
   return {
     preview: organizeJourneyMedia(mapped, plan, 'PREVIEW'),
     all: organizeJourneyMedia(mapped, plan, 'ALL')
   };
 }
 
-async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
+async function analyzeLocalItem(item: LocalMediaManifestItem, signal: AbortSignal | undefined, timeZone: string): Promise<{
   item: LocalMediaManifestItem;
   metadata: AnalyzedMetadata;
   shouldCache: boolean;
 }> {
-  const cached = item.metadata;
+  const prior = item.metadata;
+  const sidecarTime = prior?.captureDateText ? parseCaptureDateText(prior.captureDateText, timeZone) : prior?.takenMs;
+  const cached = prior?.source === 'takeout-sidecar'
+    ? sidecarTime != null ? { ...prior, takenMs: sidecarTime } : null
+    : prior?.captureTimeZone === timeZone ? prior : null;
   const supportsEmbedded = isJpeg(item) || isQuickTimeVideo(item);
   const shouldReadEmbedded = supportsEmbedded && (!cached || cached.embeddedScanned !== true);
   if (cached && !shouldReadEmbedded) {
@@ -84,19 +97,20 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
   if (shouldReadEmbedded) {
     try {
       if (isJpeg(item)) {
-        embedded = await fetchJpegMetadata(item, LOCAL_EXIF_FAST_BYTES);
-        if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchJpegMetadata(item, LOCAL_EXIF_MAX_BYTES);
+        embedded = await fetchJpegMetadata(item, LOCAL_EXIF_FAST_BYTES, signal, timeZone);
+        if (!embedded && item.size > LOCAL_EXIF_FAST_BYTES) embedded = await fetchJpegMetadata(item, LOCAL_EXIF_MAX_BYTES, signal, timeZone);
       } else {
-        embedded = await fetchQuickTimeMetadata(item);
+        embedded = await fetchQuickTimeMetadata(item, signal, timeZone);
       }
       embeddedScanned = true;
     } catch {
+      signal?.throwIfAborted();
       // Temporary read failures may use fallback metadata, but must be retried next time.
       embeddedScanned = false;
     }
   }
 
-  const filenameTime = parseFilenameTimestamp(item.name);
+  const filenameTime = parseFilenameTimestamp(item.name, timeZone);
   const preserveCachedTime = cached?.source === 'takeout-sidecar' || cached?.source === 'embedded-exif';
   return {
     item,
@@ -112,41 +126,42 @@ async function analyzeLocalItem(item: LocalMediaManifestItem): Promise<{
         : embedded?.takenMs != null
           ? 'embedded-exif'
           : cached?.source ?? (filenameTime == null ? 'file-time' : 'filename-time'),
-      embeddedScanned
+      embeddedScanned, captureTimeZone: timeZone, captureDateText: cached?.captureDateText
     },
     shouldCache: true
   };
 }
 
-async function fetchJpegMetadata(item: LocalMediaManifestItem, bytes: number) {
-  const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` }, signal: AbortSignal.timeout(15_000) });
+async function fetchJpegMetadata(item: LocalMediaManifestItem, bytes: number, signal: AbortSignal | undefined, timeZone: string) {
+  const response = await fetch(`/api/local-media/${encodeURIComponent(item.id)}`, { headers: { Range: `bytes=0-${bytes - 1}` }, signal: readSignal(signal, 15_000) });
   if (!response.ok) throw new Error(`Media read failed: ${response.status}`);
   const blob = await response.blob();
-  return readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }));
+  return readEmbeddedMetadata(new File([blob], item.name, { type: 'image/jpeg', lastModified: item.lastModified }), timeZone);
 }
 
-async function fetchQuickTimeMetadata(item: LocalMediaManifestItem) {
+async function fetchQuickTimeMetadata(item: LocalMediaManifestItem, signal: AbortSignal | undefined, timeZone: string) {
   if (item.size <= 0) return null;
   const ranges = item.size <= LOCAL_VIDEO_SCAN_BYTES * 2
     ? [[0, item.size - 1]]
     : [[0, LOCAL_VIDEO_SCAN_BYTES - 1], [item.size - LOCAL_VIDEO_SCAN_BYTES, item.size - 1]];
-  const chunks = await Promise.all(ranges.map(([start, end]) => fetchMediaRange(item.id, start, end)));
-  return parseQuickTimeMetadataChunks(chunks);
+  const chunks = await Promise.all(ranges.map(([start, end]) => fetchMediaRange(item.id, start, end, signal)));
+  return parseQuickTimeMetadataChunks(chunks, timeZone);
 }
 
-async function fetchMediaRange(id: string, start: number, end: number): Promise<ArrayBuffer> {
-  const response = await fetch(`/api/local-media/${encodeURIComponent(id)}`, { headers: { Range: `bytes=${start}-${end}` }, signal: AbortSignal.timeout(15_000) });
+async function fetchMediaRange(id: string, start: number, end: number, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetch(`/api/local-media/${encodeURIComponent(id)}`, { headers: { Range: `bytes=${start}-${end}` }, signal: readSignal(signal, 15_000) });
   if (!response.ok) throw new Error(`Media read failed: ${response.status}`);
   return response.arrayBuffer();
 }
 
-async function saveMetadataCache(entries: CachedMetadataUpdate[]): Promise<void> {
+async function saveMetadataCache(entries: CachedMetadataUpdate[], signal?: AbortSignal): Promise<void> {
   for (let offset = 0; offset < entries.length; offset += 500) {
+    signal?.throwIfAborted();
     try {
       const response = await fetch('/api/local-media-metadata-cache', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: entries.slice(offset, offset + 500) }),
-        signal: AbortSignal.timeout(10_000)
+        signal: readSignal(signal, 10_000)
       });
       if (!response.ok) return;
     } catch { return; /* Persistent caching is optional; the in-memory result remains usable. */ }
@@ -163,4 +178,8 @@ function isQuickTimeVideo(item: LocalMediaManifestItem): boolean {
 
 function cleanTitle(name: string): string {
   return name.replace(/^.*\//, '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || '여행 미디어';
+}
+
+function readSignal(signal: AbortSignal | undefined, timeout: number): AbortSignal {
+  return signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout);
 }

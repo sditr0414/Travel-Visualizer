@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 
-const E2E_TIMELINE = JSON.stringify({
+export const E2E_TIMELINE = JSON.stringify({
   semanticSegments: [
     {
       startTime: '2026-04-10T09:00:00+09:00',

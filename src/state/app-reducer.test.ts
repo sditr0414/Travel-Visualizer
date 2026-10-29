@@ -22,3 +22,13 @@ describe('app state machine', () => {
     expect(state.error).toBe('잘못된 JSON');
   });
 });
+
+
+it('clears a dismissed error while preserving the existing journey', () => {
+  const ready = appReducer(initialAppState, { type: 'PLAN_SUCCESS', plan: simplePlan() });
+  const failed = appReducer(ready, { type: 'FAIL', message: 'Unsupported folder' });
+  const recovered = appReducer(failed, { type: 'PAUSE' });
+  expect(recovered.error).toBeNull();
+  expect(recovered.phase).toBe('paused');
+  expect(recovered.plan).toBe(failed.plan);
+});

@@ -35,6 +35,29 @@ describe('App integration', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('keeps the previous journey and cursor when replacement scanning or planning fails', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }), cancel: vi.fn(), dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
+    const before = (screen.getByLabelText('재생 위치') as HTMLInputElement).value;
+    vi.mocked(worker.scan).mockRejectedValueOnce(new Error('Invalid replacement'));
+    fireEvent.change(screen.getByLabelText('타임라인 파일 열기', { exact: true }), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid replacement'));
+    expect((screen.getByLabelText('재생 위치') as HTMLInputElement).value).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: '기존 여행으로 돌아가기' }));
+    vi.mocked(worker.plan).mockRejectedValueOnce(new Error('No movements'));
+    fireEvent.change(screen.getByLabelText('타임라인 파일 열기', { exact: true }), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No movements'));
+    expect((screen.getByLabelText('재생 위치') as HTMLInputElement).value).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: '기존 여행으로 돌아가기' }));
+    expect(screen.getByRole('button', { name: '재생' })).toBeEnabled();
+  });
+
   it('changes checkbox settings only from the checkbox, never its row or help name', async () => {
     const worker: TimelineWorkerPort = {
       scan: vi.fn().mockResolvedValue({ startDate: '2026-03-01', endDate: '2026-04-11', semanticSegments: 4 }),
@@ -45,6 +68,7 @@ describe('App integration', () => {
     fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
     fireEvent.click(screen.getByText('여행 설정'));
+    expandSettings('경로 재생 설정');
     for (const name of ['항공 경로 포함', '현재 위치 따라가기', '일시정지 시 전체 경로 표시']) {
       const checkbox = screen.getByRole('checkbox', { name }) as HTMLInputElement;
       const initial = checkbox.checked;
@@ -56,6 +80,49 @@ describe('App integration', () => {
       fireEvent.click(checkbox);
       expect(checkbox.checked).toBe(!initial);
     }
+  });
+
+  it('exposes named sliders and applies their values after expanding detailed settings', async () => {
+    const worker: TimelineWorkerPort = {
+      scan: vi.fn().mockResolvedValue({ startDate: '2026-04-10', endDate: '2026-04-11', semanticSegments: 4 }),
+      plan: vi.fn().mockResolvedValue({ trip: {}, plan: simplePlan() }), cancel: vi.fn(), dispose: vi.fn()
+    };
+    render(<App workerClient={worker} />);
+    fireEvent.change(screen.getByLabelText('시작할 타임라인 파일 열기'), { target: { files: [timelineFile()] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
+    fireEvent.click(screen.getByText('여행 설정'));
+
+    const zoom = screen.getByRole('slider', { name: '지도 확대' });
+    fireEvent.change(zoom, { target: { value: '0.8' } });
+    expect(zoom).toHaveValue('0.8');
+    expect(screen.queryByRole('slider', { name: '사진 표시 시간' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: '영상 최대 재생' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: '경로 재생 시간' })).not.toBeInTheDocument();
+
+    expandSettings('사진·영상 설정');
+    const photoTime = screen.getByRole('slider', { name: '사진 표시 시간' });
+    const videoTime = screen.getByRole('slider', { name: '영상 최대 재생' });
+    expect(photoTime).toHaveValue('3');
+    expect(videoTime).toHaveValue('5');
+    fireEvent.change(photoTime, { target: { value: '4.5' } });
+    fireEvent.change(videoTime, { target: { value: '7' } });
+    expect(JSON.parse(localStorage.getItem('travel-camera.preferences.v3')!)).toMatchObject({
+      zoomOffset: 0.8, photoDisplaySec: 4.5, videoMaxSec: 7
+    });
+    fireEvent.click(screen.getByRole('button', { name: '사진·영상 설정' }));
+    expect(screen.queryByRole('slider', { name: '사진 표시 시간' })).not.toBeInTheDocument();
+    expandSettings('사진·영상 설정');
+    expect(screen.getByRole('slider', { name: '사진 표시 시간' })).toHaveValue('4.5');
+    expect(screen.getByRole('slider', { name: '영상 최대 재생' })).toHaveValue('7');
+
+    expandSettings('경로 재생 설정');
+    fireEvent.change(screen.getByRole('slider', { name: '경로 재생 시간' }), { target: { value: '90' } });
+    const rebuild = screen.getByRole('button', { name: '경로 다시 만들기' });
+    expect(rebuild).toBeEnabled();
+    fireEvent.click(rebuild);
+    await waitFor(() => expect(worker.plan).toHaveBeenLastCalledWith(expect.objectContaining({
+      targetDurationSec: 90, zoomOffset: 0.8
+    }), expect.any(Function)));
   });
 
   it('keeps the welcome screen when a static host returns HTML for local API paths', async () => {
@@ -128,10 +195,13 @@ describe('App integration', () => {
     expect(screen.getByText('여행 기간')).toBeInTheDocument();
     const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
     expect(rebuildButton).toBeDisabled();
-    const zoomSlider = screen.getAllByRole('slider').find(element => element.getAttribute('min') === '-1.5');
+    const zoomSlider = screen.getByRole('slider', { name: '지도 확대' });
     expect(zoomSlider).toHaveValue('0');
     expect(screen.getByLabelText('여행 시작')).toHaveValue('2026-03-01');
     expect(screen.getByLabelText('여행 마지막 날')).toHaveValue('2026-04-11');
+    expect(screen.getByRole('button', { name: '경로 재생 설정' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('현재 위치 따라가기')).not.toBeVisible();
+    expandSettings('경로 재생 설정');
     const followCurrentPosition = screen.getByLabelText('현재 위치 따라가기');
     fireEvent.click(followCurrentPosition);
     expect(screen.queryByText('따라가기 반응 속도')).not.toBeInTheDocument();
@@ -179,6 +249,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }));
     expectRoute('none');
     fireEvent.click(screen.getByText('여행 설정'));
+    expandSettings('경로 재생 설정');
     const option = screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' });
     expect(option).not.toBeChecked();
     fireEvent.click(option);
@@ -204,6 +275,8 @@ describe('App integration', () => {
     fireEvent.change(screen.getByLabelText('재생 위치'), { target: { value: '0.1' } });
     expectRoute('visible');
     fireEvent.click(screen.getByText('여행 설정'));
+    expect(screen.getByRole('button', { name: '경로 재생 설정' })).toHaveTextContent('변경 1개');
+    expandSettings('경로 재생 설정');
     expect(screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: '기본 설정으로 되돌리기' }));
     expect(screen.getByRole('checkbox', { name: '일시정지 시 전체 경로 표시' })).not.toBeChecked();
@@ -255,7 +328,7 @@ describe('App integration', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '재생' })).toBeEnabled());
 
     fireEvent.click(screen.getByText('여행 설정'));
-    const zoomSlider = screen.getAllByRole('slider').find(element => element.getAttribute('min') === '-1.5');
+    const zoomSlider = screen.getByRole('slider', { name: '지도 확대' });
     if (!zoomSlider) throw new Error('map zoom slider missing');
     fireEvent.change(zoomSlider, { target: { value: '1.2' } });
     await waitFor(() => expect(fakeMap.jumpTo).toHaveBeenCalledWith(expect.objectContaining({ zoom: 13.2 })));
@@ -264,6 +337,7 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
     expect(worker.plan).toHaveBeenCalledTimes(1);
 
+    expandSettings('경로 재생 설정');
     fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'DAY' } });
     expect(rebuildButton).toBeEnabled();
     fireEvent.click(rebuildButton);
@@ -295,6 +369,7 @@ describe('App integration', () => {
     fireEvent.click(screen.getByRole('button', { name: '사진 여정' }));
     fireEvent.click(screen.getByText('여행 설정'));
 
+    expandSettings('사진·영상 설정');
     const exactPlace = await screen.findByLabelText('정확한 장소 온라인 확인');
     await waitFor(() => expect(exactPlace).toBeEnabled());
     const rebuildButton = screen.getByRole('button', { name: '경로 다시 만들기' });
@@ -396,6 +471,7 @@ describe('App integration', () => {
     expect(screen.getByLabelText('전체 여정 분석').textContent).toBe(openingSummary);
     expect(screen.getByLabelText('재생 위치')).toHaveValue('0');
     fireEvent.click(screen.getByText('여행 설정'));
+    expandSettings('경로 재생 설정');
     fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'DAY' } });
     fireEvent.click(screen.getByRole('button', { name: '경로 다시 만들기' }));
     await waitFor(() => expect(screen.getByLabelText('전체 여정 분석').querySelector('.journey-summary-total')).toHaveTextContent('5 km'));
@@ -456,8 +532,13 @@ describe('App integration', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '40');
     fireEvent.click(screen.getByText('여행 설정'));
     expect(screen.getByText('여행 설정').closest('.settings-panel')).toHaveAttribute('data-placement', 'topbar');
+    expect(screen.getByRole('button', { name: '사진 목록 관리' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '사진·영상 설정' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByLabelText('표시할 사진')).not.toBeVisible();
+    expandSettings('사진·영상 설정');
+    expandSettings('경로 재생 설정');
     expect(screen.getByLabelText('지도 보기 방식')).toHaveValue('AUTO');
-    expect(screen.getByText(/사진과 영상 원본은 외부로 업로드하지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByText(/타임라인과 사진·영상 원본은 외부로 업로드하지 않습니다/)).toBeInTheDocument();
     expect(screen.getByLabelText('정확한 장소 온라인 확인')).toBeDisabled();
     expect(screen.queryByText('전체 경로 미리 보기')).not.toBeInTheDocument();
     expect(screen.getByLabelText('표시할 사진')).toHaveValue('PREVIEW');
@@ -482,6 +563,7 @@ describe('App integration', () => {
     expect(rebuildButton).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '경로 보기' }));
     expect(screen.getByRole('button', { name: '경로 보기' })).toHaveClass('active');
+    expandSettings('경로 재생 설정');
     fireEvent.change(screen.getByLabelText('지도 보기 방식'), { target: { value: 'SEGMENT' } });
     expect(rebuildButton).toBeEnabled();
     fireEvent.click(rebuildButton);
@@ -490,6 +572,11 @@ describe('App integration', () => {
     expect(screen.getByRole('button', { name: '경로 보기' })).toHaveClass('active');
   });
 });
+
+function expandSettings(name: '경로 재생 설정' | '사진·영상 설정'): void {
+  const button = screen.getByRole('button', { name });
+  if (button.getAttribute('aria-expanded') === 'false') fireEvent.click(button);
+}
 
 function timelineFile(): File {
   const contents = '{"semanticSegments":[]}';

@@ -1,4 +1,4 @@
-import { mergeSidecarMetadata, parseTakeoutSidecar } from './media-analysis';
+import { analyzeMediaFiles, analyzeMediaFilesInline, mergeSidecarMetadata, parseTakeoutSidecar } from './media-analysis';
 import { parseJpegExif, parseQuickTimeMetadataChunks } from './media-metadata';
 
 describe('local Takeout metadata', () => {
@@ -133,5 +133,37 @@ describe('JPEG GPS accuracy metadata', () => {
       lng: 127,
       gpsAccuracyM: 8
     });
+  });
+});
+
+
+describe('media cancellation', () => {
+  it('stops inline analysis before scanning the next file', async () => {
+    const controller = new AbortController();
+    const files = Array.from({ length: 12 }, (_, index) => new File(['png'], `20260410_0900${String(index).padStart(2, '0')}.png`, { type: 'image/png' }));
+    let processed = 0;
+    await expect(analyzeMediaFilesInline(files, progress => {
+      processed = progress.processed;
+      controller.abort();
+    }, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    expect(processed).toBe(1);
+  });
+
+  it('terminates a pending worker without restarting analysis as an inline fallback', async () => {
+    const terminate = vi.fn();
+    const postMessage = vi.fn();
+    vi.stubGlobal('Worker', class {
+      terminate = terminate;
+      postMessage = postMessage;
+      addEventListener = vi.fn();
+    });
+    const controller = new AbortController();
+    try {
+      const pending = analyzeMediaFiles([new File(['png'], '20260410_090000.png', { type: 'image/png' })], undefined, controller.signal);
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(terminate).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
   });
 });
