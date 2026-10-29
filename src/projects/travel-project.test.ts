@@ -77,7 +77,8 @@ it('restores older projects without bottom scene settings and preserves explicit
   const original = project();
   const preferences: Record<string, unknown> = { ...original.preferences };
   delete preferences.showBottomScene;
-  expect(parseProject(JSON.stringify({ ...original, preferences })).preferences.showBottomScene).toBe(false);
+  expect(parseProject(JSON.stringify({ ...original, preferences })).preferences.showBottomScene).toBe(true);
+  expect(parseProject(JSON.stringify({ ...original, preferences: { ...preferences, showBottomScene: false } })).preferences.showBottomScene).toBe(false);
   expect(parseProject(JSON.stringify({ ...original, preferences: { ...preferences, showBottomScene: true } })).preferences.showBottomScene).toBe(true);
   expect(() => parseProject(JSON.stringify({ ...original, preferences: { ...preferences, showBottomScene: 'true' } }))).toThrow();
 });
