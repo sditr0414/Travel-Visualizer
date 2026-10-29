@@ -82,7 +82,7 @@ jobs:
         # that same output at /Travel-Visualizer/ for desktop and mobile tests.
         run: |
           set -o pipefail
-          npm run test:web -- --workers=1 2>&1 | tee web-verification.log
+          xvfb-run -a npm run test:web -- --workers=1 2>&1 | tee web-verification.log
       - name: Check the tested artifact before upload
         run: node scripts/check-web-build.mjs
       - name: Upload Pages app only

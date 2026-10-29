@@ -19,7 +19,15 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'firefox', use: {
+      ...devices['Desktop Firefox'],
+      // GPU-less Linux runners need a virtual display and real Mesa software GL.
+      // This temporary test profile does not change the app or users' browsers.
+      launchOptions: process.env.CI ? {
+        firefoxUserPrefs: { 'webgl.force-enabled': true },
+        env: { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1' }
+      } : undefined
+    } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } }
   ]
 });

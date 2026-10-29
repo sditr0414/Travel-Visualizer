@@ -78,6 +78,8 @@ Vitest는 `config/vite.config.ts`, 로컬 E2E는 `config/playwright.config.ts`, 
 
 웹 검사는 빈 첫 화면, 초기 지도·Worker 지연 로딩, 로컬 API 차단, 파일·사진 연결과 프로젝트 저장·복원, 잘못된 파일에서 복구, 지도 연결 실패·재연결과 WebGL 미지원 안내를 다룹니다. 개인 원본은 테스트 fixture에 넣지 않으며 테스트용 합성 데이터는 웹 빌드에 포함하지 않습니다.
 
+GPU가 없는 Linux CI에서는 Xvfb 가상 화면을 사용합니다. Firefox의 CI 전용 프로필에서 Mesa 소프트웨어 WebGL을 활성화해 실제 지도 렌더링을 검사합니다. 앱과 일반 사용자 브라우저의 설정은 바꾸지 않으며, WebGL 미지원 오류 처리 검사도 유지합니다.
+
 CI는 다음 세 작업을 병렬로 실행합니다.
 
 - `verify`: 타입·lint·단위·로컬 빌드·런타임 검사와 Chromium 회귀 검사.
