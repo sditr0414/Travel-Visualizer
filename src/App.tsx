@@ -1086,8 +1086,8 @@ export function App({ workerClient }: AppProps) {
               <label>폴더 선택<input type="file" multiple {...{ webkitdirectory: '' }} onChange={event => { if (event.currentTarget.files) void onMediaFiles(event.currentTarget.files); event.currentTarget.value = ''; }} /></label>
             </div>
             {mediaImportCancelled && <div className="media-progress" role="status"><p>사진 연결을 취소했습니다. 기존 사진은 유지됩니다.</p><button type="button" className="settings-help-link" onClick={retryMediaImport}>사진 다시 연결</button></div>}
-            {mediaProgress && <div className="media-progress" data-phase={mediaProgress.phase}>
-              <div><strong>{mediaProgress.phase === 'COMPLETE' ? '준비 완료' : '사진·영상 확인 중'}</strong><output>{Math.round(mediaProgressValue * 100)}%</output></div>
+            {mediaProgress && mediaProgress.phase !== 'COMPLETE' && <div className="media-progress" data-phase={mediaProgress.phase}>
+              <div><strong>사진·영상 확인 중</strong><output>{Math.round(mediaProgressValue * 100)}%</output></div>
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}

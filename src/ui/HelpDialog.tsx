@@ -7,15 +7,15 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
     <ol className="help-steps">
       <li>
         <strong>타임라인 파일 열기</strong>
-        <p>스마트폰 Google 지도의 타임라인 설정에서 데이터를 내보낸 뒤 JSON 파일을 선택하세요. 최대 250 MB까지 지원합니다.</p>
+        <p>Google 지도에서 내보낸 타임라인 JSON을 선택하세요. 최대 250 MB.</p>
       </li>
       <li>
         <strong>여행 기간 확인하기</strong>
-        <p>추천 여행으로 경로가 준비됩니다. 다른 기간은 ‘여행 설정’에서 선택한 뒤 ‘경로 다시 만들기’를 누르세요.</p>
+        <p>기간을 바꾸려면 ‘여행 설정’에서 날짜를 선택하고 ‘경로 다시 만들기’를 누르세요.</p>
       </li>
       <li>
         <strong>사진과 영상 더하기 <span className="optional-label">선택</span></strong>
-        <p>여행 사진이 담긴 폴더나 개별 파일을 선택하세요. ‘경로 보기’와 ‘사진 여정’을 오가며 재생할 수 있습니다.</p>
+        <p>폴더나 파일을 선택한 뒤 ‘사진 여정’에서 감상하세요.</p>
       </li>
     </ol>
     <details className="help-details">

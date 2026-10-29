@@ -50,11 +50,11 @@ export function ProjectDialog({ open, onClose, canSave, onSave, onRestore }: {
     <div className="project-controls">
       {canSave && <section>
         <h3>현재 여행 저장</h3>
-        <p>기간, 설정, 사진 선택과 재생 위치를 저장합니다. 원본 파일은 별도로 보관해 주세요.</p>
+        <p>설정과 재생 위치를 저장합니다. 원본 파일도 보관해 주세요.</p>
         <label>여행 이름<input aria-label="저장할 여행 이름" value={name} maxLength={100} disabled={busy} onChange={event => setName(event.target.value)} /></label>
         <details className="help-details project-file-details"><summary>저장 파일에 포함되는 정보</summary><p className="project-privacy">여행 날짜, 원본 파일명·상대 폴더명·크기·수정 시각과 타임라인 확인용 해시가 포함됩니다. GPS 좌표와 절대 경로는 넣지 않습니다. 공유 전 파일명에 개인 정보가 있는지 확인하세요.</p></details>
         <button type="button" className="plan-button" disabled={!canSave || busy || !name.trim()} onClick={() => {
-          try { onSave(name.trim()); setError(''); setMessage('프로젝트 다운로드를 요청했습니다. 브라우저의 다운로드 폴더를 확인해 주세요.'); }
+          try { onSave(name.trim()); setError(''); setMessage('다운로드 폴더에서 저장 파일을 확인하세요.'); }
           catch (cause) { setError(cause instanceof Error ? cause.message : '저장하지 못했습니다.'); }
         }}>프로젝트 파일 저장</button>
       </section>}
@@ -63,7 +63,7 @@ export function ProjectDialog({ open, onClose, canSave, onSave, onRestore }: {
         <label>프로젝트 파일<input aria-label="여행 프로젝트 파일 열기" type="file" accept="application/json,.json" disabled={busy} onChange={event => { void readProject(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
         {project && <>
           <p><strong>{project.name}</strong><br />{project.range.startDate} → {project.range.endDate}<br />사진·영상 {project.media.length.toLocaleString()}개 · 제외 {project.media.filter(item => item.excluded).length.toLocaleString()}개</p>
-          <p>연결된 원본이 없으면 아래에서 다시 선택하세요. 원본 확인이 끝나면 여행을 복원합니다.</p>
+          <p>원본이 연결되지 않았다면 다시 선택하세요.</p>
           <label>타임라인 원본: {project.timeline.name}<input aria-label="프로젝트 타임라인 원본 선택" type="file" accept="application/json,.json" disabled={busy} onChange={event => { const file = event.currentTarget.files?.[0]; if (file) setTimeline(file); event.currentTarget.value = ''; }} /></label>
           {timeline && <p>선택: {timeline.name}</p>}
           {project.media.length > 0 && <>
