@@ -457,6 +457,10 @@
 }
 
 /* Keep the complete place and timestamp readable as the photo pane narrows. */
+/* A flex column reserves the wrapped caption's full height in WebKit too. */
+.media-card { display: flex; flex-direction: column; }
+.media-card .media-frame { flex: 1; min-height: 0; }
+.media-card .media-caption { flex: 0 0 auto; }
 .media-card .media-caption-place,
 .media-card .media-caption-date {
   max-width: 100%;
