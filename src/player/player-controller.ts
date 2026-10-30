@@ -4,6 +4,7 @@ import { warmMapTilesAhead } from '../map/tile-warmup';
 import { isDayMarkerId } from '../media/day-markers';
 import type { Coordinate, MobilityClass, PlaybackFrame, PlaybackPlan, PlaybackStop, TravelFrame } from '../types';
 import { heldMediaStopId } from './media-bridge';
+import { movementPresentation } from '../domain/movement-presentation';
 
 const PHOTO_JOURNEY_BASE_ZOOM_BOOST = 0.62;
 const TILE_WARMUP_LOOKAHEAD_SEC = 1.4;
@@ -376,7 +377,16 @@ export class PlayerController {
       this.lastGeometryPosition = clampedPosition;
       if (frame.kind === 'TRAVEL') {
         const trail = trailForFrame(this.plan, baseIndex, frame) as { type: string; features: object[] };
-        if (!this.plan.segments[frame.segmentIndex]?.hideRoute) trail.features.push(headForFrame(frame));
+        const segment = this.plan.segments[frame.segmentIndex];
+        const smallGap = segment?.hideRoute && segment.inferenceSource === 'visual-gap'
+          && segment.connectionBefore === 'missing-recording' && segment.distanceMeters < 30;
+        if (!segment?.hideRoute || smallGap) {
+          // A short GPS seam moves the marker continuously without drawing or
+          // counting an unrecorded line, or flashing an unknown-mode marker.
+          trail.features.push(headForFrame(smallGap
+            ? { ...frame, mobilityClass: movementPresentation(this.plan.segments, frame.segmentIndex).mobilityClass }
+            : frame));
+        }
         this.setSource('route-progress', trail);
       } else {
         this.setSource('route-progress', this.fullRouteData);
@@ -835,9 +845,14 @@ function lineFeatures(frames: TravelFrame[], plan: PlaybackPlan, trail = false):
     const frame = frames[index];
     if (frame.mobilityClass !== mode || frame.sceneId !== scene || framesDisconnected(plan, frames[index - 1], frame)) {
       flush();
+      const continuous = !framesDisconnected(plan, frames[index - 1], frame);
       mode = frame.mobilityClass;
       scene = frame.sceneId;
-      coordinates = [[frame.position.lng, frame.position.lat]];
+      // A transport/color change still shares its boundary edge with the route.
+      // Scene cuts and hidden recording gaps must remain disconnected.
+      coordinates = continuous
+        ? [[frames[index - 1].position.lng, frames[index - 1].position.lat], [frame.position.lng, frame.position.lat]]
+        : [[frame.position.lng, frame.position.lat]];
     } else {
       coordinates.push([frame.position.lng, frame.position.lat]);
     }

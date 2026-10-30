@@ -484,3 +484,28 @@ describe('playback continuity', () => {
     p.player.dispose();
   });
 });
+
+describe('route color boundary continuity', () => {
+  it('shares the boundary edge when transport changes, without connecting a scene cut', () => {
+    for (const disconnected of [false, true]) {
+      const plan = simplePlan();
+      const first = plan.frames[0];
+      if (first.kind !== 'TRAVEL') throw new Error('travel fixture required');
+      const next = { ...first, timeSec: .5, progress: .5, mobilityClass: 'ROAD' as const,
+        sceneId: disconnected ? 1 : 0, position: { lat: 37.501, lng: 127.001 } };
+      plan.fps = 2;
+      plan.frames = [first, next];
+      const setData = vi.fn();
+      const map = { getSource: () => ({ setData }), jumpTo: vi.fn() } as unknown as Map;
+      const controller = new PlayerController(map);
+      controller.loadPlan(plan);
+      controller.seek(.5);
+      const collections = setData.mock.calls.map(call => call[0]);
+      const geometry = collections.findLast(data => data.features?.some((f: {properties: {mobilityClass?: string}}) => f.properties.mobilityClass === 'ROAD'));
+      const road = geometry.features.find((f: {properties: {mobilityClass?: string}}) => f.properties.mobilityClass === 'ROAD');
+      expect(road.geometry.coordinates[0]).toEqual(disconnected ? [next.position.lng, next.position.lat] : [first.position.lng, first.position.lat]);
+      expect(road.geometry.coordinates.at(-1)).toEqual([next.position.lng, next.position.lat]);
+      controller.dispose();
+    }
+  });
+});

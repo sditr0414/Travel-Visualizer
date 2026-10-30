@@ -57,7 +57,10 @@ export function connectVisualGaps(movements: Movement[]): Movement[] {
     const next = movements[index + 1];
     if (!next) continue;
     const gapMeters = haversineMeters(current.end, next.start);
-    if (!Number.isFinite(gapMeters) || gapMeters < VISUAL_GAP_MIN_METERS) continue;
+    // Raw noise filtering can leave small endpoint gaps too. They still need
+    // camera time; skipping them teleports a tightly followed marker.
+    const rawBoundary = current.inferenceSource === 'raw-position' || next.inferenceSource === 'raw-position';
+    if (!Number.isFinite(gapMeters) || gapMeters < (rawBoundary ? 1 : VISUAL_GAP_MIN_METERS)) continue;
     const startMs = current.endMs;
     const endMs = Math.max(startMs, next.startMs);
     const points = inferredBridgePath(current.end, next.start, { distanceMeters: gapMeters, mode: 'UNKNOWN' });
@@ -76,6 +79,7 @@ export function connectVisualGaps(movements: Movement[]): Movement[] {
       activityProbability: 0,
       inferred: true,
       inferenceSource: 'visual-gap',
+      connectionBefore: next.connectionBefore,
       hideRoute: next.connectionBefore === 'excluded-flight' || next.connectionBefore === 'missing-recording'
     });
   }

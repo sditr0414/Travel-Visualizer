@@ -73,4 +73,13 @@ describe('display-synchronized route geometry', () => {
     expect(p.progress.mock.calls.at(-1)?.[0].features).toEqual([]);
     p.player.dispose();
   });
+  it('keeps the head visible across a small raw GPS seam, without drawing its line', () => {
+    const p = setup();
+    Object.assign(p.plan.segments[0], { hideRoute: true, inferenceSource: 'visual-gap', connectionBefore: 'missing-recording', distanceMeters: 15 });
+    p.player.loadPlan(p.plan);
+    const features = p.progress.mock.calls.at(-1)?.[0].features;
+    expect(features).toHaveLength(1);
+    expect(features[0].geometry.type).toBe('Point');
+    p.player.dispose();
+  });
 });

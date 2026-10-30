@@ -1,6 +1,7 @@
 import { clamp, haversineMeters, mercatorProject, mercatorUnproject } from './geo.js';
 import { inferMobility } from './mobility.js';
 import { allocatePlaybackSeconds, PlaybackPacing } from './playback-pacing.js';
+import { rawMotionProfiles, sampleRawMotion } from './raw-playback-motion.js';
 
 const EARTH_CIRCUMFERENCE_M = 40075016.686;
 const TILE_SIZE = 512;
@@ -149,6 +150,7 @@ export function planPlayback(movements, {
   }
 
   const movementFrameCount = Math.max(2, Math.ceil(cursor * safeFps));
+  const motionProfiles = rawMotionProfiles(segments);
   const raw = new Array(movementFrameCount);
   let segmentIndex = 0;
 
@@ -157,10 +159,13 @@ export function planPlayback(movements, {
     while (segmentIndex < segments.length - 1 && timeSec >= segments[segmentIndex].endVideoSec) segmentIndex += 1;
     const segment = segments[segmentIndex];
     const local = clamp((timeSec - segment.startVideoSec) / Math.max(segment.videoSec, 1 / safeFps), 0, 1);
-    const distanceAlongM = segment.path.totalMeters * local;
+    const motionProfile = motionProfiles[segmentIndex];
+    const motion = motionProfile ? sampleRawMotion(motionProfile, timeSec - segment.startVideoSec) : null;
+    const distanceAlongM = motion?.distance ?? segment.path.totalMeters * local;
     const position = pointAtPathDistance(segment.path, distanceAlongM) || segment.end;
 
-    const videoGroundSpeedKmSec = (segment.path.totalMeters / 1000) / Math.max(segment.videoSec, 1 / safeFps);
+    const videoGroundSpeedKmSec = motionProfile ? motionProfile.peakSpeed / 1000
+      : (segment.path.totalMeters / 1000) / Math.max(segment.videoSec, 1 / safeFps);
     const compressionSpanKm = videoGroundSpeedKmSec * width / Math.max(segment.intent.targetTraversalPxPerSec, 80);
     const viewSpanKm = Math.max(segment.intent.viewSpanKm, compressionSpanKm * 1.06);
     const targetZoom = zoomForViewSpan(viewSpanKm, position.lat, width);
@@ -184,7 +189,7 @@ export function planPlayback(movements, {
       targetCenterY: projected.y,
       targetZoom,
       viewSpanKm,
-      maxPanPxPerSec: segment.intent.maxPanPxPerSec,
+      maxPanPxPerSec: motion?.pan ?? segment.intent.maxPanPxPerSec,
       mobilityClass: segment.inference.mobilityClass,
       speedKmh: segment.inference.speedKmh
     };
