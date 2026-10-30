@@ -685,3 +685,6 @@
 @media (max-width: 400px) {
   .settings-panel .trip-range-fields label { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 8px; }
 }
+@media (forced-colors: active) {
+  .topbar .mode-switch button.active { outline: 1px solid Highlight; outline-offset: -2px; color: Highlight; }
+}
