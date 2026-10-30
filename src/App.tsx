@@ -1039,8 +1039,8 @@ export function App({ workerClient }: AppProps) {
         onToggle={event => setSettingsOpen(event.currentTarget.open)}
         {...playbackChrome.interactionProps}
       >
-        <summary onClick={event => { event.preventDefault(); if (!settingsOpen) pausePlayback(); setSettingsOpen(!settingsOpen); }}><span><Layers3 size={16} /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" /></summary>
-        <div className="settings-content">
+        <summary onClick={event => { event.preventDefault(); if (!settingsOpen) pausePlayback(); setSettingsOpen(!settingsOpen); }}><span><Layers3 size={16} aria-hidden="true" /> 여행 설정</span><ChevronDown size={16} className="summary-chevron" aria-hidden="true" /></summary>
+        <div className="settings-content" inert={!settingsOpen} aria-hidden={!settingsOpen}>
           <div className="source-summary">
             <FileJson size={18} />
             <div><span>현재 타임라인</span><strong>{state.source?.name ?? '준비 중'}</strong></div>
@@ -1105,8 +1105,8 @@ export function App({ workerClient }: AppProps) {
               <progress max="1" value={mediaProgressValue} />
               <p>{mediaProgress.message}</p>
             </div>}
-            <button className="settings-disclosure" type="button" aria-label="사진·영상 설정" aria-describedby="photo-settings-summary" aria-expanded={photoSettingsOpen} aria-controls="photo-settings-options" onClick={() => setPhotoSettingsOpen(value => !value)}>
-              <span>사진·영상 설정<small id="photo-settings-summary">{photoViewMode === 'PREVIEW' ? '대표 사진' : '모든 사진'} · {photoDisplaySec}초{photoSettingsChanged ? ` · 변경 ${photoSettingsChanged}개` : ''}</small></span><ChevronDown size={16} aria-hidden="true" />
+            <button className="settings-disclosure" type="button" aria-labelledby="photo-settings-title" aria-describedby="photo-settings-summary" aria-expanded={photoSettingsOpen} aria-controls="photo-settings-options" onClick={() => setPhotoSettingsOpen(value => !value)}>
+              <span><span id="photo-settings-title">사진·영상 설정</span><small id="photo-settings-summary">{photoViewMode === 'PREVIEW' ? '대표 사진' : '모든 사진'} · {photoDisplaySec}초{photoSettingsChanged ? ` · 변경 ${photoSettingsChanged}개` : ''}</small></span><ChevronDown size={16} aria-hidden="true" />
             </button>
             <div className="settings-options" id="photo-settings-options" hidden={!photoSettingsOpen}>
             <SettingHelp title="표시할 사진" description={"대표 사진만: 비슷한 시간·장소에서 고른 사진을 보여줍니다.\n모든 사진: 연결된 사진을 모두 보여줍니다."}><label className="select-field">표시할 사진
@@ -1162,8 +1162,8 @@ export function App({ workerClient }: AppProps) {
           </section>
 
           <section className="settings-group route-settings-group">
-            <button className="settings-disclosure" type="button" aria-label="경로 재생 설정" aria-describedby="route-settings-summary" aria-expanded={routeSettingsOpen} aria-controls="route-settings-options" onClick={() => setRouteSettingsOpen(value => !value)}>
-              <span><span className="settings-disclosure-title"><Camera size={14} aria-hidden="true" />경로 재생 설정</span><small id="route-settings-summary">{cameraMode === 'AUTO' ? '자동 보기' : cameraMode === 'DAY' ? '날짜별 보기' : '구간별 보기'} · {targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동 시간'}{routeSettingsChanged ? ` · 변경 ${routeSettingsChanged}개` : ''}</small></span><ChevronDown size={16} aria-hidden="true" />
+            <button className="settings-disclosure" type="button" aria-labelledby="route-settings-title" aria-describedby="route-settings-summary" aria-expanded={routeSettingsOpen} aria-controls="route-settings-options" onClick={() => setRouteSettingsOpen(value => !value)}>
+              <span><span className="settings-disclosure-title" id="route-settings-title"><Camera size={14} aria-hidden="true" />경로 재생 설정</span><small id="route-settings-summary">{cameraMode === 'AUTO' ? '자동 보기' : cameraMode === 'DAY' ? '날짜별 보기' : '구간별 보기'} · {targetDurationSec > 0 ? formatDuration(targetDurationSec) : '자동 시간'}{routeSettingsChanged ? ` · 변경 ${routeSettingsChanged}개` : ''}</small></span><ChevronDown size={16} aria-hidden="true" />
             </button>
             <div className="settings-options" id="route-settings-options" hidden={!routeSettingsOpen}>
             <SettingHelp title="지도 보기 방식" description={"자동은 이동 거리와 하루 동선을 함께 고려합니다.\n날짜별·구간별 보기는 해당 범위를 중심으로 구성합니다.\n변경 후 경로 다시 만들기를 눌러 적용하세요."}><label className="select-field">지도 보기 방식

@@ -482,7 +482,7 @@
   border: 1px solid transparent;
   border-radius: 20px;
   background: var(--surface);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 4px 12px -4px rgba(0, 0, 0, .22), 0 16px 32px -16px rgba(0, 0, 0, .32);
+  box-shadow: var(--chrome-shadow);
 }
 .bottom-scene-mobility { display: flex; align-items: center; gap: 8px; }
 .bottom-scene-mobility > span { flex: 0 0 24px; text-align: center; font-size: 22px; line-height: 1; }
@@ -585,4 +585,103 @@
   .player-dock .timeline-control input::-moz-range-progress { background: Highlight; }
   .player-dock .timeline-control input::-webkit-slider-thumb { background: Highlight; border-color: CanvasText; }
   .player-dock .timeline-control input::-moz-range-thumb { background: Highlight; border-color: CanvasText; }
+}
+
+/* Use the playback surface language for the toolbar and trip settings. */
+.app-shell { --chrome-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 4px 12px -4px rgba(0, 0, 0, .22), 0 16px 32px -16px rgba(0, 0, 0, .32); }
+.topbar .brand-lockup, .topbar .mode-switch, .topbar .import-button,
+.settings-panel, .settings-panel .settings-content {
+  border: 1px solid transparent;
+  border-radius: 20px;
+  box-shadow: var(--chrome-shadow);
+}
+.topbar .mode-switch button { border-radius: 16px; }
+.settings-panel > summary { min-height: 46px; border-radius: 19px; }
+.topbar .import-button { background: var(--surface); }
+.topbar .mode-switch button:not(.active) { background: transparent; color: var(--muted); }
+.topbar .mode-switch button, .topbar .import-button,
+.settings-panel > summary, .settings-panel .settings-content button, .settings-content .media-import-row label {
+  transform: none;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.settings-panel > summary:hover, .settings-panel .settings-content button:disabled { transform: none; }
+.settings-panel .settings-group, .settings-panel .trip-range-control { transition: none; }
+.settings-panel .settings-disclosure { color: var(--paper); border-radius: 10px; }
+.settings-panel .settings-help-link { color: var(--paper); }
+.settings-panel .settings-footer .settings-help-link { color: var(--muted); }
+.settings-panel .settings-footer .plan-button:enabled { background: var(--accent); }
+.settings-panel .select-field select, .settings-panel .trip-range-presets button { border-radius: 10px; }
+.settings-panel .settings-footer { border-radius: 0 0 19px 19px; background: var(--media-surface); }
+.settings-panel .summary-chevron, .settings-panel .settings-disclosure > svg { transform-origin: center; }
+.topbar, .settings-panel { will-change: auto; }
+
+/* Keep the native disclosure state; only its visual exit remains on screen.
+   inert removes closed controls from focus and the accessibility tree immediately. */
+.settings-panel::details-content { content-visibility: visible; }
+.settings-panel .settings-content {
+  animation: none;
+  background: var(--surface-raised-solid);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 150ms ease-out, visibility 0s 150ms;
+}
+.settings-panel[open] .settings-content {
+  animation: none;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 300ms cubic-bezier(.2, 0, 0, 1), visibility 0s;
+}
+@media (hover: hover) {
+  .topbar .import-button:not(:disabled):not(:has(input:disabled)):hover,
+  .settings-panel > summary:hover { background: var(--surface-raised); }
+  .topbar .mode-switch button:not(.active):hover { color: var(--paper); background: rgba(255, 255, 255, .08); }
+  .settings-panel .settings-disclosure:hover, .settings-panel .settings-help-link:not(:disabled):hover { color: var(--accent); }
+  .settings-panel .settings-footer .plan-button:enabled:hover { background: var(--accent-strong); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .topbar, .settings-panel { transition: opacity 300ms cubic-bezier(.2, 0, 0, 1), transform 300ms cubic-bezier(.2, 0, 0, 1); }
+  .settings-panel .settings-content {
+    transform: translateY(-12px);
+    filter: blur(4px);
+    transition: opacity 150ms ease-out, transform 150ms ease-out, filter 150ms ease-out, visibility 0s 150ms;
+  }
+  .settings-panel[open] .settings-content {
+    transform: translateY(0);
+    filter: blur(0);
+    transition: opacity 300ms cubic-bezier(.2, 0, 0, 1), transform 300ms cubic-bezier(.2, 0, 0, 1), filter 300ms cubic-bezier(.2, 0, 0, 1), visibility 0s;
+  }
+  .topbar .mode-switch button, .topbar .import-button,
+  .settings-panel > summary, .settings-panel .settings-content button, .settings-content .media-import-row label {
+    transition: background-color 150ms ease-out, color 150ms ease-out, transform 150ms ease-out;
+  }
+  .topbar button:not(:disabled):active, .topbar .import-button:not(:has(input:disabled)):not(:disabled):active,
+  .settings-panel > summary:active, .settings-content button:not(:disabled):not(.settings-disclosure):not(.settings-help-link):active,
+  .settings-content .media-import-row label:not(:has(input:disabled)):active { transform: scale(.96); }
+  .settings-panel .summary-chevron, .settings-panel .settings-disclosure > svg { transition: transform 150ms ease-out; }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel {
+    transform: translateY(-12px);
+    transition: opacity 150ms ease-out, transform 150ms ease-out;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar button:active, .topbar .import-button:active,
+  .settings-panel > summary:active, .settings-panel .settings-content button:active,
+  .settings-panel .media-import-row label:active { transform: none; }
+  .topbar, .settings-panel, .settings-panel .settings-content {
+    transition-duration: 150ms !important;
+    transition-property: opacity;
+    transition-timing-function: ease-out;
+  }
+  .settings-panel .settings-content { transition-property: opacity, visibility; transition-duration: 150ms, 0s !important; transition-delay: 0s, 150ms; }
+  .settings-panel[open] .settings-content { transition-delay: 0s; }
+  .playback-active.playback-chrome-hidden .topbar,
+  .playback-active.playback-chrome-hidden .settings-panel { transform: none; }
+}
+@media (max-width: 400px) {
+  .settings-panel .trip-range-fields label { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 8px; }
 }
