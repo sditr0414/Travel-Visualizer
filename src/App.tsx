@@ -1233,11 +1233,15 @@ export function App({ workerClient }: AppProps) {
         <button className="secondary-control" type="button" onClick={resetPlayback} disabled={!canPlay} aria-label="처음부터 보기" title="처음부터 보기"><RotateCcw size={17} /></button>
         <button className="play-control" type="button" onClick={togglePlayback} disabled={!canPlay}
           aria-label={state.phase === 'playing' ? '일시정지' : '재생'} title={state.phase === 'playing' ? '일시정지' : '재생'}>
-          {state.phase === 'playing' ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+          <span className="play-toggle" data-playing={state.phase === 'playing'} aria-hidden="true">
+            <span className="play-toggle-icon play-toggle-play"><Play size={18} fill="currentColor" /></span>
+            <span className="play-toggle-icon play-toggle-pause"><Pause size={18} fill="currentColor" /></span>
+          </span>
         </button>
         <div className="timeline-control">
           <input
             aria-label="재생 위치"
+            style={{ '--playback-progress': `${duration > 0 ? Math.max(0, Math.min(100, hud.timeSec / duration * 100)) : 0}%` } as CSSProperties}
             aria-valuetext={`${formatClock(hud.timeSec)} / ${formatClock(duration)}`}
             type="range"
             min="0"

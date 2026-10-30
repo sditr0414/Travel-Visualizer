@@ -16,7 +16,7 @@ export function RouteSceneDetails({ mobilityClass, mobility, speed, distance, or
   return <section className="route-bottom-scene" aria-label="하단 현재 장면 정보">
     <div className="bottom-scene-movement">
       <span className="bottom-scene-label">현재 장면</span>
-      <strong><span aria-hidden="true">{MOVEMENT_VISUALS[mobilityClass].icon}</span> {mobility}</strong>
+      <strong className="bottom-scene-mobility"><span aria-hidden="true">{MOVEMENT_VISUALS[mobilityClass].icon}</span> {mobility}</strong>
       <span className="bottom-scene-metrics">{[speed, distance].filter(Boolean).join(' · ')}</span>
     </div>
     <div className="bottom-scene-route">
