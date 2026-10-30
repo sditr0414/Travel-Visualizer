@@ -1,6 +1,7 @@
 import { haversineMeters, pathDistanceMeters, smoothPath, unwrapPath } from '../geo.js';
 import { parseLatLng, clipMovement } from '../timeline-parser.js';
 import { inferMobility } from '../mobility.js';
+import { readRawActivities, splitRawMobility } from './raw-mobility';
 import type { Coordinate, Movement, ParsedTrip, TimelineDateRange } from '../types';
 
 interface Position extends Coordinate { timeMs: number; accuracy?: number }
@@ -46,24 +47,28 @@ export function readRawTimeline(signals: unknown[]): RawTimeline {
   if (positions.length < 2) throw new Error('경로를 만들 수 있는 위치·시각 기록이 부족합니다. 유효한 원시 위치 기록이 두 개 이상 있는 파일을 선택해 주세요.');
 
   const movements: Movement[] = [];
+  const activities = readRawActivities(signals);
   let group: Position[] = [positions[0]];
   let previousLongitude: number | null = null;
   const flush = () => {
     if (group.length < 2) return;
-    const distanceMeters = pathDistanceMeters(group);
-    if (distanceMeters < MIN_DISTANCE_METERS) return;
-    const first = group[0], last = group[group.length - 1];
-    const durationSec = (last.timeMs - first.timeMs) / 1000;
-    const points = unwrapPath(smoothPath(group, { maxSegmentMeters: 300 }), previousLongitude);
-    previousLongitude = points[points.length - 1].lng;
-    movements.push({
-      startMs: first.timeMs, endMs: last.timeMs,
-      start: { lat: points[0].lat, lng: points[0].lng }, end: { lat: points[points.length - 1].lat, lng: points[points.length - 1].lng },
-      points, distanceMeters, pathDistanceMeters: pathDistanceMeters(points), durationSec,
-      avgSpeedKmh: distanceMeters / durationSec * 3.6,
-      googleType: 'UNKNOWN', googleProbability: 0, activityProbability: 0,
-      inferred: true, inferenceSource: 'raw-position', connectionBefore: 'missing-recording'
-    });
+    for (const part of splitRawMobility(group, activities)) {
+      const distanceMeters = pathDistanceMeters(part.points);
+      if (distanceMeters < MIN_DISTANCE_METERS) continue;
+      const first = part.points[0], last = part.points[part.points.length - 1];
+      const durationSec = (last.timeMs - first.timeMs) / 1000;
+      const points = unwrapPath(smoothPath(part.points, { maxSegmentMeters: 300 }), previousLongitude);
+      previousLongitude = points[points.length - 1].lng;
+      movements.push({
+        startMs: first.timeMs, endMs: last.timeMs,
+        start: { lat: points[0].lat, lng: points[0].lng }, end: { lat: points[points.length - 1].lat, lng: points[points.length - 1].lng },
+        points, distanceMeters, pathDistanceMeters: pathDistanceMeters(points), durationSec,
+        avgSpeedKmh: distanceMeters / durationSec * 3.6,
+        googleType: 'UNKNOWN', googleProbability: 0, activityProbability: 0,
+        inferred: true, inferenceSource: 'raw-position', connectionBefore: 'missing-recording',
+        rawMobility: part.evidence
+      });
+    }
   };
   for (let index = 1; index < positions.length; index++) {
     const point = positions[index], previous = positions[index - 1];
@@ -79,6 +84,16 @@ export function readRawTimeline(signals: unknown[]): RawTimeline {
     }
   }
   flush();
+  // Continue a supported mode across a brief sensor silence, including at a
+  // 30-minute window boundary. Never carry it across a missing recording.
+  for (let index = 1; index < movements.length - 1; index++) {
+    const before = movements[index - 1], current = movements[index], after = movements[index + 1];
+    if (!current.rawMobility && current.durationSec < 90 && before.endMs === current.startMs && current.endMs === after.startMs
+      && before.rawMobility && after.rawMobility && before.rawMobility.mobilityClass === after.rawMobility.mobilityClass) {
+      current.rawMobility = { mobilityClass: before.rawMobility.mobilityClass,
+        confidence: Math.min(before.rawMobility.confidence, after.rawMobility.confidence) };
+    }
+  }
   if (!movements.length) throw new Error('원시 위치 기록은 있지만 재생할 이동 경로가 없습니다. 같은 장소의 기록만 있거나 위치 오차가 큰 파일인지 확인해 주세요.');
   return { positions: positions.length, startMs: positions[0].timeMs, endMs: positions[positions.length - 1].timeMs, movements };
 }

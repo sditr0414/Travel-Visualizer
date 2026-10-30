@@ -87,6 +87,17 @@ export function inferMobility(segment) {
 
   // High speed over a very short inferred gap is bad timing evidence, not aviation.
   if (segment.inferred && directKm < 20) scores.set(MobilityClass.FLIGHT, 0);
+  if (segment.inferenceSource === 'raw-position') {
+    // Average speed alone cannot identify a bicycle, railway, or ferry. Raw
+    // sensor evidence remains separate from Google's confirmed semantic type.
+    for (const mode of [MobilityClass.BIKE, MobilityClass.URBAN_TRANSIT, MobilityClass.FAST_GROUND, MobilityClass.FERRY]) scores.set(mode, 0);
+    if (speed > 9) scores.set(MobilityClass.WALK, 0);
+    const evidence = segment.rawMobility;
+    const limits = { WALK: 18, BIKE: 55, ROAD: 220, FAST_GROUND: 360 };
+    if (evidence && evidence.confidence >= .7 && speed <= (limits[evidence.mobilityClass] ?? 0)) {
+      add(scores, evidence.mobilityClass, 2.5 * evidence.confidence);
+    }
+  }
   const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
   const best = sorted[0];
   const second = sorted[1];
@@ -94,7 +105,7 @@ export function inferMobility(segment) {
 
   return {
     mobilityClass: best[0],
-    confidence,
+    confidence: segment.inferenceSource === 'raw-position' ? Math.min(confidence, segment.rawMobility ? .8 : .45) : confidence,
     scores: Object.fromEntries(sorted),
     speedKmh: speed,
     distanceKm,

@@ -2,11 +2,15 @@ import { readFile, writeFile, utimes } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 // Entirely synthetic; personal Timeline exports must never enter test artifacts.
-const rawSignals = [0, 5, 10, 15].map(minute => ({ position: {
+const positions = [0, 5, 10, 15].map(minute => ({ position: {
   LatLng: `${37.5 + minute * .001}°, 127.0000°`,
   timestamp: new Date(Date.parse('2026-04-10T09:00:00+09:00') + minute * 60_000).toISOString(),
   accuracyMeters: 10
 } }));
+const rawSignals = [...positions, ...Array.from({ length: 16 }, (_, minute) => ({ activityRecord: {
+  timestamp: new Date(Date.parse('2026-04-10T09:00:00+09:00') + minute * 60_000).toISOString(),
+  probableActivities: [{ type: 'IN_VEHICLE', confidence: .95 }, { type: 'IN_RAIL_VEHICLE', confidence: .95 }]
+} }))];
 const timeline = { name: 'raw-positions.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ rawSignals: [...rawSignals].reverse(), userLocationProfile: {} })) };
 
 test('raw-only Timeline opens, plays, connects photos and restores from a saved trip', async ({ page }, info) => {
@@ -22,6 +26,8 @@ test('raw-only Timeline opens, plays, connects photos and restores from a saved 
   await play.click();
   await expect.poll(async () => Number(await page.getByLabel('재생 위치', { exact: true }).inputValue())).toBeGreaterThan(0);
   await page.getByRole('button', { name: '일시정지', exact: true }).click();
+  await page.getByLabel('재생 위치', { exact: true }).fill('5');
+  await expect(page.locator('.bottom-scene-mobility, .route-persistent-hud').filter({ visible: true }).first()).toContainText('기차');
   await page.locator('.settings-panel summary').click();
   await expect(page.locator('.settings-content')).toContainText('원시 위치 기록으로 경로를 구성했습니다.');
   await page.locator('.settings-panel summary').click();

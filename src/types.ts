@@ -54,6 +54,7 @@ export interface TimelineScanResult extends TimelineDateRange {
 }
 
 export interface Movement {
+  rawMobility?: { mobilityClass: 'WALK' | 'BIKE' | 'ROAD' | 'FAST_GROUND'; confidence: number };
   connectionBefore?: 'excluded-flight' | 'missing-recording';
   hideRoute?: boolean;
   startMs: number;
