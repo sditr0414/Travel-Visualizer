@@ -67,6 +67,27 @@ describe('display-synchronized route geometry', () => {
     expect(p.jumpTo.mock.calls.length).toBeGreaterThanOrEqual(60);
     p.player.dispose();
   });
+  it.each([[60, true], [120, true], [60, false], [120, false]] as const)('eases photo arrival and departure at %s Hz (follow=%s) without changing the stop or journey length', (hz, follow) => {
+    const p = setup();
+    p.player.loadPlan(p.plan, [{ id: 'photo', atSec: 1, durationSec: 1 }]);
+    p.player.setLockToPosition(follow);
+    const positions = [p.jumpTo.mock.calls.at(-1)![0].center[0] as number];
+    p.player.play();
+    for (let i = 1; i <= 4 * hz; i += 1) {
+      p.tick(i * 1000 / hz);
+      positions.push(p.jumpTo.mock.calls.at(-1)![0].center[0] as number);
+    }
+    const nominalStep = 0.006 / hz;
+    expect(positions[hz] - positions[hz - 1]).toBeLessThan(nominalStep * 0.12);
+    expect(positions[2 * hz + 1] - positions[2 * hz]).toBeLessThan(nominalStep * 0.12);
+    for (const position of positions.slice(hz, 2 * hz + 1)) expect(position).toBeCloseTo(127.006, 9);
+    const steps = positions.slice(1).map((position, i) => position - positions[i]);
+    expect(Math.min(...steps)).toBeGreaterThanOrEqual(-1e-10);
+    expect(Math.max(...steps)).toBeLessThan(nominalStep * 1.34);
+    expect(positions.at(-1)).toBeCloseTo(127.018, 9);
+    expect(p.player.getDuration()).toBe(4);
+    p.player.dispose();
+  });
   it('keeps both the route and the head absent in an excluded-flight connector', () => {
     const p = setup(); p.plan.segments[0].hideRoute = true;
     p.player.loadPlan(p.plan);

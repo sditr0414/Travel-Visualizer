@@ -27,6 +27,41 @@ describe('photo journey stops', () => {
     )).toBe(14);
   });
 
+  it('preserves the visible route position when stops change during arrival or departure', () => {
+    const previous = [{ id: 'photo', atSec: 10, durationSec: 2 }];
+    const next = [...previous, { id: 'nearby', atSec: 10.25, durationSec: 1 }];
+    for (const time of [9.7, 12.1]) {
+      const route = mapJourneyTime(time, previous, 30).routeTimeSec;
+      const remapped = remapJourneyTimeForStops(time, previous, next, 30);
+      expect(mapJourneyTime(remapped, next, 30).routeTimeSec).toBeCloseTo(route, 9);
+      expect(remapJourneyTimeForStops(time, previous, [], 30)).toBeCloseTo(route, 9);
+    }
+  });
+
+  it('keeps short gaps and consecutive photos monotonic and stationary during every dwell', () => {
+    const dense = [
+      { id: 'first', atSec: 0, durationSec: 1 },
+      { id: 'second', atSec: 0, durationSec: 1 },
+      { id: 'nearby', atSec: 0.1, durationSec: 1 },
+      { id: 'last', atSec: 1, durationSec: 1 }
+    ];
+    let previousTime = 0;
+    for (let i = 0; i <= 1000; i += 1) {
+      const frame = mapJourneyTime(i / 200, dense, 1);
+      expect(frame.routeTimeSec).toBeGreaterThanOrEqual(previousTime - 1e-10);
+      if (frame.activeStopId) expect(frame.routeTimeSec).toBe(dense.find(stop => stop.id === frame.activeStopId)!.atSec);
+      previousTime = frame.routeTimeSec;
+    }
+    expect(previousTime).toBe(1);
+  });
+
+  it('does not slow down for zero-duration stops or a route without photos', () => {
+    for (const time of [0, 9.8, 10, 10.2, 30]) {
+      expect(mapJourneyTime(time, [{ id: 'disabled', atSec: 10, durationSec: 0 }], 30)).toEqual({ routeTimeSec: time, activeStopId: null });
+      expect(mapJourneyTime(time, [], 30)).toEqual({ routeTimeSec: time, activeStopId: null });
+    }
+  });
+
   it('caches the total stop duration when stops change', () => {
     const map = {
       getSource: () => ({ setData: vi.fn() }),

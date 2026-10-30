@@ -705,7 +705,7 @@ function flightZoomKey(frame: TravelFrame): string {
 }
 
 function buildStopSchedule(stops: PlaybackStop[], routeDurationSec: number): StopSchedule {
-  const sorted = [...stops].sort((a, b) => {
+  const sorted = stops.filter(stop => stop.durationSec > 0).sort((a, b) => {
     const time = a.atSec - b.atSec;
     if (Math.abs(time) > 1e-9) return time;
     return Number(isDayMarkerId(b.id)) - Number(isDayMarkerId(a.id));
@@ -732,9 +732,8 @@ function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], rou
       low = middle + 1;
     } else high = middle - 1;
   }
-  if (index < 0) return { routeTimeSec: clamp(timeSec, 0, routeDurationSec), activeStopId: null, activeStopProgress: 0 };
   const stop = schedule[index];
-  if (timeSec < stop.journeyEndSec) {
+  if (stop && timeSec < stop.journeyEndSec) {
     const duration = Math.max(stop.journeyEndSec - stop.journeyStartSec, 1e-9);
     return {
       routeTimeSec: clamp(stop.atSec, 0, routeDurationSec),
@@ -742,17 +741,52 @@ function mapScheduledJourneyTime(timeSec: number, schedule: ScheduledStop[], rou
       activeStopProgress: clamp((timeSec - stop.journeyStartSec) / duration, 0, 1)
     };
   }
-  return { routeTimeSec: clamp(timeSec - stop.addedThroughSec, 0, routeDurationSec), activeStopId: null, activeStopProgress: 0 };
+  const routeTime = clamp(timeSec - (stop?.addedThroughSec ?? 0), 0, routeDurationSec);
+  return {
+    routeTimeSec: easeStopRouteTime(routeTime, stop, schedule[index + 1], routeDurationSec),
+    activeStopId: null,
+    activeStopProgress: 0
+  };
+}
+
+// Sample the existing planned path with a bounded time curve. Both the camera
+// and route geometry stop at the photo; no second camera tracking filter or
+// extra journey time is introduced. Neighboring windows never overlap.
+function easeStopRouteTime(routeTime: number, previous: ScheduledStop | undefined, next: ScheduledStop | undefined, duration: number): number {
+  const start = previous?.atSec ?? 0;
+  const end = next?.atSec ?? duration;
+  const window = Math.min(0.6, (end - start) / 2);
+  if (!(window > 0)) return routeTime;
+  if (previous && routeTime < start + window) {
+    const u = clamp((routeTime - start) / window, 0, 1);
+    return start + window * u * u * (2 - u);
+  }
+  if (next && routeTime > end - window) {
+    const u = clamp((routeTime - (end - window)) / window, 0, 1);
+    return end - window + window * (u + u * u * (1 - u));
+  }
+  return routeTime;
 }
 
 function journeyTimeForRouteTime(routeTimeSec: number, schedule: ScheduledStop[], routeDurationSec: number): number {
   const routeTime = clamp(routeTimeSec, 0, routeDurationSec);
-  let added = 0;
-  for (const stop of schedule) {
-    if (stop.atSec >= routeTime) break;
-    added = stop.addedThroughSec;
+  const index = schedule.findIndex(stop => stop.atSec >= routeTime);
+  const next = index < 0 ? undefined : schedule[index];
+  const previous = schedule[(index < 0 ? schedule.length : index) - 1];
+  let nominalTime = routeTime;
+  // Invert only inside a ramp when live stop settings change. This preserves
+  // the visible route position, including just before or after a photo.
+  if (Math.abs(easeStopRouteTime(routeTime, previous, next, routeDurationSec) - routeTime) > 1e-12) {
+    let low = previous?.atSec ?? 0;
+    let high = next?.atSec ?? routeDurationSec;
+    for (let i = 0; i < 48; i += 1) {
+      const middle = (low + high) / 2;
+      if (easeStopRouteTime(middle, previous, next, routeDurationSec) < routeTime) low = middle;
+      else high = middle;
+    }
+    nominalTime = (low + high) / 2;
   }
-  return routeTime + added;
+  return nominalTime + (previous?.addedThroughSec ?? 0);
 }
 
 export function remapJourneyTimeForStops(timeSec: number, previousStops: PlaybackStop[], nextStops: PlaybackStop[], routeDurationSec: number): number {
@@ -772,15 +806,9 @@ export function remapJourneyTimeForStops(timeSec: number, previousStops: Playbac
 }
 
 export function mapJourneyTime(timeSec: number, stops: PlaybackStop[], routeDurationSec: number): { routeTimeSec: number; activeStopId: string | null } {
-  let added = 0;
-  for (const stop of stops) {
-    const start = clamp(stop.atSec, 0, routeDurationSec) + added;
-    const duration = Math.max(0, stop.durationSec);
-    if (timeSec < start) break;
-    if (timeSec < start + duration) return { routeTimeSec: clamp(stop.atSec, 0, routeDurationSec), activeStopId: stop.id };
-    added += duration;
-  }
-  return { routeTimeSec: clamp(timeSec - added, 0, routeDurationSec), activeStopId: null };
+  const { schedule } = buildStopSchedule(stops, routeDurationSec);
+  const { routeTimeSec, activeStopId } = mapScheduledJourneyTime(timeSec, schedule, routeDurationSec);
+  return { routeTimeSec, activeStopId };
 }
 
 function trackingTargetProjected(frame: TravelFrame): { x: number; y: number } {

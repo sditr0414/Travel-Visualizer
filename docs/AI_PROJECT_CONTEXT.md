@@ -56,6 +56,7 @@ Timeline → TimelineWorkerClient → timeline.worker → domain/planner → Pla
 - 경로 길이는 여행 기간·활동일·이동 거리·지리 범위·구간 수에서 최소/추천/최대를 계산합니다. 자동 기본값은 최소·최대의 중앙값을 5초 간격으로 반올림한 값입니다. 수동 길이는 재계획 범위 안에서 유지합니다.
 - 사용자 zoomOffset은 계획 프레임에 미리 합산하지 않습니다. controller가 기본/locked/항공/사진 보정 후 한 번만 적용합니다. 선택된 뷰포트와 실제 분할 뷰포트 차이도 최종 줌에 반영합니다.
 - 잠금 해제 cinematic 모드는 planner center/zoom을 사용합니다. 따라가기 모드는 실제 frame.position을 중앙에 두고 lockedZoom/항공 안정 줌을 사용합니다.
+- 사진·날짜 stop 전후에는 기존 계획 경로의 샘플 시각을 최대 0.6초 창에서 완화해 감속·출발합니다. 짧은 간격에서는 창을 절반으로 줄이고 같은 위치의 연속 사진은 정지 상태를 유지합니다. 카메라·마커·경로는 같은 시각을 사용하며 stop 위치·표시 시간·총 길이는 보존합니다. `setStops`는 이 시간 곡선을 역변환해 전환 중의 표시 위치도 보존합니다.
 - 사진 카메라의 smoothing/stop zoom은 route time이 멈춰도 진행되는 photo journey time을 사용합니다. seek/reset은 smoothing을 초기화합니다.
 - live 설정은 활성 controller만 다시 그립니다. 비활성 controller가 공유 지도의 카메라를 덮지 않아야 합니다.
 - `setStops`는 변경 시 route 진행 위치를 보존하고 같은 stop의 길이가 바뀌면 내부 진행 비율을 보존합니다.
