@@ -59,8 +59,8 @@ export function MediaLibraryDialog({ open, onClose, media, excluded, onToggle, o
     </details>
     {!filtered.length && <p className="empty-note">{media.length ? '검색 결과가 없습니다. 검색 조건을 바꿔 주세요.' : '이 기간에 사진이 없습니다. 여행 기간과 촬영 시간대를 확인하세요.'}</p>}
     <div className="library-list">{visible.map(item => <div key={item.id} className={`library-row ${excluded.has(item.id) ? 'is-excluded' : ''}`}>
-      <label className="library-selection"><input type="checkbox" disabled={busy} checked={!excluded.has(item.id)} onChange={() => onToggle(item.id)} aria-label={`${item.title} 감상에 포함`} />
-      <span className="library-kind" aria-label={item.kind === 'video' ? '영상' : '사진'}>{item.kind === 'video' ? <Film size={19} /> : <Image size={19} />}</span>
+      <label className="library-selection"><input type="checkbox" disabled={busy} checked={!excluded.has(item.id)} onChange={() => onToggle(item.id)} aria-label={`${item.kind === 'video' ? '영상' : '사진'} ${item.title} 감상에 포함`} />
+      <span className="library-kind" aria-hidden="true">{item.kind === 'video' ? <Film size={19} /> : <Image size={19} />}</span>
       <span className="library-info"><strong>{item.title}</strong><time dateTime={new Date(item.takenMs).toISOString()}>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Seoul' }).format(item.takenMs)}</time><span className={item.metadataSource === 'file-time' || item.metadataSource === 'filename-time' ? 'metadata-estimated' : ''}>{SOURCES[item.metadataSource]} · {item.positionSource === 'gps' ? `GPS 위치${gpsAccuracyLabel(item.gpsAccuracyM) ? ` · ${gpsAccuracyLabel(item.gpsAccuracyM)}` : ''}` : '경로 추정 위치'}</span></span></label>
       <button type="button" className="text-button" disabled={busy || excluded.has(item.id)} title="모든 사진 모드에서 보기" aria-label={`${item.title} 장면 보기`} onClick={() => onReveal(item.id)}>장면 보기</button>
       {item.kind === 'video' && onVideoCopy && <button type="button" className="text-button" disabled={busy} aria-label={`${item.title} 호환 사본`} onClick={() => onVideoCopy(item)}>호환 사본</button>}

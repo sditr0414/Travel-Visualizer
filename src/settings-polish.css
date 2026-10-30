@@ -102,11 +102,6 @@
     scrollbar-gutter: stable;
   }
 
-  /* Keep the photo caption and the full playback box on the same visual centerline. */
-  .media-card .media-caption {
-    transform: translateY(2px);
-  }
-
   .photo-mode .player-dock {
     bottom: max(22px, env(safe-area-inset-bottom));
   }

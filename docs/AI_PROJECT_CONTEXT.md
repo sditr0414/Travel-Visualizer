@@ -140,3 +140,5 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 사진 목록 검색·날짜·포함 상태는 목록 조회만 바꾸며 제외 ID를 삭제하지 않습니다. 장면 이동은 모든 사진 모드의 PlayerController.seekToStop을 통해 실제 stop schedule의 시각으로 이동합니다. 날짜 필터는 기존 한국 시간 표시와 일치합니다.
 
 `server/video-conversion.mjs`는 기본 폴더 영상 한 개만 로컬 ffmpeg/ffprobe로 처리합니다. API는 동일 출처 검사를 거치며 임의 경로를 받지 않습니다. unique mkdtemp 출력, 원본 stat 재검사, cancel signal, 미완성 폴더 정리, H.264/길이 검증과 metadata sidecar를 유지합니다. HDR tone mapping과 일괄 변환은 지원하지 않습니다. 브라우저 수동 파일을 서버에 업로드하지 않습니다.
+
+사진 캡션의 장소명·시각은 말줄임하지 않고 줄바꿈합니다. 사진 여정의 분할 비율은 기존 분할선과 설정의 네이티브 range가 같은 mapShare/setMapShare를 사용하며, 폭별 제한과 프로젝트 저장 계약을 공유합니다. 사진 목록의 사진·영상 종류는 체크박스 접근성 이름에 포함하고 종류 아이콘은 장식으로 처리합니다.

@@ -455,3 +455,19 @@
   /* Touch layouts keep the player visible, even when the hover timer expires. */
   .playback-active.playback-chrome-hidden .route-bottom-scene { transform: translateX(-50%); transition-delay: 0s; }
 }
+
+/* Keep the complete place and timestamp readable as the photo pane narrows. */
+.media-card .media-caption-place,
+.media-card .media-caption-date {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+.media-card .media-caption-place { overflow: visible; }
+
+@media (max-width: 820px) and (max-height: 500px) {
+  /* In the stacked layout the toolbar is over the map, not the photo pane. */
+  .media-journey-pane { padding-top: 12px; }
+}

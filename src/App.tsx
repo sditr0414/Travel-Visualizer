@@ -1016,7 +1016,7 @@ export function App({ workerClient }: AppProps) {
           {!localFeatures && <label className="web-file-choice">사진·영상 파일 선택<input type="file" aria-label="시작할 사진 파일 선택" multiple accept="image/*,video/*,.json,.heic,.heif" onChange={event => { if (event.currentTarget.files?.length) void onMediaFiles(event.currentTarget.files); event.currentTarget.value = ''; }} /></label>}
           <div className="welcome-links">
             <button className="settings-help-link" type="button" disabled={busy} onClick={openProject}>저장한 여행 열기</button>
-            <button className="settings-help-link" type="button" aria-label="사용 방법" onClick={() => setHelpOpen(true)}>타임라인 준비 방법</button>
+            <button className="settings-help-link" type="button" onClick={() => setHelpOpen(true)}>타임라인 준비 방법</button>
           </div>
           <p className="local-privacy"><ShieldCheck size={13} /><span>원본 파일은 업로드되지 않습니다.</span></p>
         </section>
@@ -1084,6 +1084,13 @@ export function App({ workerClient }: AppProps) {
             <SettingHelp title="지도 확대" description={"왼쪽은 넓게, 오른쪽은 자세히 봅니다.\n바로 적용됩니다."}><label className="range-field"><span><span>지도 확대</span><output>{formatSigned(zoomOffset)}</output></span>
               <input aria-label="지도 확대" aria-description="왼쪽은 넓게, 오른쪽은 자세히 봅니다. 바로 적용됩니다." type="range" min="-1.5" max="1.5" step="0.1" value={zoomOffset} onChange={event => updatePreference('zoomOffset', Number(event.target.value))} />
             </label></SettingHelp>
+
+          {journeyMode === 'PHOTOS' && <SettingHelp title="지도·사진 화면 비율" description="슬라이더를 누르거나 방향키로 지도와 사진의 화면 비율을 조절합니다. 바로 적용됩니다."><label className="range-field">
+            <span><span>지도·사진 화면 비율</span><output>지도 {Math.round(mapShare * 100)}%</output></span>
+            <input type="range" aria-label="지도·사진 화면 비율" aria-valuetext={`지도 ${Math.round(mapShare * 100)}%, 사진 ${100 - Math.round(mapShare * 100)}%`}
+              min={splitNarrow ? Math.ceil(mobileMapMin * 100) : 38} max={splitNarrow ? 72 : 78} step="1"
+              value={Math.round(mapShare * 100)} onChange={event => setMapShare(Number(event.target.value) / 100)} />
+          </label></SettingHelp>}
 
           <section className="settings-group photo-settings-group">
             <div className="settings-group-title"><Images size={14} /><span>사진·영상</span><output>{media.length}개</output></div>

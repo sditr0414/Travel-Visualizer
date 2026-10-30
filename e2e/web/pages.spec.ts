@@ -33,7 +33,7 @@ test('first visit has no previews, local API calls or map downloads and supports
       const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
     }));
     expect(links[0].right <= links[1].left || links[0].bottom <= links[1].top).toBe(true);
-    await page.getByRole('button', { name: '사용 방법', exact: true }).click();
+    await page.getByRole('button', { name: '타임라인 준비 방법', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '사용 안내', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '사용 안내 닫기', exact: true }).click();
   }
