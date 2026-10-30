@@ -275,6 +275,34 @@ describe('MediaJourneyPane', () => {
     vi.useRealTimers();
   });
 
+  it('preserves visible layers and opacity when rapid navigation reverses a fade', () => {
+    vi.useFakeTimers();
+    const animate = vi.fn(() => ({ cancel: vi.fn() }));
+    const original = HTMLElement.prototype.animate;
+    HTMLElement.prototype.animate = animate as unknown as typeof original;
+    const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" />);
+    try {
+      const first = view.container.querySelector<HTMLElement>('.is-current')!;
+      first.style.opacity = '0.65';
+      view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="ROAD" />);
+      act(() => vi.advanceTimersByTime(20));
+      expect(first).toHaveClass('is-previous');
+      expect(animate.mock.calls.some(call => (call as unknown as [Keyframe[]])[0][0].opacity === '0.65')).toBe(true);
+      view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="BIKE" />);
+      act(() => vi.advanceTimersByTime(20));
+      expect(view.container.querySelectorAll('.is-previous')).toHaveLength(2);
+      view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" />);
+      act(() => vi.advanceTimersByTime(20));
+      expect(view.container.querySelector('.is-current')).toBe(first);
+      const calls = animate.mock.calls.length;
+      view.rerender(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" playing />);
+      act(() => vi.advanceTimersByTime(20));
+      expect(animate).toHaveBeenCalledTimes(calls);
+      act(() => vi.advanceTimersByTime(1000));
+      expect(view.container.querySelector('.is-previous')).toBeNull();
+    } finally { view.unmount(); HTMLElement.prototype.animate = original; vi.useRealTimers(); }
+  });
+
   it('keeps quick pictogram changes smooth without letting the dissolve dominate the scene', () => {
     vi.useFakeTimers();
     const view = render(<MediaJourneyPane media={[media]} activeId={null} {...baseProps} mobilityClass="WALK" />);

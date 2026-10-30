@@ -63,6 +63,8 @@ export class PlayerController {
   private frameIndex = -1;
   private framePosition = -1;
   private raf: number | null = null;
+  private seekCameraDurationMs = 0;
+  private seekCameraUntil = 0;
   private lockToPosition = true;
   private zoomOffset = 0;
   private photoDetailZoomStrength = 0;
@@ -157,13 +159,16 @@ export class PlayerController {
     if (!this.plan?.frames.length || this.playing) return;
     if (this.timeSec >= this.getDuration()) this.reset();
     this.playing = true;
+    const seekRemainingSec = Math.max(0, (this.seekCameraUntil - performance.now()) / 1000);
+    this.map.stop?.();
+    this.seekCameraUntil = 0;
     const actualCenter = this.map.getCenter?.();
     const actualZoom = this.map.getZoom?.();
-    if (!this.transition && this.lastCamera && actualCenter && actualZoom !== undefined &&
-      (haversineMeters(actualCenter, this.lastCamera.center) > 5 || Math.abs(actualZoom - this.lastCamera.zoom) > 0.05)) {
+    if (this.lastCamera && actualCenter && actualZoom !== undefined &&
+      (seekRemainingSec > 0 || haversineMeters(actualCenter, this.lastCamera.center) > 5 || Math.abs(actualZoom - this.lastCamera.zoom) > 0.05)) {
       const destination = this.lastCamera;
       this.lastCamera = { center: { lng: actualCenter.lng, lat: actualCenter.lat }, zoom: actualZoom };
-      this.beginTransition(destination, false);
+      this.beginTransition(destination, false, seekRemainingSec > 0 ? Math.max(0.18, seekRemainingSec) : 2);
     }
     this.lastTickAt = performance.now();
     this.tick(performance.now());
@@ -175,8 +180,12 @@ export class PlayerController {
     this.raf = null;
   }
 
-  seek(seconds: number): void {
+  seek(seconds: number, options: { animate?: boolean } = {}): void {
     if (!this.plan) return;
+    this.map.stop?.();
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.seekCameraDurationMs = options.animate && !reducedMotion && typeof this.map.easeTo === 'function' ? 480 : 0;
+    this.seekCameraUntil = 0;
     this.cancelTransition();
     this.lastFrame = null;
     this.timeSec = Math.max(0, Math.min(this.getDuration(), Number(seconds) || 0));
@@ -195,11 +204,13 @@ export class PlayerController {
     const stop = this.stopById.get(id);
     if (!stop || stop.durationSec <= 0) return false;
     this.pause();
-    this.seek(stop.journeyStartSec + Math.min(0.01, stop.durationSec / 2));
+    this.seek(stop.journeyStartSec + Math.min(0.01, stop.durationSec / 2), { animate: true });
     return true;
   }
 
   reset(): void {
+    this.map.stop?.();
+    this.seekCameraUntil = 0;
     this.pause();
     this.cancelTransition();
     this.lastFrame = null;
@@ -218,6 +229,7 @@ export class PlayerController {
   }
 
   dispose(): void {
+    if (this.ownsCamera()) this.map.stop?.();
     this.pause();
     this.cancelTransition();
     if (cameraOwners.get(this.map) === this) cameraOwners.delete(this.map);
@@ -364,7 +376,14 @@ export class PlayerController {
       if (ratio >= 1) this.transition = null;
     }
     this.lastCamera = { center, zoom };
-    this.map.jumpTo({ center: [center.lng, center.lat], zoom });
+    const camera = { center: [center.lng, center.lat] as [number, number], zoom };
+    if (this.seekCameraDurationMs > 0) {
+      // Only explicit navigation uses MapLibre's short camera transition. The
+      // logical cursor and selected media update immediately, even while paused.
+      this.map.easeTo({ ...camera, duration: this.seekCameraDurationMs, easing: t => t * t * (3 - 2 * t) });
+      this.seekCameraUntil = performance.now() + this.seekCameraDurationMs;
+      this.seekCameraDurationMs = 0;
+    } else this.map.jumpTo(camera);
     cameraOwners.set(this.map, this);
     this.warmTilesAhead(viewportAdjustment);
     this.frameIndex = baseIndex;
@@ -402,13 +421,13 @@ export class PlayerController {
     this.lastGeometryPosition = -1;
   }
 
-  private beginTransition(to: { center: Coordinate; zoom: number }, moveHead: boolean): void {
+  private beginTransition(to: { center: Coordinate; zoom: number }, moveHead: boolean, durationSec = 2): void {
     if (!this.lastCamera) return;
     this.transition = {
       from: this.lastCamera,
       position: moveHead && this.lastFrame?.kind === 'TRAVEL' ? this.lastFrame.position : null,
       startSec: this.timeSec,
-      duration: Math.max(1 / (this.plan?.fps || 60), Math.min(2, this.getDuration() - this.timeSec))
+      duration: Math.max(1 / (this.plan?.fps || 60), Math.min(durationSec, this.getDuration() - this.timeSec))
     };
     warmMapTilesAhead(this.map, to.center, to.zoom);
   }

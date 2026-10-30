@@ -456,7 +456,11 @@ describe('playback continuity', () => {
   function playback() {
     const jumpTo = vi.fn();
     const setData = vi.fn();
-    const map = { getSource: () => ({ setData }), jumpTo } as unknown as Map;
+    const easeTo = vi.fn();
+    const stop = vi.fn();
+    const getCenter = vi.fn();
+    const getZoom = vi.fn();
+    const map = { getSource: () => ({ setData }), jumpTo, easeTo, stop, getCenter, getZoom } as unknown as Map;
     let next: FrameRequestCallback = () => undefined;
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { next = callback; return 1; }));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
@@ -464,9 +468,52 @@ describe('playback continuity', () => {
     const onFrame = vi.fn();
     const onTransitionChange = vi.fn();
     const player = new PlayerController(map, { onFrame, onTransitionChange });
-    return { player, jumpTo, setData, onFrame, onTransitionChange, tick: (ms: number) => next(ms) };
+    return { player, jumpTo, easeTo, stop, getCenter, getZoom, setData, onFrame, onTransitionChange, tick: (ms: number) => next(ms) };
   }
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('updates the selected time immediately while an explicit seek eases the camera', () => {
+    const p = playback(); p.player.loadPlan(simplePlan()); p.jumpTo.mockClear();
+    p.player.seek(0.25, { animate: true });
+    expect(p.jumpTo).not.toHaveBeenCalled();
+    expect(p.easeTo).toHaveBeenCalledWith(expect.objectContaining({ duration: 480 }));
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBe(0.25);
+    expect(p.player.isPlaying()).toBe(false);
+    p.player.seek(0.4, { animate: true });
+    expect(p.stop).toHaveBeenCalledTimes(2);
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBe(0.4);
+    p.player.dispose();
+  });
+
+  it.each([false, true])('takes over an unfinished seek from its visible camera (near arrival=%s)', nearArrival => {
+    const p = playback(); p.player.loadPlan(simplePlan(), [{ id: 'photo', atSec: 0, durationSec: 3 }]);
+    p.player.seek(1, { animate: true });
+    const center = nearArrival ? { lng: 127.000001, lat: 37.5 } : { lng: 126.9, lat: 37.4 };
+    const zoom = nearArrival ? p.easeTo.mock.calls.at(-1)![0].zoom - 0.01 : 11;
+    if (nearArrival) vi.mocked(performance.now).mockReturnValue(470);
+    p.getCenter.mockReturnValue(center); p.getZoom.mockReturnValue(zoom);
+    p.jumpTo.mockClear(); p.player.play();
+    expect(p.stop).toHaveBeenCalledTimes(2);
+    expect(p.jumpTo.mock.calls[0][0].center[0]).toBeCloseTo(center.lng, 8);
+    expect(p.jumpTo.mock.calls[0][0].center[1]).toBeCloseTo(center.lat, 8);
+    expect(p.jumpTo.mock.calls[0][0].zoom).toBe(zoom);
+    p.player.pause();
+    vi.mocked(performance.now).mockReturnValue(5000);
+    p.player.play();
+    expect(p.onFrame.mock.calls.at(-1)?.[2]).toBe(1);
+    p.player.dispose();
+  });
+
+  it('keeps restore seeks immediate and honors reduced motion for explicit navigation', () => {
+    const p = playback(); p.player.loadPlan(simplePlan());
+    p.player.seek(0.25);
+    expect(p.easeTo).not.toHaveBeenCalled();
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    p.jumpTo.mockClear(); p.player.seek(0.4, { animate: true });
+    expect(p.easeTo).not.toHaveBeenCalled();
+    expect(p.jumpTo).toHaveBeenCalledTimes(1);
+    p.player.dispose();
+  });
 
   it('does not skip seconds of route after a blocked animation frame', () => {
     const p = playback();

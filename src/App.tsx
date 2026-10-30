@@ -897,7 +897,7 @@ export function App({ workerClient }: AppProps) {
         else { setRouteOverviewRequested(false); player.play(); dispatch({ type: 'PLAY' }); }
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault(); player.pause();
-        player.seek(playbackPositionsRef.current[journeyModeRef.current] + (event.key === 'ArrowRight' ? 5 : -5));
+        player.seek(playbackPositionsRef.current[journeyModeRef.current] + (event.key === 'ArrowRight' ? 5 : -5), { animate: journeyModeRef.current === 'PHOTOS' });
         dispatch({ type: 'PAUSE' });
       } else if (event.key === 'Home') {
         event.preventDefault(); player.reset(); dispatch({ type: 'RESET' });
@@ -1255,7 +1255,7 @@ export function App({ workerClient }: AppProps) {
               const mode = journeyModeRef.current;
               const player = playersRef.current[mode];
               player?.pause();
-              player?.seek(Number(event.target.value));
+              player?.seek(Number(event.target.value), { animate: mode === 'PHOTOS' });
               dispatch({ type: 'PAUSE' });
             }}
           />

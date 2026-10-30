@@ -1,6 +1,6 @@
 import { Film, ImageOff, ImagePlus, Play } from 'lucide-react';
 import { videoTargetTime } from './video-sync';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { dayMarkerCueFromId } from './day-markers';
 import { sceneTransitionDurationMs, transitSceneTransitionDurationMs } from './scene-transition';
 import type { JourneyMedia, MobilityClass } from '../types';
@@ -46,7 +46,7 @@ interface PreloadedAsset {
 
 interface SceneTransitionState {
   currentScene: SceneDescriptor;
-  previousScene: SceneDescriptor | null;
+  previousScenes: { scene: SceneDescriptor; transitionMs: number }[];
   transitionMs: number;
 }
 
@@ -98,7 +98,7 @@ export function MediaJourneyPane({ summary, media, activeId, playing = false, el
     return { kind: 'empty', key: 'empty' };
   }, [summary, active, activeAsset?.url, activeId, dayCue, destinationCity, media.length, mobilityClass, movementLabel, movementDate, movementSpeed, movementDistance, originCity, placeName]);
   const canEnterScene = desiredScene.kind !== 'photo' || activeAsset?.status === 'ready' || activeAsset?.status === 'error';
-  const { currentScene, previousScene, transitionMs } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
+  const { currentScene, previousScenes, transitionMs, removePrevious } = useSceneTransition(desiredScene, photoDisplaySec, canEnterScene);
   const style = { '--scene-transition-ms': `${transitionMs}ms` } as CSSProperties;
   const buffering = desiredScene.kind === 'photo' && desiredScene.key !== currentScene.key;
 
@@ -112,17 +112,49 @@ export function MediaJourneyPane({ summary, media, activeId, playing = false, el
         aria-live="polite"
       >
         {buffering && <span className="media-buffering" role="status">사진·영상 준비 중…</span>}
-        {previousScene && (
-          <div key={previousScene.key} className="media-scene-layer is-previous" aria-hidden="true" inert>
-            <SceneContent playing={false} elapsedSec={Number.NaN} scene={previousScene} videoMode={videoMode} videoMuted onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
-          </div>
-        )}
-        <div key={currentScene.key} className="media-scene-layer is-current">
-          <SceneContent playing={playing && currentScene.key === desiredScene.key} elapsedSec={elapsedSec} scene={currentScene} videoMode={videoMode} videoMuted={videoMuted} onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
-        </div>
+        {[...previousScenes, { scene: currentScene, transitionMs }].map(({ scene, transitionMs: duration }) => {
+          const current = scene.key === currentScene.key;
+          return <SceneLayer key={scene.key} sceneKey={scene.key} current={current} duration={duration} onExit={removePrevious}>
+            <SceneContent playing={current && playing && scene.key === desiredScene.key} elapsedSec={current ? elapsedSec : Number.NaN} scene={scene} videoMode={videoMode} videoMuted={current ? videoMuted : true} onFiles={onFiles} emptyDescription={emptyDescription} onOpenLibrary={onOpenLibrary} />
+          </SceneLayer>;
+        })}
       </div>
     </aside>
   );
+}
+
+// Keep keyed layers alive until their own fade finishes. Rapid A → B → A seeks
+// reverse from the visible opacity instead of restarting CSS keyframes at 0/1.
+function SceneLayer({ sceneKey, current, duration, onExit, children }: {
+  sceneKey: string; current: boolean; duration: number; onExit: (key: string) => void; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const ms = reduced ? 0 : duration;
+    const from = getComputedStyle(node);
+    const opacity = current ? '1' : '0';
+    const transform = current ? 'scale(1)' : 'scale(.992)';
+    const animation = ms > 0 ? node.animate?.([
+      { opacity: from.opacity, transform: from.transform },
+      { opacity, transform }
+    ], { duration: ms, easing: current ? 'cubic-bezier(.22,.72,.18,1)' : 'cubic-bezier(.35,0,.24,1)', fill: 'forwards' }) : undefined;
+    if (!animation) { node.style.opacity = opacity; node.style.transform = transform; }
+    const timer = !current ? window.setTimeout(() => onExit(sceneKey), ms + (ms > 0 ? 60 : 0)) : undefined;
+    return () => {
+      // Capture before cancellation so role changes and interrupted fades start
+      // from exactly what was visible on the preceding frame.
+      const visible = getComputedStyle(node);
+      node.style.opacity = visible.opacity;
+      node.style.transform = visible.transform;
+      animation?.cancel();
+      window.clearTimeout(timer);
+    };
+  }, [current, duration, onExit, sceneKey]);
+  return <div ref={ref} className={`media-scene-layer ${current ? 'is-current' : 'is-previous'}`}
+    style={{ animation: 'none', opacity: 0 }} aria-hidden={current ? undefined : true} inert={!current}>{children}</div>;
 }
 
 function SceneContent({ scene, videoMode, videoMuted, onFiles, playing, elapsedSec, emptyDescription, onOpenLibrary }: { emptyDescription?: string; onOpenLibrary?: () => void; playing: boolean; elapsedSec: number; scene: SceneDescriptor; videoMode: Props['videoMode']; videoMuted: boolean; onFiles: Props['onFiles'] }) {
@@ -388,7 +420,7 @@ function preloadMediaAsset(
   };
 }
 
-function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: number, canEnterScene: boolean): SceneTransitionState {
+function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: number, canEnterScene: boolean): SceneTransitionState & { removePrevious: (key: string) => void } {
   const latestSceneRef = useRef(desiredScene);
   const enteredAtRef = useRef<number | null>(null);
   const initialTransitionMs = desiredScene.kind === 'transit'
@@ -396,7 +428,7 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
     : sceneTransitionDurationMs(photoDisplaySec);
   const [transition, setTransition] = useState<SceneTransitionState>({
     currentScene: desiredScene,
-    previousScene: null,
+    previousScenes: [],
     transitionMs: initialTransitionMs
   });
 
@@ -422,28 +454,31 @@ function useSceneTransition(desiredScene: SceneDescriptor, photoDisplaySec: numb
     const showFrame = window.requestAnimationFrame(() => {
       enteredAtRef.current = now;
       latestSceneRef.current = desiredScene;
-      setTransition({ currentScene: desiredScene, previousScene: prior, transitionMs });
+      setTransition(current => ({
+        currentScene: desiredScene,
+        previousScenes: [
+          ...current.previousScenes.filter(item => item.scene.key !== desiredScene.key && item.scene.key !== prior.key),
+          { scene: prior, transitionMs }
+        ],
+        transitionMs
+      }));
     });
     return () => {
       window.cancelAnimationFrame(showFrame);
     };
   }, [canEnterScene, desiredScene, photoDisplaySec]);
 
-  const previousSceneKey = transition.previousScene?.key;
-  useEffect(() => {
-    if (!previousSceneKey) return;
-    const previousKey = previousSceneKey;
-    const timer = window.setTimeout(() => {
-      setTransition(current => current.previousScene?.key === previousKey ? { ...current, previousScene: null } : current);
-    }, transition.transitionMs + 60);
-    return () => window.clearTimeout(timer);
-  }, [previousSceneKey, transition.currentScene.key, transition.transitionMs]);
+  const removePrevious = useCallback((key: string) => {
+    setTransition(current => current.previousScenes.some(item => item.scene.key === key)
+      ? { ...current, previousScenes: current.previousScenes.filter(item => item.scene.key !== key) }
+      : current);
+  }, []);
 
   useLayoutEffect(() => {
     if (enteredAtRef.current === null) enteredAtRef.current = performance.now();
   }, []);
 
-  return transition;
+  return { ...transition, removePrevious };
 }
 
 function formatDayMarker(dayKey: string): { date: string; weekday: string } {
