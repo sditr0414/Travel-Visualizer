@@ -32,7 +32,7 @@ export function HelpDialog({ open, onClose }: { open: boolean; onClose: () => vo
     </details>
     <details className="help-details">
       <summary>{local ? '지원 파일과 로컬 실행' : '지원 파일과 브라우저'}</summary>
-      <p>스마트폰에서 내보낸 <code>semanticSegments</code> 형식의 타임라인을 지원합니다. 내보내기 메뉴는 기기마다 다를 수 있습니다.</p>
+      <p>스마트폰에서 내보낸 이동 구간(<code>semanticSegments</code>)과 원시 위치 기록(<code>rawSignals</code>) 형식의 타임라인을 지원합니다. 원시 위치 기록은 이동수단과 거리를 추정하며, 긴 기록 공백은 경로에 포함하지 않습니다. 내보내기 메뉴는 기기마다 다를 수 있습니다.</p>
       {local ? <>
         <p>로컬 실행 시 앱 폴더 또는 상위 폴더의 <code>타임라인.json</code>과 <code>여행 사진</code>을 자동으로 불러옵니다. 장소 서비스 연결 방법은 저장소의 ‘파일과 개인정보’ 문서에서 확인하세요.</p>
         <p>PC의 로컬 주소는 휴대폰에서 열 수 없습니다. 모바일에서는 웹앱을 열어 해당 기기의 파일을 선택하세요.</p>

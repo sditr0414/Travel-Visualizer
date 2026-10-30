@@ -330,7 +330,7 @@ function calendarDateToUtcMs(yyyyMmDd, endExclusive) {
   return Date.parse(`${yy}-${mm}-${dd}T00:00:00+09:00`);
 }
 
-function clipMovement(movement, rangeStart, rangeEnd) {
+export function clipMovement(movement, rangeStart, rangeEnd) {
   const startMs = Math.max(movement.startMs, rangeStart);
   const endMs = Math.min(movement.endMs, rangeEnd);
   if (!(endMs > startMs)) return null;

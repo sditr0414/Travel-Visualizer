@@ -76,7 +76,7 @@ export function connectVisualGaps(movements: Movement[]): Movement[] {
       activityProbability: 0,
       inferred: true,
       inferenceSource: 'visual-gap',
-      hideRoute: next.connectionBefore === 'excluded-flight'
+      hideRoute: next.connectionBefore === 'excluded-flight' || next.connectionBefore === 'missing-recording'
     });
   }
   return connected;

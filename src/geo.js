@@ -202,6 +202,7 @@ export function shortestLongitudeDelta(from, to) {
   return ((to - from + 180) % 360 + 360) % 360 - 180;
 }
 
+/** @param {number | null} [previousLongitude] */
 export function unwrapPath(points, previousLongitude = null) {
   let previous = previousLongitude;
   return points.map(point => {

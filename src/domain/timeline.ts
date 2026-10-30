@@ -1,7 +1,8 @@
 import { parseLatLng, parseTimeline as parseLegacyTimeline } from '../timeline-parser.js';
 import type { Coordinate, ParsedTrip, TimelineDateRange, TimelineScanResult, TimelineTripCandidate } from '../types';
+import { readRawTimeline, rawTrip, type RawTimeline } from './raw-timeline';
 
-type TimelineRoot = { semanticSegments?: Array<Record<string, unknown>> };
+type TimelineRoot = { semanticSegments: Array<Record<string, unknown>>; rawTimeline?: RawTimeline };
 type EvidencePoint = { point: Coordinate; weight: number };
 type DayEvidence = {
   date: string;
@@ -52,17 +53,26 @@ const KOREA_DESTINATIONS = [
 export function parseTimelineJson(text: string): TimelineRoot {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = JSON.parse(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text);
   } catch {
     throw new Error('파일을 읽을 수 없습니다. Google 지도에서 내보낸 타임라인 JSON 파일을 선택해 주세요.');
   }
-  if (!value || typeof value !== 'object' || !Array.isArray((value as TimelineRoot).semanticSegments)) {
-    throw new Error('지원하지 않는 타임라인 형식입니다. 스마트폰 Google 지도에서 내보낸 JSON 파일을 선택해 주세요.');
+  if (!value || typeof value !== 'object') throw new Error('지원하지 않는 타임라인 형식입니다. Google 지도에서 내보낸 JSON 파일을 선택해 주세요.');
+  const root = value as Record<string, unknown>;
+  // Prefer Google's existing activities whenever present; never mix in raw duplicates.
+  if (Array.isArray(root.semanticSegments) && root.semanticSegments.length) return { semanticSegments: root.semanticSegments };
+  if (Array.isArray(root.rawSignals) && root.rawSignals.length) {
+    const rawTimeline = readRawTimeline(root.rawSignals);
+    const semanticSegments: Array<Record<string, unknown>> = rawTimeline.movements.map(movement => ({
+      startTime: new Date(movement.startMs).toISOString(), endTime: new Date(movement.endMs).toISOString(),
+      activity: { start: { latLng: `${movement.start.lat}, ${canonicalLongitude(movement.start.lng)}` }, end: { latLng: `${movement.end.lat}, ${canonicalLongitude(movement.end.lng)}` }, distanceMeters: movement.distanceMeters }
+    }));
+    // Preserve the full recording period, including stationary/isolated endpoints.
+    semanticSegments.push({ startTime: new Date(rawTimeline.startMs).toISOString(), endTime: new Date(rawTimeline.endMs).toISOString() });
+    return { semanticSegments, rawTimeline };
   }
-  if (!(value as TimelineRoot).semanticSegments?.length) {
-    throw new Error('이 타임라인에는 이동 기록이 없습니다. 기록이 있는 다른 파일을 선택해 주세요.');
-  }
-  return value as TimelineRoot;
+  if (Array.isArray(root.semanticSegments) || Array.isArray(root.rawSignals)) throw new Error('이 타임라인에는 이동 기록이 없습니다. 기록이 있는 다른 파일을 선택해 주세요.');
+  throw new Error('지원하지 않는 타임라인 형식입니다. Google 지도에서 내보낸 JSON 파일을 선택해 주세요.');
 }
 
 export function scanTimeline(json: TimelineRoot): TimelineScanResult {
@@ -107,7 +117,8 @@ export function scanTimeline(json: TimelineRoot): TimelineScanResult {
   const tripCandidates = detectTripCandidates(days, visits, home);
   return {
     ...fullRange,
-    semanticSegments: segments.length,
+    semanticSegments: json.rawTimeline ? 0 : segments.length,
+    ...(json.rawTimeline ? { rawPositions: json.rawTimeline.positions } : {}),
     recommendedRange: tripCandidates[0]
       ? { startDate: tripCandidates[0].startDate, endDate: tripCandidates[0].endDate }
       : fullRange,
@@ -121,6 +132,7 @@ export function buildParsedTrip(
   includeFlights: boolean,
   availableRange: TimelineDateRange = range
 ): ParsedTrip {
+  if (json.rawTimeline) return rawTrip(json.rawTimeline, range, includeFlights, availableRange);
   const parsed = parseLegacyTimeline(json, { ...range, includeFlights });
   return { ...parsed, availableRange };
 }
@@ -353,3 +365,5 @@ function directDistanceMeters(a: Coordinate, b: Coordinate): number {
 function toKoreaDate(ms: number): string {
   return new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
+
+function canonicalLongitude(lng: number): number { return ((lng + 180) % 360 + 360) % 360 - 180; }

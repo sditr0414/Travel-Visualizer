@@ -1046,6 +1046,8 @@ export function App({ workerClient }: AppProps) {
             <div><span>현재 타임라인</span><strong>{state.source?.name ?? '준비 중'}</strong></div>
           </div>
 
+          {state.scan.rawPositions !== undefined && <p className="settings-apply-note">원시 위치 기록으로 경로를 구성했습니다. 이동수단과 거리는 추정값이며, 기록이 끊긴 구간은 경로와 거리에 포함하지 않습니다.</p>}
+
           <div className="settings-quick-actions">
             <button className="settings-help-link" type="button" disabled={busy} onClick={openProject}>여행 저장·열기</button>
             <button className="settings-help-link" type="button" onClick={() => { pausePlayback(); setHelpOpen(true); }}>사용 안내</button>

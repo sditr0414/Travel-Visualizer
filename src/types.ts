@@ -48,12 +48,13 @@ export interface TimelineTripCandidate extends TimelineDateRange {
 
 export interface TimelineScanResult extends TimelineDateRange {
   semanticSegments: number;
+  rawPositions?: number;
   recommendedRange?: TimelineDateRange;
   tripCandidates?: TimelineTripCandidate[];
 }
 
 export interface Movement {
-  connectionBefore?: 'excluded-flight';
+  connectionBefore?: 'excluded-flight' | 'missing-recording';
   hideRoute?: boolean;
   startMs: number;
   endMs: number;

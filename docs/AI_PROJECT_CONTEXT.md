@@ -6,7 +6,7 @@
 
 ## Product and runtime
 
-Google Timeline의 semanticSegments JSON과 사용자가 선택한 사진·영상을 재생하는 반응형 웹앱입니다. 기본 이용 주소는 `https://sditr0414.github.io/Travel-Visualizer/`이며 설치 없이 PC·휴대폰에서 사용합니다. React 19, TypeScript, Vite 8, MapLibre 기반이고 개발·로컬 실행에 Node.js 24+를 사용합니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
+Google Timeline의 semanticSegments 또는 rawSignals JSON과 사용자가 선택한 사진·영상을 재생하는 반응형 웹앱입니다. 기본 이용 주소는 `https://sditr0414.github.io/Travel-Visualizer/`이며 설치 없이 PC·휴대폰에서 사용합니다. React 19, TypeScript, Vite 8, MapLibre 기반이고 개발·로컬 실행에 Node.js 24+를 사용합니다. main은 최신 구현이며 v3는 UI 개선 전 커밋 `7dd7502`의 보존 브랜치입니다.
 
 원본은 File API·Worker·blob URL로 기기 안에서 처리하며 업로드하지 않습니다. 지도는 OpenFreeMap의 온라인 스타일·타일·글꼴·아이콘을 사용합니다. 초기 화면에는 사진·타임라인 샘플과 미리보기를 넣지 않습니다. 지도 모듈과 타임라인 Worker는 실제 사용 시 준비하고 첫 화면에서 미리 불러오지 않습니다.
 
@@ -146,3 +146,5 @@ JPEG는 최대 256KB, 큰 MP4/MOV/M4V는 앞·뒤 최대 1MB씩만 분석합니�
 하단 장면 정보와 재생바는 기존 표면 색상에 공통 20px 모서리·그림자를 사용합니다. 재생바는 150ms 동안 퇴장하고 하단 정보는 100ms 지연을 두고 300ms 이동하며, 복귀 시 정보가 먼저 올라오고 재생바가 60ms 지연 후 300ms 나타납니다. 재생·일시정지 아이콘은 같은 자리에 유지한 두 장식 레이어를 300ms 전환하며 첫 렌더는 애니메이션하지 않습니다. 버튼은 44px, 눌림은 비활성 상태를 제외하고 0.96/150ms입니다. 모션 감소에서는 재생바·아이콘의 150ms 불투명도 전환만 유지하고, 터치에서는 재생바를 계속 표시합니다. 재생 위치는 네이티브 range와 기존 키보드·탐색 계약을 유지하며, 진행률 스타일은 현재 시각/총 재생 시간으로 계산합니다.
 
 상단 메뉴·여행 설정은 하단과 같은 공통 그림자와 20px 모서리를 사용합니다(모드 버튼은 안쪽16px). 설정은 native details의 open 상태를 유지하고 ::details-content의 렌더링만 유지하여 300ms 열기/150ms 닫기 CSS 전환을 적용합니다. 닫힌 .settings-content는 즉시 inert/aria-hidden으로 포커스·접근성 트리에서 제외하고 visibility는 퇴장 후 숨깁니다. 모션 감소에서는 opacity만 전환합니다. 설정 내부 펼침 제목은 표시 제목을 aria-labelledby로, 현재 설정 요약은 aria-describedby로 연결합니다. 상단 자동 숨김은 150ms 퇴장/300ms 복귀이며 터치 상시 표시를 유지합니다. 설정 본문은 --surface-raised-solid, 하단 고정 영역은 --media-surface로 불투명하게 유지하고 400px 이하 날짜 입력은 세로 배치합니다.
+
+원시 위치 전용 가져오기는 domain/raw-timeline.ts에서 처리합니다. 비어 있지 않은 semanticSegments를 항상 우선하고 rawSignals와 합치지 않습니다. position의 LatLng/latLng·timestamp를 검증하고 정확도200m초과·중복시각·고립된1300km/h초과점프를 제외합니다. GPS정확도/20m 이내 흔들림을 누적하지 않고 30분 창과 한국날짜로 구간을 나누며, 30분초과공백/불가능한인접점프는 분리합니다. 원시구간은 UNKNOWN/확률0·raw-position 추정 출처를 유지합니다. 누락연결은 missing-recording으로 표시해 기존 카메라 연결만 사용하고 경로·속도·거리합계에서 제외합니다. 기간필터는 기존 clipMovement를 공유하며 항공제외는 위치로 추정한 FLIGHT를 제외합니다. scan.rawPositions는 유효/중복정리 후 기록 수, semanticSegments는 원시파일에서0입니다. 기존 프로젝트는 원본해시와설정만 저장하므로 형식변경없이 원시파일도 재선택해 복원합니다. 개인원본·좌표는 fixture/artifact에 포함하지 않습니다.
