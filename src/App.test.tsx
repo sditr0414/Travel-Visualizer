@@ -6,6 +6,8 @@ import { simplePlan } from './test/fixtures';
 import type { TimelineWorkerPort } from './services/timeline-worker-client';
 
 const fakeMap = {
+  getContainer: () => screen.getByTestId('map-stage'),
+  resize: vi.fn(),
   getCanvas: () => ({ clientWidth: 1200, clientHeight: 700 }),
   getSource: () => ({ setData: vi.fn() }),
   getLayer: () => ({}),

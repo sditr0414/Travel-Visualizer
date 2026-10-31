@@ -460,7 +460,8 @@ describe('playback continuity', () => {
     const stop = vi.fn();
     const getCenter = vi.fn();
     const getZoom = vi.fn();
-    const map = { getSource: () => ({ setData }), jumpTo, easeTo, stop, getCenter, getZoom } as unknown as Map;
+    const canvas = { clientWidth: 1000, clientHeight: 800 };
+    const map = { getSource: () => ({ setData }), jumpTo, easeTo, stop, getCenter, getZoom, getCanvas: () => canvas } as unknown as Map;
     let next: FrameRequestCallback = () => undefined;
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { next = callback; return 1; }));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
@@ -468,9 +469,64 @@ describe('playback continuity', () => {
     const onFrame = vi.fn();
     const onTransitionChange = vi.fn();
     const player = new PlayerController(map, { onFrame, onTransitionChange });
-    return { player, jumpTo, easeTo, stop, getCenter, getZoom, setData, onFrame, onTransitionChange, tick: (ms: number) => next(ms) };
+    return { player, jumpTo, easeTo, stop, getCenter, getZoom, canvas, setData, onFrame, onTransitionChange, tick: (ms: number) => next(ms) };
   }
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('restores a paused photo session without resetting its dwell zoom or clock', () => {
+    const p = playback();
+    const stops = [{ id: 'photo', atSec: 0, durationSec: 3 }];
+    p.player.loadPlan(simplePlan(), stops); p.player.play();
+    for (let ms = 50; ms <= 500; ms += 50) p.tick(ms);
+    p.player.pause();
+    const zoom = p.jumpTo.mock.calls.at(-1)![0].zoom;
+    const time = p.onFrame.mock.calls.at(-1)![2];
+    p.jumpTo.mockClear(); p.onFrame.mockClear();
+    expect(p.player.setStops(stops, { render: false })).toBeCloseTo(time, 9);
+    expect(p.jumpTo).not.toHaveBeenCalled();
+    p.player.setStops(stops);
+    expect(p.onFrame).toHaveBeenCalledTimes(1);
+    expect(p.jumpTo.mock.calls.at(-1)![0].zoom).toBe(zoom);
+    p.jumpTo.mockClear();
+    p.player.restoreView({ viewport: { width: 1000, height: 800 } });
+    expect(p.easeTo.mock.calls.at(-1)![0].zoom).toBe(zoom);
+    expect(p.jumpTo).not.toHaveBeenCalled();
+    expect(p.onFrame.mock.calls.at(-1)![2]).toBe(time);
+    expect(p.onFrame.mock.calls.at(-1)![3]).toBe('photo');
+    p.player.dispose();
+  });
+
+  it('still applies a reordered photo group at the same route position', () => {
+    const p = playback();
+    const a = { id: 'a', atSec: 0, durationSec: 1 };
+    const b = { id: 'b', atSec: 0, durationSec: 1 };
+    p.player.loadPlan(simplePlan(), [a, b]); p.player.seek(0.5);
+    expect(p.player.setStops([b, a], { render: false })).toBe(1.5);
+    p.player.dispose();
+  });
+
+  it('uses the destination viewport once, before the split animation finishes', () => {
+    const p = playback(); const plan = { ...simplePlan(), viewportWidth: 1000, viewportHeight: 800 };
+    p.player.loadPlan(plan);
+    const originalZoom = p.jumpTo.mock.calls.at(-1)![0].zoom;
+    p.player.restoreView({ viewport: { width: 500, height: 800 } });
+    expect(p.easeTo.mock.calls.at(-1)![0].zoom).toBeCloseTo(originalZoom - 1, 9);
+    p.canvas.clientWidth = 500; vi.mocked(performance.now).mockReturnValue(600);
+    p.player.restoreView({ viewport: { width: 500, height: 800 } });
+    expect(p.easeTo.mock.calls.at(-1)![0].zoom).toBeCloseTo(originalZoom - 1, 9);
+    p.player.dispose();
+  });
+
+  it('updates inactive photo stops without drawing until that session is restored', () => {
+    const p = playback(); p.player.loadPlan(simplePlan(), [{ id: 'photo', atSec: 0, durationSec: 3 }]);
+    p.player.seek(1); p.jumpTo.mockClear(); p.onFrame.mockClear();
+    expect(p.player.setStops([{ id: 'photo', atSec: 0, durationSec: 6 }], { render: false })).toBe(2);
+    expect(p.jumpTo).not.toHaveBeenCalled(); expect(p.onFrame).not.toHaveBeenCalled();
+    p.player.restoreView({ viewport: { width: 1000, height: 800 }, camera: false });
+    expect(p.jumpTo).not.toHaveBeenCalled(); expect(p.easeTo).not.toHaveBeenCalled();
+    expect(p.onFrame.mock.calls.at(-1)![2]).toBe(2);
+    p.player.dispose();
+  });
 
   it('updates the selected time immediately while an explicit seek eases the camera', () => {
     const p = playback(); p.player.loadPlan(simplePlan()); p.jumpTo.mockClear();

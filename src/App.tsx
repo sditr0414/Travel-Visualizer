@@ -117,6 +117,9 @@ export function App({ workerClient }: AppProps) {
   const [hud, setHud] = useState<HudState>({ sourceMs: null, segmentStartMs: null, segmentEndMs: null, timeSec: 0, overview: false, date: '—', mobilityClass: 'UNKNOWN', mobility: '여행 준비', speed: '—', distance: null, originCity: null, destinationCity: null });
   const playersRef = useRef<Record<JourneyMode, PlayerController | null>>({ ROUTE: null, PHOTOS: null });
   const journeyModeRef = useRef<JourneyMode>('ROUTE');
+  const modeRestoreRef = useRef<{ mode: JourneyMode; reset: boolean } | null>(null);
+  const [modeRevision, setModeRevision] = useState(0);
+  const modeCameraPendingRef = useRef(false);
   const playbackPositionsRef = useRef<Record<JourneyMode, number>>({ ROUTE: 0, PHOTOS: 0 });
   const photoPlaybackStopsRef = useRef<PlaybackStop[]>([]);
   const durationCustomizedRef = useRef(false);
@@ -165,7 +168,7 @@ export function App({ workerClient }: AppProps) {
     if (mode === currentMode && !resetTarget) return;
     pausePlayback(currentMode);
     if (resetTarget) playbackPositionsRef.current[mode] = 0;
-    let targetTimeSec = playbackPositionsRef.current[mode];
+    const targetTimeSec = playbackPositionsRef.current[mode];
     journeyModeRef.current = mode;
     if (mode === 'PHOTOS' && resetTarget) minimizePhotoRoute();
     setCameraTransition(null);
@@ -173,14 +176,8 @@ export function App({ workerClient }: AppProps) {
     activeMediaRef.current = null;
     setActiveMediaId(null);
     setActivePlaceName(null);
-    const targetPlayer = playersRef.current[mode];
-    if (targetPlayer) {
-      if (mode === 'PHOTOS') {
-        targetPlayer.setStops(photoPlaybackStopsRef.current);
-        targetTimeSec = resetTarget ? 0 : playbackPositionsRef.current[mode];
-      }
-      targetPlayer.seek(targetTimeSec);
-    }
+    modeRestoreRef.current = { mode, reset: resetTarget };
+    setModeRevision(revision => revision + 1);
     if (state.plan) dispatch(targetTimeSec > 0 ? { type: 'PAUSE' } : { type: 'RESET' });
   }, [minimizePhotoRoute, pausePlayback, state.plan]);
 
@@ -468,7 +465,10 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     photoPlaybackStopsRef.current = photoPlaybackStops;
-    if (journeyModeRef.current === 'PHOTOS') playersRef.current.PHOTOS?.setStops(photoPlaybackStops);
+    const player = playersRef.current.PHOTOS;
+    if (journeyModeRef.current === 'PHOTOS' && player) {
+      playbackPositionsRef.current.PHOTOS = player.setStops(photoPlaybackStops, { render: !modeCameraPendingRef.current });
+    }
     if (revealMediaRef.current && playersRef.current.PHOTOS?.seekToStop(revealMediaRef.current)) revealMediaRef.current = null;
   }, [photoPlaybackStops]);
 
@@ -545,7 +545,7 @@ export function App({ workerClient }: AppProps) {
             }
           }
           setHud(nextHud);
-          if (timeSec === 0 && !controller.isPlaying()) fitJourneyOverview(map, state.plan!);
+          if (timeSec === 0 && !controller.isPlaying() && !modeRestoreRef.current && !modeCameraPendingRef.current) fitJourneyOverview(map, state.plan!);
         },
         onComplete: () => {
           if (mode !== journeyModeRef.current) return;
@@ -576,6 +576,24 @@ export function App({ workerClient }: AppProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, state.plan]);
 
+  useLayoutEffect(() => {
+    const request = modeRestoreRef.current;
+    const player = playersRef.current[journeyMode];
+    const shell = shellRef.current;
+    if (!request || request.mode !== journeyMode || !player || !map || !shell || !state.plan) return;
+    let time = playbackPositionsRef.current[journeyMode];
+    if (journeyMode === 'PHOTOS') time = player.setStops(photoPlaybackStops, { render: false });
+    if (request.reset) { player.seek(0, { animate: true }); time = 0; }
+    const viewport = {
+      width: shell.clientWidth * (journeyMode === 'PHOTOS' && !splitNarrow ? mapShare : 1),
+      height: shell.clientHeight * (journeyMode === 'PHOTOS' && splitNarrow ? mapShare : 1)
+    };
+    player.restoreView({ viewport, camera: false });
+    modeCameraPendingRef.current = true;
+    modeRestoreRef.current = null;
+    dispatch(time > 0 ? { type: 'PAUSE' } : { type: 'RESET' });
+  }, [journeyMode, modeRevision, map, mapShare, photoPlaybackStops, splitNarrow, state.plan]);
+
   useEffect(() => {
     playersRef.current.ROUTE?.setLockToPosition(lockToPosition);
     playersRef.current.PHOTOS?.setLockToPosition(lockToPosition);
@@ -604,13 +622,35 @@ export function App({ workerClient }: AppProps) {
 
   useEffect(() => {
     if (!map) return;
-    const timer = window.setTimeout(() => {
-      (map as MapLibreMap & { resize?: () => void }).resize?.();
+    let frame = 0;
+    const settleViewport = () => {
+      const shell = shellRef.current;
+      if (!shell) return;
+      const container = map.getContainer();
+      const width = Math.round(shell.clientWidth * (journeyMode === 'PHOTOS' && !splitNarrow ? mapShare : 1));
+      const height = Math.round(shell.clientHeight * (journeyMode === 'PHOTOS' && splitNarrow ? mapShare : 1));
+      // A fixed timeout can run before the last CSS transition frame (notably
+      // in WebKit or reduced-motion mode). Native camera easing captures its
+      // viewport anchor, so wait for the actual destination dimensions.
+      if (container.clientWidth !== width || container.clientHeight !== height) {
+        frame = window.requestAnimationFrame(settleViewport);
+        return;
+      }
+      map.resize();
       const mode = journeyModeRef.current;
-      if (state.plan && playbackPositionsRef.current[mode] === 0 && !playersRef.current[mode]?.isPlaying()) fitJourneyOverview(map, state.plan);
-    }, 220);
-    return () => window.clearTimeout(timer);
-  }, [journeyMode, map, mapShare, state.plan]);
+      const player = playersRef.current[mode];
+      if (state.plan && player && !player.isPlaying()) {
+        if (playbackPositionsRef.current[mode] === 0) {
+          fitJourneyOverview(map, state.plan, modeCameraPendingRef.current ? 480 : 0);
+        } else if (modeCameraPendingRef.current) {
+          player.restoreView({ viewport: { width, height } });
+        }
+      }
+      modeCameraPendingRef.current = false;
+    };
+    frame = window.requestAnimationFrame(settleViewport);
+    return () => window.cancelAnimationFrame(frame);
+  }, [journeyMode, modeRevision, map, mapShare, splitNarrow, state.plan]);
 
   useEffect(() => {
     if (!map?.getLayer('route-all')) return;
@@ -1297,13 +1337,13 @@ function hudForFrame(frame: PlaybackFrame, plan: PlaybackPlan, timeSec: number, 
   };
 }
 
-function fitJourneyOverview(map: MapLibreMap, plan: PlaybackPlan): void {
+function fitJourneyOverview(map: MapLibreMap, plan: PlaybackPlan, duration = 0): void {
   const points = plan.frames.filter((frame): frame is TravelFrame => frame.kind === 'TRAVEL').map(frame => frame.position);
   if (!points.length) return;
   const bounds = points.reduce((b, p) => [Math.min(b[0], p.lng), Math.min(b[1], p.lat), Math.max(b[2], p.lng), Math.max(b[3], p.lat)], [Infinity, Infinity, -Infinity, -Infinity]);
   map.setLayoutProperty('route-all', 'visibility', 'visible');
   const height = map.getCanvas().clientHeight;
-  map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: Math.min(65, Math.max(20, height * 0.15)), maxZoom: 14, duration: 0 });
+  map.fitBounds([[bounds[0], bounds[1]], [bounds[2], bounds[3]]], { padding: Math.min(65, Math.max(20, height * 0.15)), maxZoom: 14, duration: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : duration });
 }
 
 function formatClock(seconds: number): string {

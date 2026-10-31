@@ -65,6 +65,9 @@ export class PlayerController {
   private raf: number | null = null;
   private seekCameraDurationMs = 0;
   private seekCameraUntil = 0;
+  private skipCameraOnce = false;
+  private lastViewportAdjustment = 0;
+  private viewportOverride: { width: number; height: number; until: number } | null = null;
   private lockToPosition = true;
   private zoomOffset = 0;
   private photoDetailZoomStrength = 0;
@@ -93,6 +96,7 @@ export class PlayerController {
     this.lastFrame = null;
     this.lastGeometryPosition = -1;
     this.plan = plan;
+    this.viewportOverride = null;
     this.timeSec = 0;
     this.frameIndex = -1;
     this.framePosition = -1;
@@ -112,7 +116,15 @@ export class PlayerController {
     this.render(0, true);
   }
 
-  setStops(stops: PlaybackStop[]): void {
+  setStops(stops: PlaybackStop[], options: { render?: boolean } = {}): number {
+    const next = buildStopSchedule(stops, this.plan?.durationSec ?? 0);
+    if (next.schedule.length === this.stopSchedule.length && next.schedule.every((stop, index) => {
+      const previous = this.stopSchedule[index];
+      return previous.id === stop.id && previous.atSec === stop.atSec && previous.durationSec === stop.durationSec;
+    })) {
+      if (options.render !== false) this.renderForTime(true);
+      return this.timeSec;
+    }
     const routeDurationSec = this.plan?.durationSec ?? 0;
     const remappedTimeSec = this.plan
       ? remapJourneyTimeForStops(this.timeSec, this.stops, stops, routeDurationSec)
@@ -121,6 +133,24 @@ export class PlayerController {
     this.replaceStops(stops);
     this.timeSec = clamp(remappedTimeSec, 0, this.getDuration());
     this.lastTickAt = performance.now();
+    if (options.render !== false) this.renderForTime(true);
+    return this.timeSec;
+  }
+
+  restoreView(options: { viewport: { width: number; height: number }; camera?: boolean }): void {
+    if (!this.plan) return;
+    this.pause();
+    this.map.stop?.();
+    // The split layout animates for 220ms. Aim at its final viewport rather
+    // than the dimensions belonging to the mode that is leaving.
+    this.viewportOverride = { ...options.viewport, until: performance.now() + 480 };
+    if (this.displayedZoom !== null) {
+      this.displayedZoom = clamp(this.displayedZoom + this.viewportZoomAdjustment() - this.lastViewportAdjustment, 4, 17.3);
+    }
+    const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    this.seekCameraDurationMs = !reduced && typeof this.map.easeTo === 'function' && options.camera !== false ? 480 : 0;
+    this.skipCameraOnce = options.camera === false;
+    this.seekCameraUntil = 0;
     this.renderForTime(true);
   }
 
@@ -342,6 +372,7 @@ export class PlayerController {
       }
     }
     const viewportAdjustment = this.viewportZoomAdjustment();
+    this.lastViewportAdjustment = viewportAdjustment;
     zoom = applyUserZoomOffset(zoom + viewportAdjustment, this.zoomOffset);
     if (this.lockToPosition) {
       zoom = this.stabilizeZoom(zoom, this.timeSec);
@@ -377,7 +408,9 @@ export class PlayerController {
     }
     this.lastCamera = { center, zoom };
     const camera = { center: [center.lng, center.lat] as [number, number], zoom };
-    if (this.seekCameraDurationMs > 0) {
+    if (this.skipCameraOnce) {
+      this.skipCameraOnce = false;
+    } else if (this.seekCameraDurationMs > 0) {
       // Only explicit navigation uses MapLibre's short camera transition. The
       // logical cursor and selected media update immediately, even while paused.
       this.map.easeTo({ ...camera, duration: this.seekCameraDurationMs, easing: t => t * t * (3 - 2 * t) });
@@ -552,8 +585,9 @@ export class PlayerController {
   private viewportZoomAdjustment(): number {
     if (!this.plan?.viewportWidth || !this.plan.viewportHeight) return 0;
     const canvas = this.map.getCanvas();
-    const width = canvas.clientWidth || this.plan.viewportWidth;
-    const height = canvas.clientHeight || this.plan.viewportHeight;
+    const override = this.viewportOverride && performance.now() < this.viewportOverride.until ? this.viewportOverride : null;
+    const width = override?.width || canvas.clientWidth || this.plan.viewportWidth;
+    const height = override?.height || canvas.clientHeight || this.plan.viewportHeight;
     return Math.log2(Math.min(width / this.plan.viewportWidth, height / this.plan.viewportHeight));
   }
 
