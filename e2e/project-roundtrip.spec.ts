@@ -58,6 +58,7 @@ test('project download restores range, exclusions, both cursors and preferences 
   await expect(page.getByRole('button', { name: '사진 여정', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '경로 보기', exact: true }).click(); await expect(page.getByLabel('재생 위치', { exact: true })).toHaveValue('4');
   await page.getByRole('button', { name: '사진 여정', exact: true }).click();
+  await expect(page.getByLabel('재생 위치', { exact: true })).toHaveValue('8');
   await page.locator('.settings-panel summary').click();
   await expect(page.getByLabel('여행 마지막 날', { exact: true })).toHaveValue('2026-04-10');
   await expect(page.getByRole('button', { name: '경로 재생 설정', exact: true })).toContainText('변경 1개');

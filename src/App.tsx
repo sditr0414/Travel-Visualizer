@@ -565,7 +565,12 @@ export function App({ workerClient }: AppProps) {
     const photoController = createController('PHOTOS', restorePlaybackRef.current?.plan === state.plan ? photoPlaybackStops : photoPlaybackStopsRef.current);
     playersRef.current = { ROUTE: routeController, PHOTOS: photoController };
     playbackPositionsRef.current = savedPositions;
-    playersRef.current[journeyModeRef.current]?.seek(playbackPositionsRef.current[journeyModeRef.current]);
+    // Both sessions own their cursor after restoration. Initialize the inactive
+    // one first, then let the active session establish the visible map and HUD.
+    const activeMode = journeyModeRef.current;
+    const inactiveMode = activeMode === 'ROUTE' ? 'PHOTOS' : 'ROUTE';
+    playersRef.current[inactiveMode]?.seek(savedPositions[inactiveMode]);
+    playersRef.current[activeMode]?.seek(savedPositions[activeMode]);
     restorePlaybackRef.current = null;
 
     return () => {
